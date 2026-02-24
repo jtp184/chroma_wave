@@ -414,9 +414,14 @@ Output: a single `epd` executable.
 | Component      | Usable? | Notes                                                    |
 |----------------|---------|----------------------------------------------------------|
 | DEV_Config HAL | Yes     | Thin, well-defined interface. Include as-is.             |
-| EPD_*.c drivers| Yes     | Include per-model as separate compilation units.         |
-| GUI_Paint      | Partial | Pixel packing logic is essential. Drawing primitives are |
-|                |         | useful for basic shapes. Font system is limited.         |
+| EPD_*.c drivers| Partial | Init register sequences and LUT tables are essential.    |
+|                |         | Boilerplate (Reset, SendCommand, SendData, ReadBusy)     |
+|                |         | is duplicated across all 70 files and should be factored |
+|                |         | into shared helpers owned by the Device layer.           |
+| GUI_Paint      | Minimal | Only the pixel-packing logic in `Paint_SetPixel` and     |
+|                |         | `Paint_Clear` (~100 lines). Drawing primitives (line,    |
+|                |         | rect, circle, text) are pure algorithms that belong in   |
+|                |         | Ruby. See Section 9.3 for rationale.                     |
 | GUI_BMPfile    | No      | File I/O should be handled in Ruby, not C.               |
 | Fonts          | No      | Hard-coded bitmaps. Replace with FreeType or similar.    |
 | Debug.h        | Yes     | Redirect to Ruby `rb_warn()` instead of `printf`.        |
@@ -424,126 +429,487 @@ Output: a single `epd` executable.
 ### 9.2 What Needs Wrapping / Replacing
 
 **Must Replace:**
-- **Global PAINT state** -- wrap in a Ruby object with `TypedData_Wrap_Struct`. Each
-  `ChromaWave::Image` should own its own buffer and PAINT-equivalent metadata.
+- **Global PAINT state** -- the `PAINT Paint` global conflates pixel storage, coordinate
+  transforms, and drawing context. Replace with a C-backed `Framebuffer` struct (owns buffer
+  + pixel format metadata) wrapped via `TypedData_Wrap_Struct`. Coordinate transforms and
+  drawing move to Ruby entirely (see Section 9.3).
 - **printf-based debug** -- redirect `Debug()` macro to `rb_warn()` or a configurable logger.
 - **DEV_Module_Init / Exit** -- wrap in a Ruby `ChromaWave::Device` lifecycle object with
   proper `dfree` cleanup. Consider `Ensure`-style block patterns.
 - **malloc for image buffers** -- allocate via `xmalloc` / `xfree` (Ruby's tracked allocator)
-  or `ruby_xmalloc` for GC visibility.
+  so Ruby's GC tracks the memory pressure.
+- **Duplicated I/O primitives** -- `Reset()`, `SendCommand()`, `SendData()`, `ReadBusy()`
+  are copy-pasted identically across all 70 driver files (~1,400 lines of duplication). These
+  belong on the Device layer as shared functions, parameterized by busy polarity and reset
+  timing.
 
 **Must Abstract:**
-- **Model selection** -- the vendor library is compile-time-selected. We need either:
-  - **(A) Compile all drivers, select at runtime via function pointers**, or
-  - **(B) Compile each driver as a separate shared object, load dynamically**
-  - **(A) is strongly preferred** -- simpler, no dlopen complexity, and the total code size of
-    all 70 drivers is modest (~500KB compiled).
+- **Model selection** -- the vendor library is compile-time-selected. We compile all drivers
+  and select at runtime via a two-tier registry (config data + optional code overrides).
+  Total code size of all 70 drivers is modest (~500KB compiled). See Section 9.4.
 - **Platform selection** -- similarly compile-time. For the gem, we should:
   - Default to `USE_LGPIO_LIB` for RPi 5 / modern Raspberry Pi OS
   - Allow `USE_DEV_LIB` as fallback (gpiod, most portable)
   - Detect platform in `extconf.rb` and set appropriate `-D` flags
-  - Consider a "mock" backend for development/testing on non-RPi systems
+  - Define a `MOCK` backend for development/testing on non-RPi systems
 
-### 9.3 Integration Architecture Recommendation
+### 9.3 Responsibility Split: Ruby vs C
+
+A critical design decision is where to draw the line between C and Ruby. The guiding principle:
+**C handles hardware I/O and bit-level buffer manipulation. Ruby handles everything else.**
+
+#### 9.3.1 Why Drawing Belongs in Ruby
+
+The vendor's `GUI_Paint.c` has two distinct responsibilities:
+
+1. **Pixel packing** (`Paint_SetPixel`, `Paint_Clear`) -- Scale-dependent bit-twiddling that
+   packs color values into byte buffers using format-specific layouts (1-bit MSB bitmask,
+   2-bit pairs, 4-bit nibbles). This is ~100 lines of C and genuinely benefits from being in C.
+
+2. **Drawing algorithms** (`Paint_DrawLine`, `Paint_DrawRectangle`, `Paint_DrawCircle`,
+   `Paint_DrawChar`, etc.) -- Pure Bresenham/rasterization algorithms that call `SetPixel` in
+   loops. These are ~750 lines of C that:
+   - Have no hardware interaction
+   - Are limited (no anti-aliasing, no alpha, no clipping, no real font support)
+   - Duplicate what Ruby drawing libraries already do better
+   - Are trivial to implement in Ruby (Bresenham is ~20 lines)
+
+For e-paper displays, refresh takes 2-15 seconds. Drawing overhead is irrelevant. Even the
+worst case (filling every pixel on an 800x480 display = ~384K Ruby→C FFI calls for `set_pixel`)
+completes well under a second.
+
+**By keeping drawing in Ruby, we gain:**
+- Extensibility (anti-aliasing, compositing, alpha) without touching C
+- Testability (no hardware needed to test drawing logic)
+- Ecosystem integration (ChunkyPNG, Vips, FreeType interop at the Ruby level)
+- No need to fork/maintain a modified GUI_Paint.c
+
+#### 9.3.2 Responsibility Matrix
+
+| Concern                    | Layer | Rationale                                    |
+|----------------------------|-------|----------------------------------------------|
+| GPIO/SPI lifecycle         | C     | Hardware handles, platform-specific           |
+| SPI command/data protocol  | C     | Bit-level timing, CS/DC pin toggling          |
+| Display init/sleep/refresh | C     | Register sequences, busy-wait, GVL release    |
+| Pixel packing into buffer  | C     | Bit-twiddling (MSB bitmask, nibble packing)   |
+| Buffer allocation/free     | C     | `xmalloc`/`xfree` with `TypedData` lifecycle  |
+| Bulk buffer clear/fill     | C     | Format-aware memset, faster than per-pixel    |
+| Coordinate transforms      | Ruby  | Rotation/mirror matrix math, no hardware      |
+| Drawing primitives         | Ruby  | Bresenham algorithms, calls C `set_pixel`     |
+| Text rendering             | Ruby  | FreeType or pre-rendered, not bitmap fonts    |
+| Image loading/conversion   | Ruby  | ChunkyPNG/Vips, quantize to display palette   |
+| Color space conversion     | Ruby  | RGB→display palette mapping, dithering        |
+| Display capability queries | Ruby  | `respond_to?` / module inclusion checks       |
+| Model configuration        | Ruby  | Resolution, format, capabilities per model    |
+
+### 9.4 Integration Architecture
+
+#### 9.4.1 The `PixelFormat` Unifying Concept
+
+The vendor library's `Scale` value, the color constants, and the buffer size math all express
+the same underlying concept: **how pixels are packed into bytes**. This concept appears in at
+least four places in the original design (Image buffer, Display config, Color validation,
+driver registry). It should be modeled once.
+
+```ruby
+module ChromaWave
+  class PixelFormat
+    attr_reader :name, :bits_per_pixel, :pixels_per_byte, :scale, :palette
+
+    MONO   = new(name: :mono,   bpp: 1, scale: 2,  palette: %i[black white])
+    GRAY4  = new(name: :gray4,  bpp: 2, scale: 4,  palette: %i[black dark_gray light_gray white])
+    COLOR4 = new(name: :color4, bpp: 4, scale: 6,  palette: %i[black white yellow red])
+    COLOR7 = new(name: :color7, bpp: 4, scale: 7,
+                 palette: %i[black white green blue red yellow orange])
+
+    def buffer_size(width, height)
+      bytes_per_row = (width + pixels_per_byte - 1) / pixels_per_byte
+      bytes_per_row * height
+    end
+
+    def valid_color?(color) = palette.include?(color)
+  end
+end
+```
+
+Both `Display` and `Framebuffer` reference a `PixelFormat`. The Display declares what format it
+requires. The Framebuffer declares what format it contains. Compatibility is checked once at
+the point of use (`display.show(framebuffer)`), not scattered across layers.
+
+**Dual-buffer displays** (black + red/yellow) are modeled as two Framebuffers, both `MONO`
+format, not as a special pixel format. The Display's capability module knows it needs two
+buffers.
+
+#### 9.4.2 Directory Structure
 
 ```
-ChromaWave (Ruby gem)
+ext/chroma_wave/                    # C -- only what MUST be C
+  chroma_wave.c                       # Init_chroma_wave: define module, classes, constants
+  chroma_wave.h                       # Shared type definitions, Ruby VALUE externs
+  device.c                            # Device: SPI/GPIO lifecycle + shared I/O primitives
+  |                                   #   epd_send_command(), epd_send_data(), epd_reset(),
+  |                                   #   epd_read_busy() -- factored OUT of individual drivers
+  framebuffer.c                       # Framebuffer: pixel packing (set_pixel, get_pixel,
+  |                                   #   clear, raw buffer access). ~100 lines extracted
+  |                                   #   from GUI_Paint.c. Parameterized, no global state.
+  display.c                           # Display: init/clear/refresh/sleep dispatch.
+  |                                   #   Calls device I/O + driver-specific logic.
+  driver_registry.c                   # Two-tier registry: config data + optional overrides.
+  |                                   #   Generic init/display functions interpret config tables.
+  |                                   #   Complex models provide override function pointers.
+  extconf.rb                          # Platform detection, backend selection, compiler flags
   |
-  +-- lib/chroma_wave/
-  |     device.rb          # ChromaWave::Device -- lifecycle, model selection
-  |     display.rb         # ChromaWave::Display -- model-specific config
-  |     image.rb           # ChromaWave::Image -- pixel buffer + drawing
-  |     color.rb           # ChromaWave::Color -- color spaces, conversion
-  |     version.rb
-  |
-  +-- ext/chroma_wave/
-        chroma_wave.c      # Init_chroma_wave: define module, classes
-        device.c            # Device alloc/init/free, wraps DEV_Config lifecycle
-        display.c           # Display init/clear/refresh/sleep, wraps EPD_* drivers
-        image.c             # Image buffer alloc/draw/pixel-pack, wraps GUI_Paint
-        display_registry.c  # Runtime model dispatch table (function pointers)
-        |
-        +-- vendor/         # Vendored C sources (symlinked or copied)
-              config/       # DEV_Config.c, platform backends
-              drivers/      # All EPD_*.c files, compiled unconditionally
-              paint/        # GUI_Paint.c (modified: no global state)
+  vendor/                             # Vendored C sources (copied from vendor/waveshare_epd)
+    config/                           #   DEV_Config.c, platform backends (as-is)
+    drivers/                          #   All EPD_*.c files -- compiled unconditionally.
+    |                                 #   Boilerplate (Reset/SendCommand/SendData/ReadBusy)
+    |                                 #   is stripped; these files provide only Init register
+    |                                 #   sequences, LUT tables, and model-specific Display
+    |                                 #   logic for complex models.
+
+lib/chroma_wave/                    # Ruby -- everything that doesn't need to be C
+  chroma_wave.rb                      # Top-level require, autoloads
+  version.rb                          # VERSION constant
+  pixel_format.rb                     # PixelFormat value object (MONO, GRAY4, COLOR7, etc.)
+  framebuffer.rb                      # Ruby wrapper for C-backed Framebuffer
+  canvas.rb                           # Drawing primitives + coordinate transforms
+  transform.rb                        # Rotation, mirroring, coordinate mapping
+  device.rb                           # Hardware lifecycle, connection management
+  display.rb                          # Base Display class (init, clear, show, sleep)
+  capabilities/                       # Composable capability modules
+    partial_refresh.rb                #   display_partial, display_base
+    fast_refresh.rb                   #   init_fast, display_fast
+    grayscale_mode.rb                 #   init_grayscale, display_grayscale
+    dual_buffer.rb                    #   show(black_fb, red_fb)
+    regional_refresh.rb               #   display_region(fb, x, y, w, h)
+  models/                             # One file per model family, not per SKU
+    mono.rb                           #   Simple monochrome (2in13_V4, 13in3k, etc.)
+    dual_color.rb                     #   B+R / B+Y displays (2in13b_V4, 4in2bc, etc.)
+    grayscale.rb                      #   4-gray displays (1in64g, 3in7, etc.)
+    multicolor.rb                     #   7-color ACeP displays (5in65f, 4in01f, etc.)
 ```
 
-### 9.4 Critical Integration Challenges
+#### 9.4.3 Capabilities as Composable Modules
 
-1. **Eliminating global state.** `PAINT Paint` is a global. Every `Paint_*` function reads it.
-   Options:
-   - **(A) Fork GUI_Paint.c** and rewrite all functions to take a `PAINT*` parameter.
-     This is the cleanest approach and not difficult -- the functions are simple.
-   - **(B) Protect the global with a mutex** and swap it before each call. Fragile, not
-     thread-safe for multiple images.
-   - **Recommendation: (A).** The GUI_Paint code is ~850 lines and straightforward. Forking
-     and parameterizing it is a one-time cost that pays for itself in correctness.
+The vendor drivers expose capabilities as inconsistently-named optional functions
+(`Init_Fast`, `Display_Partial`, `Display_Part`, `Display_part`). Rather than modeling these
+as nullable function pointers in a flat C struct, use Ruby modules:
 
-2. **Runtime model dispatch.** Each driver has a different function signature set. We need a
-   unified interface:
-   ```c
-   typedef struct {
-       const char *name;
-       UWORD width;
-       UWORD height;
-       UBYTE color_type;     // MONO, GRAY4, DUAL_BW_RED, COLOR7, etc.
-       UBYTE scale;          // Paint scale value for this display
-       void (*init)(void);
-       void (*init_fast)(void);    // NULL if not supported
-       void (*clear)(void);
-       void (*display)(UBYTE *buf);
-       void (*display_fast)(UBYTE *buf);       // NULL if not supported
-       void (*display_partial)(UBYTE *buf);    // NULL if not supported
-       void (*display_dual)(UBYTE *black, UBYTE *red);  // NULL if single-buf
-       void (*sleep)(void);
-   } epd_driver_t;
-   ```
-   Then build a registry array indexed by model enum. This unifies the API across all 70 drivers.
+```ruby
+module ChromaWave
+  module Capabilities
+    module PartialRefresh
+      def display_partial(framebuffer)
+        # Validates framebuffer format, calls C: epd_display_partial(driver, buf)
+      end
 
-3. **Platform detection in extconf.rb.** Need to:
-   - Check for `lgpio.h`, `bcm2835.h`, `wiringPi.h`, `gpiod.h` headers
-   - Check for corresponding `-l` libraries
-   - Auto-select the best available backend
-   - Provide a `--with-epd-backend=` configure option for override
-   - Define a `MOCK` backend for test environments (no hardware)
+      def display_base(framebuffer)
+        # Write base frame for subsequent partials
+      end
+    end
 
-4. **Busy-wait blocking.** `EPD_*_ReadBusy()` spin-waits. This blocks the GVL. For the Ruby
-   extension, wrap display/refresh operations with `rb_thread_call_without_gvl()` so other
-   Ruby threads can run during the (potentially multi-second) refresh cycle.
+    module FastRefresh
+      def init_fast  = ... # C: epd_init_fast(driver)
+      def display_fast(framebuffer) = ...
+    end
 
-5. **Buffer ownership.** The vendor library expects callers to `malloc` and `free` their own
-   buffers. In the Ruby extension, buffers should be owned by a `TypedData_Wrap_Struct` object
-   with proper `dfree`, `dmark`, and `dsize` callbacks. Use `xmalloc`/`xfree` so Ruby's GC
-   tracks the memory.
+    module GrayscaleMode
+      def init_grayscale = ...
+      def display_grayscale(framebuffer) = ...
+    end
 
-### 9.5 What We Should NOT Use
+    module DualBuffer
+      def show(black_framebuffer, red_framebuffer)
+        # Validates both are MONO format, calls C: epd_display_dual(driver, black, red)
+      end
+    end
+  end
 
-- **GUI_BMPfile.c** -- BMP loading should happen in Ruby (or via a Ruby image library like
-  ChunkyPNG, MiniMagick, or Vips). The C BMP loader is limited to 24-bit uncompressed BMP only.
-- **Font bitmap tables** -- The built-in fonts are tiny (5x8 to 17x24) fixed-width bitmaps with
-  only ASCII + limited GB2312. Replace with FreeType for proper text rendering, or handle text
-  rendering entirely in Ruby and pass pre-rendered pixel buffers to C.
+  # Each model class includes only its supported capabilities
+  class EPD_2in13_V4 < Display
+    include Capabilities::PartialRefresh
+    include Capabilities::FastRefresh
+    # Inherits base: init, clear, show, sleep
+  end
+
+  class EPD_2in13b_V4 < Display
+    include Capabilities::DualBuffer
+    # Full refresh only, dual-buffer
+  end
+end
+```
+
+**Advantages over nullable function pointers:**
+- Shared behavior is defined once per capability, reused across all models that support it
+- `display.respond_to?(:display_partial)` works naturally for capability checking
+- `display.is_a?(Capabilities::FastRefresh)` for type-based dispatch
+- New capabilities are added without changing existing code (Open/Closed Principle)
+- Documentation and tests live with each capability module
+
+#### 9.4.4 Two-Tier Driver Registry
+
+Analysis of all 70 driver files reveals that **60-70% of driver code is identical boilerplate**:
+`Reset()`, `SendCommand()`, `SendData()`, `ReadBusy()` are copy-pasted with only busy polarity
+and reset timing varying. What actually differs per model:
+
+| Variation               | Type     | Can Be Config Data? |
+|-------------------------|----------|---------------------|
+| Resolution (w, h)       | Data     | Yes                 |
+| Reset timings (ms)      | Data     | Yes -- `{20, 2, 20}` vs `{200, 2, 200}` |
+| Busy-wait polarity      | Data     | Yes -- `ACTIVE_HIGH` vs `ACTIVE_LOW` |
+| Init register sequence  | Data     | Yes -- encoded as `{cmd, len, data...}` pairs |
+| Display write command   | Data     | Yes -- `0x24` vs `0x10` |
+| Pixel format            | Data     | Yes -- maps to `PixelFormat` enum |
+| LUT waveform tables     | Data     | Yes -- raw byte arrays |
+| Capability flags        | Data     | Yes -- bitmask |
+| LUT selection logic     | **Code** | No -- runtime mode selection (EPD_4in2, EPD_3in7) |
+| 4-gray pixel repacking  | **Code** | No -- controller-specific bit manipulation |
+| 7-color power workflow   | **Code** | No -- EPD_5in65f requires power on/off per refresh |
+| In-place buffer invert  | **Code** | No -- EPD_7in5_V2 inverts buffer before sending |
+
+This motivates a **two-tier registry** in C:
+
+```c
+/* ---- Tier 1: Static configuration (handles 60-70% of drivers completely) ---- */
+
+typedef struct {
+    const char   *name;              /* "epd_2in13_v4" */
+    uint16_t      width, height;     /* 122, 250 */
+    uint8_t       pixel_format;      /* PIXEL_FORMAT_MONO, _GRAY4, _COLOR7, etc. */
+    uint8_t       busy_active_level; /* 0 = active-low, 1 = active-high */
+    uint16_t      reset_timing[3];   /* {pre_ms, low_ms, post_ms} e.g. {20, 2, 20} */
+    uint8_t       display_cmd;       /* 0x24 or 0x10 */
+    const uint8_t *init_sequence;    /* Encoded: {cmd, n_data, data0, data1, ...} */
+    uint16_t      init_sequence_len;
+    uint32_t      capabilities;      /* EPD_CAP_FAST | EPD_CAP_PARTIAL | ... */
+} epd_model_config_t;
+
+/* ---- Tier 2: Optional code overrides (only ~20 models need these) ---- */
+
+typedef struct {
+    const epd_model_config_t *config;
+    int  (*custom_init)(const epd_model_config_t *cfg, uint8_t mode);
+    int  (*custom_display)(const epd_model_config_t *cfg, const uint8_t *buf, size_t len);
+    void (*pre_display)(const epd_model_config_t *cfg);   /* e.g. 5in65f power-on */
+    void (*post_display)(const epd_model_config_t *cfg);  /* e.g. 5in65f power-off */
+} epd_driver_t;
+```
+
+A single `epd_generic_init()` function interprets `init_sequence` byte arrays and calls
+`SendCommand`/`SendData`. Simple monochrome displays need **zero custom C code** -- just a
+config struct entry. Complex models (EPD_4in2 with LUT selection, EPD_5in65f with power
+cycling, EPD_3in7 with 4-gray repacking) provide override function pointers.
+
+**Impact:** Adding support for a new simple display model is adding ~10 lines of config data
+rather than writing a new C file.
+
+#### 9.4.5 Device Owns I/O Primitives
+
+The vendor library duplicates `Reset()`, `SendCommand()`, `SendData()`, and `ReadBusy()` as
+static functions in every one of 70 driver files. These are identical except for:
+- Busy-wait polarity (configurable via `epd_model_config_t.busy_active_level`)
+- Reset timing (configurable via `epd_model_config_t.reset_timing`)
+
+In our architecture, these live on the **Device**, parameterized by the model config:
+
+```c
+/* Shared I/O functions on Device -- called by all drivers */
+void epd_reset(const epd_model_config_t *cfg);
+void epd_send_command(uint8_t cmd);
+void epd_send_data(uint8_t data);
+void epd_send_data_bulk(const uint8_t *data, size_t len);
+int  epd_read_busy(const epd_model_config_t *cfg, uint32_t timeout_ms);
+```
+
+This eliminates ~20 lines x 70 drivers = **~1,400 lines of duplicated C code** and centralizes
+the timeout/interruptibility improvement (see Section 9.5.3) in one place.
+
+#### 9.4.6 Framebuffer: Pixel Storage Without Drawing
+
+The vendor's `PAINT` struct conflates pixel storage, coordinate transforms, and drawing state
+into a single global. In our design, these are three separate concerns:
+
+```
+Framebuffer (C-backed, TypedData)
+  ├── Owns: raw byte buffer (xmalloc'd)
+  ├── Knows: width, height, PixelFormat
+  ├── Methods: set_pixel, get_pixel, clear, buffer_bytes, buffer_size
+  └── No drawing, no transforms, no global state
+
+Canvas (Ruby)
+  ├── Wraps: a Framebuffer + a Transform
+  ├── Methods: draw_line, draw_rect, draw_circle, draw_text, ...
+  └── Delegates pixel writes to Framebuffer#set_pixel after transform
+
+Transform (Ruby value object)
+  ├── Knows: rotation (0/90/180/270), mirror mode, logical dimensions
+  └── Method: apply(x, y) → [physical_x, physical_y]
+```
+
+The Framebuffer's C implementation extracts only the pixel-packing logic from `GUI_Paint.c`
+(~100 lines: the `Scale`-dependent bit-twiddling in `Paint_SetPixel` and `Paint_Clear`).
+No forking of GUI_Paint.c is needed. The drawing primitives are reimplemented in Ruby where
+they can be tested, extended, and composed with Ruby's image processing ecosystem.
+
+### 9.5 Critical Integration Challenges
+
+#### 9.5.1 Platform Detection in `extconf.rb`
+
+Need to:
+- Check for `lgpio.h`, `bcm2835.h`, `wiringPi.h`, `gpiod.h` headers
+- Check for corresponding `-l` libraries
+- Auto-select the best available backend
+- Provide a `--with-epd-backend=` configure option for override
+- Define a `MOCK` backend for test environments (no hardware)
+
+#### 9.5.2 Buffer Ownership and GC Integration
+
+Framebuffers own pixel data allocated via `xmalloc`/`xfree` (Ruby's tracked allocator).
+Wrapped with `TypedData_Wrap_Struct` with:
+- `dfree`: calls `xfree` on the pixel buffer
+- `dsize`: reports `buffer_size` bytes to Ruby's GC for memory pressure tracking
+- `dmark`: not needed (no `VALUE`s stored in the C struct)
+- `flags`: `RUBY_TYPED_FREE_IMMEDIATELY` (no GVL needed for `xfree`)
+
+#### 9.5.3 Busy-Wait Blocking and GVL Release
+
+`EPD_*_ReadBusy()` spin-waits with no timeout. This blocks the GVL. Our design:
+- Wrap display refresh operations with `rb_thread_call_without_gvl()` so other Ruby threads
+  can run during the (potentially multi-second) refresh cycle
+- Add a configurable timeout with an interruptible loop:
+  ```c
+  int epd_read_busy(const epd_model_config_t *cfg, uint32_t timeout_ms) {
+      uint32_t elapsed = 0;
+      while (DEV_Digital_Read(EPD_BUSY_PIN) == cfg->busy_active_level) {
+          if (elapsed >= timeout_ms) return EPD_ERR_TIMEOUT;
+          DEV_Delay_ms(10);
+          elapsed += 10;
+      }
+      return EPD_OK;
+  }
+  ```
+- Provide an unblocking function (`ubf`) for `rb_thread_call_without_gvl` that sets a
+  cancellation flag, allowing clean interrupt of long refreshes
+
+#### 9.5.4 EPD_7in5_V2 Destructive Buffer Inversion
+
+`EPD_7IN5_V2_Display()` modifies the caller's buffer in-place (bitwise NOT) before sending
+over SPI. This is a bug in the vendor code (violates the implied const contract). Our display
+layer must either:
+- **(A)** Copy the buffer before passing to the driver, or
+- **(B)** Have the Framebuffer support an "inverted" flag and apply inversion during
+  `buffer_bytes` export rather than modifying the source
+
+**(A) is simpler** and the copy cost is negligible (800x480/8 = 48KB, microseconds to copy).
+
+### 9.6 What We Should NOT Use
+
+- **GUI_Paint.c drawing primitives** -- `Paint_DrawLine`, `Paint_DrawRectangle`,
+  `Paint_DrawCircle`, `Paint_DrawChar`, `Paint_DrawString_*`, `Paint_DrawNum`, etc. These are
+  pure Bresenham/rasterization algorithms (~750 lines) that are better implemented in Ruby for
+  extensibility, testability, and ecosystem integration. Only the pixel-packing core
+  (`Paint_SetPixel` + `Paint_Clear`, ~100 lines) is extracted into `framebuffer.c`.
+- **GUI_BMPfile.c** -- BMP loading should happen in Ruby (ChunkyPNG, MiniMagick, or Vips).
+  The C BMP loader is limited to 24-bit uncompressed BMP only.
+- **Font bitmap tables** -- The built-in fonts are tiny (5x8 to 17x24) fixed-width bitmaps
+  with only ASCII + limited GB2312. Replace with FreeType or Ruby-side text rendering.
+- **Driver boilerplate** -- The `Reset()`, `SendCommand()`, `SendData()`, `ReadBusy()` static
+  functions duplicated across all 70 driver files. These are factored into shared Device-level
+  functions parameterized by model config.
 - **examples/** -- Test programs are useful as reference but should not be compiled into the gem.
 - **Makefile** -- We'll use `extconf.rb` + `mkmf` instead.
 
 ---
 
-## 10. Patterns and Code Quality Assessment
+## 10. Driver Variation Analysis
 
-### 10.1 Strengths
+Examination of 8 representative drivers across all categories reveals how much of the vendor
+code is truly unique vs duplicated boilerplate. This informs the hybrid data+code registry
+design described in Section 9.4.4.
 
-- **Clean separation of concerns.** HAL, driver, drawing, and application layers are well-isolated.
+### 10.1 Identical Boilerplate (Present in All 70 Drivers)
+
+Every driver file contains `static` copies of these four functions with identical bodies:
+
+```c
+static void EPD_<model>_Reset(void)        // DEV_Digital_Write RST pin sequence
+static void EPD_<model>_SendCommand(UBYTE)  // DC=0, CS=0, SPI write, CS=1
+static void EPD_<model>_SendData(UBYTE)     // DC=1, CS=0, SPI write, CS=1
+void EPD_<model>_ReadBusy(void)             // Spin-wait on BUSY pin
+```
+
+`SendCommand` and `SendData` are byte-for-byte identical across all 70 files.
+`Reset` varies only in timing (`{20,2,20}` ms for most, `{200,2,200}` for EPD_5in65f,
+`{100,2,100}` for EPD_13in3k, `{30,3,30}` for EPD_3in7).
+`ReadBusy` varies only in polarity (wait for HIGH vs wait for LOW).
+
+### 10.2 What Actually Varies Per Driver
+
+| Driver          | LOC | Init Pattern      | Display Pattern     | Unique Logic?  |
+|-----------------|-----|-------------------|---------------------|----------------|
+| EPD_2in13_V4    | 370 | cmd/data sequence | cmd 0x24 + byte loop | No             |
+| EPD_2in13b_V4   | 228 | cmd/data sequence | 0x24 + 0x26 dual buf | No             |
+| EPD_13in3k      | 549 | cmd/data sequence | cmd 0x24 + byte loop | No             |
+| EPD_4in2        | 767 | cmd/data + **5 LUT tables** | std mono     | **Yes** (LUT selection) |
+| EPD_3in7        | 641 | cmd/data + **LUT load**     | std + **4-gray repack** | **Yes** (mode logic) |
+| EPD_7in5_V2     | 466 | cmd/data + power  | **inverts buffer in-place** | **Yes** (destructive) |
+| EPD_1in64g      | 231 | cmd/data sequence | 4-bit nibble pairs  | No (format only) |
+| EPD_5in65f      | 242 | cmd/data sequence | **power on/off per refresh** | **Yes** (lifecycle) |
+
+**Findings:** Of 8 drivers examined, 4 can be fully described as config data. The other 4 need
+custom code for specific operations but still share 60%+ of their logic with the generic path.
+
+### 10.3 Reset Timing Variation
+
+| Category          | Timing (pre/low/post ms) | Models                          |
+|-------------------|--------------------------|----------------------------------|
+| Standard          | 20 / 2 / 20             | Most mono, dual-buffer models    |
+| Large display     | 100 / 2 / 100           | EPD_13in3k                       |
+| Color display     | 200 / 2 / 200           | EPD_5in65f                       |
+| Medium variant    | 30 / 3 / 30             | EPD_3in7                         |
+
+### 10.4 Busy-Wait Polarity
+
+| Polarity                              | Models                                    |
+|---------------------------------------|-------------------------------------------|
+| Active-LOW (0=busy, wait for HIGH)    | EPD_2in13_V4, EPD_2in13b_V4, EPD_13in3k  |
+| Active-HIGH (1=busy, wait for LOW)    | EPD_7in5_V2, EPD_1in64g, EPD_3in7        |
+| Both (separate BusyHigh/BusyLow)      | EPD_5in65f                                |
+
+No universal standard -- polarity is determined by the display controller IC.
+
+### 10.5 Init Sequence Structure
+
+All Init functions follow the same structural pattern regardless of complexity:
+
+```
+Reset() → ReadBusy() → [SendCommand(cmd) → SendData(d0) → SendData(d1) → ...] × N → ReadBusy()
+```
+
+The sequences differ only in which commands/data bytes are sent and in what order. This is
+directly expressible as a byte array: `{cmd, n_bytes, byte0, byte1, ..., cmd, n_bytes, ...}`.
+
+Exception: models with LUT tables (EPD_4in2, EPD_3in7) have **multiple** init sequences
+selected at runtime based on display mode (full refresh, partial, 4-gray). These need the
+Tier 2 code override.
+
+---
+
+## 11. Vendor Code Quality Assessment
+
+### 11.1 Strengths
+
+- **Clean layer separation.** HAL, driver, drawing, and application layers are well-isolated.
 - **Consistent driver structure.** Despite naming inconsistencies, every driver follows the same
   pattern: Reset -> SendCommand/SendData -> ReadBusy -> SetWindows/SetCursor.
 - **No dynamic allocation.** The library never calls malloc internally. Buffer ownership is clear.
 - **MIT license.** No licensing complications for vendoring into a gem.
 
-### 10.2 Weaknesses
+### 11.2 Weaknesses
 
 - **Massive code duplication.** Every EPD_*.c file re-implements `Reset()`, `SendCommand()`,
   `SendData()`, `ReadBusy()` as `static` functions with identical bodies (except busy polarity).
-  These could be factored into shared helpers.
+  ~1,400 lines of pure duplication across 70 files.
 - **Inconsistent naming.** Mixed case (`EPD_2in13_V4` vs `EPD_2IN13B_V4`), inconsistent method
   names (`Clear_Black` vs `ClearBlack`), inconsistent return types (`void` vs `UBYTE`).
 - **Global state everywhere.** `PAINT Paint`, GPIO pin globals, `#ifdef` platform selection.
@@ -553,31 +919,44 @@ ChromaWave (Ruby gem)
 - **`UDOUBLE` is `uint32_t`, not `double`.** Confusing typedef name.
 - **DEV_SPI_SendnData uses sizeof(pointer).** Bug on line 316 of DEV_Config.c:
   `size = sizeof(Reg)` where `Reg` is `UBYTE*` -- this always gives 4 or 8, not the array length.
+- **EPD_7IN5_V2_Display inverts the caller's buffer in-place.** The API implies const-correctness
+  but destructively modifies the input. This is a data-corruption bug if the caller reuses the
+  buffer.
 
-### 10.3 Code Size Estimate
+### 11.3 Code Size Estimate
 
-| Component           | Files | ~Lines of C |
-|---------------------|-------|-------------|
-| DEV_Config + backends| ~8   | ~1,200      |
-| EPD_*.c drivers     | ~70   | ~25,000     |
-| GUI_Paint + BMPfile | 2     | ~1,200      |
-| Fonts               | 7     | ~15,000     |
-| **Total**           | ~87   | ~42,400     |
+| Component           | Files | ~Lines of C | After DRY Refactor |
+|---------------------|-------|-------------|-------------------|
+| DEV_Config + backends| ~8   | ~1,200      | ~1,200 (as-is)   |
+| EPD_*.c drivers     | ~70   | ~25,000     | ~8,000 (data tables + ~20 custom) |
+| GUI_Paint + BMPfile | 2     | ~1,200      | ~100 (pixel packing only) |
+| Fonts               | 7     | ~15,000     | 0 (not vendored)  |
+| **Total vendored**  | ~87   | ~42,400     | **~9,300**        |
 
-Most of the line count is in font bitmap tables and repetitive driver register sequences.
+The refactored C footprint is roughly **22% of the original**, with the rest replaced by
+Ruby code or eliminated as duplication.
 
 ---
 
-## 11. Recommended Integration Strategy Summary
+## 12. Recommended Integration Strategy Summary
 
-1. **Vendor the C sources** into `ext/chroma_wave/vendor/` (copy, not symlink).
-2. **Fork GUI_Paint.c** to eliminate global state. Parameterize all functions with `PAINT*`.
-3. **Build a driver registry** (`display_registry.c`) with function pointers for runtime dispatch.
-4. **Compile all drivers unconditionally** -- total binary size increase is negligible.
-5. **Detect platform in extconf.rb**, set `-D` flags for the appropriate GPIO/SPI backend.
-6. **Add a mock backend** for development and CI testing without hardware.
-7. **Release the GVL** during display refresh operations.
-8. **Handle image data in Ruby** -- use ChunkyPNG or Vips for image loading/manipulation,
-   pass raw pixel buffers to C for display.
-9. **Replace the font system** with FreeType or Ruby-side text rendering.
-10. **Add timeout to busy-wait** with an interruptible loop and configurable max duration.
+1. **Extract pixel-packing core** from GUI_Paint.c (~100 lines) into `framebuffer.c`.
+   Parameterize with a `Framebuffer*` struct. Do **not** fork the full 850-line file.
+2. **Factor I/O primitives** (`Reset`, `SendCommand`, `SendData`, `ReadBusy`) into shared
+   Device-level functions parameterized by model config. Eliminate ~1,400 lines of duplication.
+3. **Build a two-tier driver registry** (`driver_registry.c`): static config data for simple
+   models, optional code overrides for complex ones (~20 models).
+4. **Model `PixelFormat` as a single value object** shared by Framebuffer and Display.
+   Eliminate redundant scale/color_type/bpp representations.
+5. **Implement drawing primitives in Ruby** (`Canvas`). Delegate pixel writes to C-backed
+   `Framebuffer#set_pixel`. Keep text rendering, image loading, and color conversion in Ruby.
+6. **Compose display capabilities via Ruby modules** (`PartialRefresh`, `FastRefresh`,
+   `GrayscaleMode`, `DualBuffer`). Each model includes only what it supports.
+7. **Compile all drivers unconditionally** -- total binary size is negligible.
+8. **Detect platform in `extconf.rb`**, set `-D` flags for the appropriate GPIO/SPI backend.
+9. **Add a mock backend** for development and CI testing without hardware.
+10. **Release the GVL** during display refresh operations via `rb_thread_call_without_gvl()`.
+11. **Add timeout to busy-wait** with an interruptible loop and configurable max duration.
+12. **Handle image data in Ruby** -- use ChunkyPNG or Vips for image loading/manipulation,
+    quantize to display palette, pass raw pixel buffers to C for display.
+13. **Replace the font system** with FreeType or Ruby-side text rendering.
