@@ -25,12 +25,14 @@ This project is a gem which binds the C code that drives Waveshare E-Paper displ
 
 ### Orchestration and team management
 - Create and use teammates as needed
+- Use Tasks to manage work and coordinate between agents
 - Include subject-matter expert agents to validate designs beyond just the code
 
 ### Design and Planning
 - Always start with a design and plan before writing code.
 - Interview the user as the product owner as needed to ensure the design is solving the right problem, and to gather requirements.
 - Plans should include acceptance criteria and a clear definition of done.
+- Always use the actual plan tool when planning, so the plan is persisted where it can be easily referenced and updated as needed.
 - Reference specific files, classes, and methods in the design.
 - Always validate designs for Correctness, Clarity, bugs & edge cases, and excellence.
 - Present options / tradeoffs of stack choices to the human as part of planning
