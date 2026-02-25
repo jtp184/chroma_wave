@@ -264,6 +264,7 @@ CAPABILITY_MAP = {
   EPD_CAP_FAST      => Capabilities::FastRefresh,
   EPD_CAP_GRAYSCALE => Capabilities::GrayscaleMode,
   EPD_CAP_DUAL_BUF  => Capabilities::DualBuffer,
+  EPD_CAP_REGIONAL  => Capabilities::RegionalRefresh,
 }.freeze
 
 ChromaWave::Native.each_model_config do |name, config|
@@ -280,6 +281,28 @@ The vendor drivers expose capabilities as inconsistently-named optional function
 (`Init_Fast`, `Display_Partial`, `Display_Part`, `Display_part`). Rather than modeling these
 as nullable function pointers in a flat C struct, use Ruby modules that wrap private C methods:
 
+#### Base Display#show
+
+The base `Display#show` method accepts either a Canvas (common path) or a pre-rendered
+Framebuffer (power-user path). Single-buffer displays use this directly; `DualBuffer`
+overrides it (see below):
+
+```ruby
+module ChromaWave
+  class Display
+    def show(canvas_or_fb)
+      fb = case canvas_or_fb
+           when Canvas     then renderer.render(canvas_or_fb)
+           when Framebuffer then canvas_or_fb
+           else raise TypeError, "expected Canvas or Framebuffer, got #{canvas_or_fb.class}"
+           end
+      validate_format!(fb)
+      device.synchronize { _epd_display(fb) }
+    end
+  end
+end
+```
+
 #### Ruby <=> C Bridge
 
 All C-backed display operations are defined as **private methods on the Display base class**
@@ -295,6 +318,8 @@ rb_define_private_method(rb_cDisplay, "_epd_display_fast",
                          rb_epd_display_fast, 1);
 rb_define_private_method(rb_cDisplay, "_epd_display_dual",
                          rb_epd_display_dual, 2);
+rb_define_private_method(rb_cDisplay, "_epd_display_region",
+                         rb_epd_display_region, 5);
 /* ... etc. C implementations check driver->custom_display or fall
    through to the generic config-driven path. */
 ```
@@ -339,9 +364,30 @@ module ChromaWave
           black_fb, red_fb = renderer.render_dual(canvas_or_fb)
           _epd_display_dual(black_fb, red_fb)
         when Framebuffer
+          raise ArgumentError, "DualBuffer#show requires two framebuffers" unless second_fb
+
           [canvas_or_fb, second_fb].each { validate_format!(_1) }
           _epd_display_dual(canvas_or_fb, second_fb)
         end
+      end
+    end
+
+    module RegionalRefresh
+      # Sub-rectangle partial refresh — updates only a region of the display
+      # without redrawing the entire screen. Faster than full partial refresh
+      # for small UI updates (e.g., clock digit, status icon).
+      #
+      # Coordinates are in physical display pixels (pre-transform).
+      # The framebuffer must match the region dimensions, not the full display.
+      def display_region(framebuffer, x:, y:, width:, height:)
+        validate_format!(framebuffer)
+        expected = pixel_format.buffer_size(width, height)
+        unless framebuffer.buffer_size == expected
+          raise FormatMismatchError,
+                "region framebuffer size #{framebuffer.buffer_size} != expected #{expected} " \
+                "for #{width}x#{height} region"
+        end
+        _epd_display_region(framebuffer, x, y, width, height)
       end
     end
   end
@@ -485,7 +531,7 @@ int  epd_read_busy(const epd_model_config_t *cfg, uint32_t timeout_ms);
 ```
 
 This eliminates ~20 lines x 70 drivers = **~1,400 lines of duplicated C code** and centralizes
-the timeout/interruptibility improvement (see Section 4.3) in one place.
+the timeout/interruptibility improvement (see Section 5.3) in one place.
 
 ### 3.7 Three-Layer Drawing Architecture
 
@@ -739,10 +785,12 @@ The C implementation extracts only the pixel-packing logic from `GUI_Paint.c` (~
 the `Scale`-dependent bit-twiddling in `Paint_SetPixel` and `Paint_Clear`). No forking of
 GUI_Paint.c is needed.
 
-> **Padding invariant:** For non-byte-aligned widths (e.g., 122px mono = 15.25 bytes/row),
-> the trailing bits in the last byte of each row are **always zero**. `set_pixel` never writes
-> to padding positions, and `clear` zeros the entire buffer including padding. This invariant
-> must be preserved by `framebuffer.c` to prevent display artifacts from garbage padding bits.
+> **Padding invariant:** For non-byte-aligned widths, the trailing bits in the last byte of
+> each row are **always zero**. This applies to all sub-byte formats: MONO (1 bpp, e.g.,
+> 122px = 15.25 bytes/row → 16 bytes with 6 padding bits) and GRAY4 (2 bpp, e.g., 122px =
+> 30.5 bytes/row → 31 bytes with 4 padding bits). `set_pixel` never writes to padding
+> positions, and `clear` zeros the entire buffer including padding. This invariant must be
+> preserved by `framebuffer.c` to prevent display artifacts from garbage padding bits.
 
 #### Composing a Dashboard: End-to-End Example
 
@@ -775,10 +823,15 @@ display.show(canvas)
 
 #### Memory Tradeoff
 
-An 800x480 Canvas in RGB (3 bytes/pixel) uses ~1.1MB vs 48KB for a mono Framebuffer. On a
-Raspberry Pi with 1–8GB RAM this is negligible. For memory-constrained scenarios, users can
-draw directly on a Framebuffer via the `Surface` protocol — the path exists, it just skips
-Canvas compositing and Renderer quantization.
+Canvas stores an `Array` of `Color` objects. On CRuby, each `Color` holds 4 integers plus
+object overhead (~80 bytes), so an 800x480 Canvas uses ~30MB (384K pixels × ~80 bytes) vs
+48KB for a mono Framebuffer. On a Raspberry Pi with 1–8GB RAM this is acceptable. For
+memory-constrained scenarios, users can draw directly on a Framebuffer via the `Surface`
+protocol — the path exists, it just skips Canvas compositing and Renderer quantization.
+
+> **Future optimization:** If Canvas memory becomes an issue, a C-backed RGBA buffer (4
+> bytes/pixel, ~1.5MB for 800x480) can replace the Ruby Array without changing the Surface
+> API. This is deferred until profiling shows it's needed.
 
 #### Transform Integration
 
@@ -795,13 +848,17 @@ Transform (Ruby value object)
 The Display applies the correct Transform based on its model config when rendering a Canvas
 to a Framebuffer. Users can also apply transforms explicitly for custom coordinate systems.
 
-### 3.8 Drawing Primitives and Content Pipeline
+---
+
+## 4. Content Pipeline
+
+### 4.1 Overview
 
 Section 3.7 defines the structural layers (Surface, Canvas, Renderer, Framebuffer). This
 section specifies the **content** that flows through those layers: colors, shapes, text,
 and images.
 
-#### Color Model (RGBA)
+### 4.2 Color Model (RGBA)
 
 Canvas compositing requires a richer color representation than the display's final palette.
 Colors are modeled as **RGBA values** with a bridge to named palette symbols:
@@ -849,8 +906,8 @@ end
 
 | Stage              | Color representation | Alpha behavior                          |
 |--------------------|----------------------|-----------------------------------------|
-| Canvas compositing | `Color` (RGBA)       | Per-pixel alpha blending on `blit`      |
-| `set_pixel`        | `Color` (RGBA)       | Composites over existing pixel if α<255 |
+| `set_pixel`        | `Color` (RGBA)       | Direct replacement (no compositing)     |
+| `blit` / `render_glyph` | `Color` (RGBA) | Per-pixel alpha compositing (source over)|
 | Renderer quantize  | RGBA → palette index | Alpha flattened against background color|
 | Framebuffer        | Palette index (int)  | No alpha — device format is opaque      |
 
@@ -865,7 +922,7 @@ Framebuffer and Display never see alpha — they work with opaque palette indice
 > indices directly. The two systems coexist: RGB for Canvas compositing, palette symbols for
 > direct Framebuffer access.
 
-#### Shape Primitives
+### 4.3 Shape Primitives
 
 The `Surface` module provides a practical set of drawing primitives. All shapes support
 `stroke_width:` for thick outlines and `fill:` for solid fills:
@@ -938,7 +995,7 @@ end
 > increases right, y increases down. This matches the display's physical pixel grid and
 > avoids sub-pixel complexity that isn't meaningful on e-paper.
 
-#### Text Rendering
+### 4.4 Text Rendering
 
 Text rendering uses **FreeType** linked directly in the C extension. The C layer handles
 glyph rasterization (the performance-sensitive part). The Ruby layer handles font
@@ -963,7 +1020,7 @@ management, measurement, and layout:
 └──────────────────────────────────────────────────┘
 ```
 
-##### Font Loading
+#### Font Loading
 
 ```ruby
 module ChromaWave
@@ -1000,7 +1057,7 @@ module ChromaWave
 end
 ```
 
-##### Drawing Text on a Surface
+#### Drawing Text on a Surface
 
 ```ruby
 module ChromaWave
@@ -1054,7 +1111,7 @@ end
 > methods on a `ChromaWave::Font` class registered in `Init_chroma_wave`. The `FT_Library`
 > is initialized once at gem load time and cleaned up via an `at_exit` hook.
 
-##### Font Discovery
+#### Font Discovery
 
 ```ruby
 module ChromaWave
@@ -1071,11 +1128,15 @@ module ChromaWave
     def resolve_font_path(path_or_name)
       return path_or_name if File.exist?(path_or_name)
 
-      # Search system font directories for a matching TTF/OTF
-      pattern = "**/*#{path_or_name}*.{ttf,otf}"
-      SYSTEM_FONT_DIRS.each do |dir|
-        match = Dir.glob(File.join(dir, pattern), File::FNM_CASEFOLD).first
-        return match if match
+      # Search system font directories — try exact stem first, then fuzzy
+      exact_pattern = "**/#{path_or_name}.{ttf,otf}"
+      fuzzy_pattern = "**/*#{path_or_name}*.{ttf,otf}"
+
+      [exact_pattern, fuzzy_pattern].each do |pattern|
+        SYSTEM_FONT_DIRS.each do |dir|
+          match = Dir.glob(File.join(dir, pattern), File::FNM_CASEFOLD).first
+          return match if match
+        end
       end
 
       raise ArgumentError, "Font not found: #{path_or_name}"
@@ -1084,13 +1145,13 @@ module ChromaWave
 end
 ```
 
-#### Icon Support (Bundled Lucide + IconFont)
+### 4.5 Icon Support (Bundled Lucide + IconFont)
 
 Icons are a special case of text rendering — icon fonts are TTF files where glyphs are
 symbols instead of letters. Since we already have FreeType, the infrastructure is free. The
 gap is **convenience**: mapping human-readable names to Unicode codepoints.
 
-##### Bundled Font
+#### Bundled Font
 
 The gem ships [Lucide](https://lucide.dev/) (ISC license, ~120KB TTF, ~1,500 icons) as a
 zero-config icon set. The font and its license live in the gem's `data/` directory:
@@ -1112,7 +1173,7 @@ module ChromaWave
 end
 ```
 
-##### IconFont Class
+#### IconFont Class
 
 `IconFont` subclasses `Font` and adds a symbol → codepoint registry. It works with any
 icon font (Font Awesome, Material Symbols, Phosphor, etc.), not just the bundled Lucide:
@@ -1170,7 +1231,7 @@ module ChromaWave
 end
 ```
 
-##### Usage
+#### Usage
 
 ```ruby
 # Zero-config: bundled Lucide icons
@@ -1201,7 +1262,7 @@ fa.draw(canvas, :home, x: 10, y: 100)
 > distribution). ~1,500 icons with good coverage of dashboard-relevant symbols (weather,
 > connectivity, status, navigation, devices). Actively maintained. Small file (~120KB TTF).
 
-#### Image Loading (ruby-vips)
+### 4.6 Image Loading (ruby-vips)
 
 Images are loaded via **ruby-vips** and converted to Canvas-compatible pixel data. The
 `Image` class provides a thin wrapper that handles format detection, color space conversion,
@@ -1281,9 +1342,8 @@ module ChromaWave
 
     def ensure_rgba(vips_image)
       case vips_image.bands
-      when 1 then vips_image.bandjoin([255, 255, 255].map { vips_image.new_from_image(_1) })
-                             # grayscale → RGBA (gray as RGB + full alpha)
-                             # Actually: replicate band + add alpha
+      when 1 then vips_image.colourspace(:srgb)                        # grayscale → RGB
+                             .bandjoin(vips_image.new_from_image(255)) # + full alpha
       when 3 then vips_image.bandjoin(vips_image.new_from_image(255))  # RGB → RGBA
       when 4 then vips_image                                           # already RGBA
       end.cast(:uchar)
@@ -1292,7 +1352,7 @@ module ChromaWave
 end
 ```
 
-##### End-to-End Image Workflow
+#### End-to-End Image Workflow
 
 ```ruby
 display = ChromaWave::Display.new(model: :epd_7in5_v2)
@@ -1323,7 +1383,7 @@ display.show(canvas)
 > primitives and text (no photo loading), `Image` is never required — Canvas and Surface
 > work independently.
 
-#### Updated Directory Structure
+### 4.7 Updated Directory Structure
 
 The content pipeline adds the following files:
 
@@ -1351,22 +1411,13 @@ ext/chroma_wave/
   freetype.h                          # FT_Library lifecycle, FT_Face struct wrapper
 ```
 
-#### Updated C Footprint
-
-| Component           | Vendor Lines | After Refactor | Notes                           |
-|---------------------|-------------|----------------|---------------------------------|
-| DEV_Config + backends| ~1,200     | ~1,200         | Used as-is                      |
-| EPD_*.c drivers     | ~25,000     | ~8,000         | Data tables + ~20 custom files  |
-| GUI_Paint + BMPfile | ~1,200      | ~100           | Pixel packing only              |
-| Fonts               | ~15,000     | 0              | Not vendored                    |
-| FreeType bindings   | 0           | ~200           | New: glyph rasterization bridge |
-| **Total**           | **~42,400** | **~9,500**     | **22% of original**             |
+For the updated C footprint including these additions, see Section 6.
 
 ---
 
-## 4. Integration Challenges
+## 5. Integration Challenges
 
-### 4.1 Platform Detection in `extconf.rb`
+### 5.1 Platform Detection in `extconf.rb`
 
 Need to:
 - Check for `lgpio.h`, `bcm2835.h`, `wiringPi.h`, `gpiod.h` headers
@@ -1382,7 +1433,7 @@ operations (`Display#show`, `Display#clear`, `Device.new`) raise `ChromaWave::De
 at runtime with a clear message. This ensures the gem is usable for development, testing, and
 CI without hardware.
 
-### 4.2 Buffer Ownership and GC Integration
+### 5.2 Buffer Ownership and GC Integration
 
 Framebuffers own pixel data allocated via `xmalloc`/`xfree` (Ruby's tracked allocator).
 Wrapped with `TypedData_Wrap_Struct` with:
@@ -1391,7 +1442,7 @@ Wrapped with `TypedData_Wrap_Struct` with:
 - `dmark`: not needed (no `VALUE`s stored in the C struct)
 - `flags`: `RUBY_TYPED_FREE_IMMEDIATELY` (no GVL needed for `xfree`)
 
-### 4.3 Busy-Wait Blocking and GVL Release
+### 5.3 Busy-Wait Blocking and GVL Release
 
 `EPD_*_ReadBusy()` spin-waits with no timeout. This blocks the GVL. Our design:
 - Wrap display refresh operations with `rb_thread_call_without_gvl()` so other Ruby threads
@@ -1411,7 +1462,7 @@ Wrapped with `TypedData_Wrap_Struct` with:
 - Provide an unblocking function (`ubf`) for `rb_thread_call_without_gvl` that sets a
   cancellation flag, allowing clean interrupt of long refreshes
 
-### 4.4 EPD_7in5_V2 Destructive Buffer Inversion
+### 5.4 EPD_7in5_V2 Destructive Buffer Inversion
 
 `EPD_7IN5_V2_Display()` modifies the caller's buffer in-place (bitwise NOT) before sending
 over SPI. This is a bug in the vendor code (violates the implied const contract). Our display
@@ -1422,7 +1473,7 @@ layer must either:
 
 **(A) is simpler** and the copy cost is negligible (800x480/8 = 48KB, microseconds to copy).
 
-### 4.5 EPD_5in65f Dual Busy Polarity
+### 5.5 EPD_5in65f Dual Busy Polarity
 
 `EPD_5in65f` uses both busy-HIGH and busy-LOW waits in different lifecycle phases (power-on
 waits for HIGH, post-refresh waits for LOW). The Tier 1 config struct has a single
@@ -1444,7 +1495,7 @@ static int epd_5in65f_custom_display(
 }
 ```
 
-### 4.6 Error Handling Strategy
+### 5.6 Error Handling Strategy
 
 The vendor library has essentially no error handling — functions don't return error codes, SPI
 failures are silent, and the only error path is `DEV_Module_Init()` returning 1. Our extension
@@ -1472,7 +1523,7 @@ fast and loud, and they integrate with Ruby's standard exception semantics.
 `EPD_ERR_SPI`). The Ruby method wrappers check return values and raise the appropriate exception.
 `rb_set_errinfo(Qnil)` is called after handling to clear `$!`.
 
-### 4.7 Thread Safety
+### 5.7 Thread Safety
 
 The SPI bus is shared hardware with no concurrent access support. Our design provides
 **Device-level mutual exclusion** via a Ruby `Mutex`:
@@ -1491,14 +1542,14 @@ All hardware operations (`Display#show`, `Display#clear`, `Display#init`) synchr
 the Device's mutex. `Framebuffer#set_pixel` and other pure-memory operations are **not locked**
 — they have no hardware interaction and contention is the caller's responsibility.
 
-The GVL release (Section 4.3) composes correctly with this: the mutex is acquired before
+The GVL release (Section 5.3) composes correctly with this: the mutex is acquired before
 entering C, the GVL is released inside C for the busy-wait, and the mutex is released after
 the C call returns. Other Ruby threads can run during the busy-wait but cannot start a
 concurrent hardware operation.
 
 ---
 
-## 5. Expected C Footprint
+## 6. Expected C Footprint
 
 | Component           | Vendor Lines | After Refactor | Notes                           |
 |---------------------|-------------|----------------|---------------------------------|
@@ -1514,7 +1565,7 @@ Ruby code or eliminated as duplication.
 
 ---
 
-## 6. Implementation Strategy Summary
+## 7. Implementation Strategy Summary
 
 1. **Extract pixel-packing core** from GUI_Paint.c (~100 lines) into `framebuffer.c`.
    Parameterize with a `Framebuffer*` struct. Do **not** fork the full 850-line file.
