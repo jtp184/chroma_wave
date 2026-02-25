@@ -32,7 +32,8 @@ What we use from the vendor library and how:
   drawing move to Ruby entirely (see Section 2).
 - **printf-based debug** -- redirect `Debug()` macro to `rb_warn()` or a configurable logger.
 - **DEV_Module_Init / Exit** -- wrap in a Ruby `ChromaWave::Device` lifecycle object with
-  proper `dfree` cleanup. Use `Ensure`-style block patterns.
+  proper `dfree` cleanup. Supports both block-style (`Display.open { |d| ... }`) and
+  explicit `close` for long-lived instances.
 - **malloc for image buffers** -- allocate via `xmalloc` / `xfree` (Ruby's tracked allocator)
   so Ruby's GC tracks the memory pressure.
 - **Duplicated I/O primitives** -- `Reset()`, `SendCommand()`, `SendData()`, `ReadBusy()`
@@ -135,16 +136,50 @@ registry). It should be modeled once.
 
 ```ruby
 module ChromaWave
+  class Palette
+    include Enumerable
+
+    attr_reader :entries
+
+    def self.[](*entries) = new(entries)
+
+    def initialize(entries)
+      @entries = entries.freeze
+      @index = entries.each_with_index.to_h.freeze
+    end
+
+    def each(&) = entries.each(&)
+    def size = entries.size
+
+    def include?(color) = @index.key?(color)
+    def index_of(color) = @index.fetch(color)
+    def color_at(index) = entries.fetch(index)
+
+    # Map an RGBA Color to the nearest palette entry.
+    # Used by the Renderer during quantization.
+    def nearest_color(rgba)
+      entries.min_by { |name| color_distance(rgba, Color.from_name(name)) }
+    end
+
+    private
+
+    def color_distance(a, b)
+      (a.r - b.r)**2 + (a.g - b.g)**2 + (a.b - b.b)**2
+    end
+  end
+
   class PixelFormat
     attr_reader :name, :bits_per_pixel, :palette
 
     def pixels_per_byte = 8 / bits_per_pixel
 
-    MONO   = new(name: :mono,   bpp: 1, palette: %i[black white])
-    GRAY4  = new(name: :gray4,  bpp: 2, palette: %i[black dark_gray light_gray white])
-    COLOR4 = new(name: :color4, bpp: 4, palette: %i[black white yellow red])
-    COLOR7 = new(name: :color7, bpp: 4,
-                 palette: %i[black white green blue red yellow orange])
+    MONO   = new(name: :mono,   bits_per_pixel: 1, palette: Palette[:black, :white])
+    GRAY4  = new(name: :gray4,  bits_per_pixel: 2,
+                 palette: Palette[:black, :dark_gray, :light_gray, :white])
+    COLOR4 = new(name: :color4, bits_per_pixel: 4,
+                 palette: Palette[:black, :white, :yellow, :red])
+    COLOR7 = new(name: :color7, bits_per_pixel: 4,
+                 palette: Palette[:black, :white, :green, :blue, :red, :yellow, :orange])
 
     def buffer_size(width, height)
       bytes_per_row = (width + pixels_per_byte - 1) / pixels_per_byte
@@ -209,8 +244,9 @@ lib/chroma_wave/                    # Ruby -- everything that doesn't need to be
   chroma_wave.rb                      # Top-level require, autoloads
   version.rb                          # VERSION constant
   errors.rb                           # Exception hierarchy (Error, DeviceError, etc.)
+  palette.rb                          # Palette value object (color lookup, nearest-match, indexing)
   pixel_format.rb                     # PixelFormat value object (MONO, GRAY4, COLOR7, etc.)
-  color.rb                            # Color (RGBA value type, named constants, compositing)
+  color.rb                            # Color (RGBA Data.define, named constants, compositing)
   surface.rb                          # Surface protocol module (duck-type drawing target)
   framebuffer.rb                      # Ruby wrapper for C-backed Framebuffer (includes Surface)
   canvas.rb                           # RGB pixel buffer, compositing, drawing (includes Surface)
@@ -299,6 +335,33 @@ module ChromaWave
       validate_format!(fb)
       device.synchronize { _epd_display(fb) }
     end
+
+    def clear(color: :white)
+      device.synchronize { _epd_clear(color) }
+    end
+
+    def sleep
+      device.synchronize { _epd_sleep }
+    end
+
+    def close
+      sleep rescue nil
+      device.close
+    end
+
+    # Block-style lifecycle: auto-closes when the block exits.
+    #   Display.open(model: :epd_2in13_v4) do |display|
+    #     display.show(canvas)
+    #   end
+    def self.open(model:, &block)
+      display = new(model:)
+      return display unless block
+      begin
+        yield display
+      ensure
+        display.close
+      end
+    end
   end
 end
 ```
@@ -310,6 +373,12 @@ in `Init_chroma_wave`. The Ruby capability modules provide the public API with v
 
 ```c
 /* In chroma_wave.c Init_chroma_wave(): */
+rb_define_private_method(rb_cDisplay, "_epd_clear",
+                         rb_epd_clear, 1);
+rb_define_private_method(rb_cDisplay, "_epd_sleep",
+                         rb_epd_sleep, 0);
+rb_define_private_method(rb_cDisplay, "_epd_display_base",
+                         rb_epd_display_base, 1);
 rb_define_private_method(rb_cDisplay, "_epd_display_partial",
                          rb_epd_display_partial, 1);
 rb_define_private_method(rb_cDisplay, "_epd_init_fast",
@@ -362,12 +431,12 @@ module ChromaWave
         case canvas_or_fb
         when Canvas
           black_fb, red_fb = renderer.render_dual(canvas_or_fb)
-          _epd_display_dual(black_fb, red_fb)
+          device.synchronize { _epd_display_dual(black_fb, red_fb) }
         when Framebuffer
           raise ArgumentError, "DualBuffer#show requires two framebuffers" unless second_fb
 
           [canvas_or_fb, second_fb].each { validate_format!(_1) }
-          _epd_display_dual(canvas_or_fb, second_fb)
+          device.synchronize { _epd_display_dual(canvas_or_fb, second_fb) }
         end
       end
     end
@@ -580,9 +649,15 @@ module ChromaWave
     #   #width, #height     → Integer
     #   #set_pixel(x, y, color)
     #   #get_pixel(x, y) → color
-    #   #clear(color)
 
     def in_bounds?(x, y) = x >= 0 && x < width && y >= 0 && y < height
+
+    # Default clear: fill the entire surface via set_pixel.
+    # Includers (Canvas, Framebuffer) override with optimized versions.
+    # Layer inherits this and correctly fills only its own bounds.
+    def clear(color = Color::WHITE)
+      height.times { |y| width.times { |x| set_pixel(x, y, color) } }
+    end
 
     def draw_line(x0, y0, x1, y1, color:)
       # Bresenham — delegates to self.set_pixel
@@ -638,11 +713,17 @@ module ChromaWave
       @pixels.fill(color)
     end
 
-    # Compositing — not possible when drawing directly into a Framebuffer
-    def blit(source, x:, y:, opacity: 1.0)
+    # Alpha-compositing blit — source pixels are composited over the existing
+    # canvas content via Color#over. Transparent source pixels blend correctly.
+    def blit(source, x:, y:)
       source.height.times do |sy|
         source.width.times do |sx|
-          set_pixel(x + sx, y + sy, source.get_pixel(sx, sy))
+          src_color = source.get_pixel(sx, sy)
+          next if src_color.transparent?
+          dest_x, dest_y = x + sx, y + sy
+          next unless in_bounds?(dest_x, dest_y)
+          bg = get_pixel(dest_x, dest_y)
+          set_pixel(dest_x, dest_y, src_color.over(bg))
         end
       end
     end
@@ -740,7 +821,7 @@ module ChromaWave
     private
 
     def quantize(canvas, fb)
-      # Map each RGB pixel → nearest palette entry
+      # Map each RGB pixel → nearest palette entry via Palette#nearest_color
       # Apply dithering algorithm to distribute quantization error
       # Write packed pixels to fb.set_pixel
     end
@@ -756,8 +837,10 @@ end
 
 **Dithering lives here, not in Canvas or Framebuffer.** Dithering requires seeing the full RGB
 source and writing to the quantized destination — it inherently spans both. The Renderer owns
-this bridge. Different dithering strategies (Floyd-Steinberg for photos, ordered for text,
-threshold for line art) are selectable per render call.
+this bridge. The default strategy is `:floyd_steinberg` — it produces the best results for
+photographic content, which is the most common challenging case on limited-palette displays.
+Alternative strategies (`:ordered` for text-heavy layouts, `:threshold` for line art) are
+selectable per render call.
 
 **Dual-buffer splitting lives here, not in DualBuffer.** The `DualBuffer` capability module
 (Section 3.4) is purely a hardware concern — it sends two framebuffers over SPI. The
@@ -823,11 +906,12 @@ display.show(canvas)
 
 #### Memory Tradeoff
 
-Canvas stores an `Array` of `Color` objects. On CRuby, each `Color` holds 4 integers plus
-object overhead (~80 bytes), so an 800x480 Canvas uses ~30MB (384K pixels × ~80 bytes) vs
-48KB for a mono Framebuffer. On a Raspberry Pi with 1–8GB RAM this is acceptable. For
-memory-constrained scenarios, users can draw directly on a Framebuffer via the `Surface`
-protocol — the path exists, it just skips Canvas compositing and Renderer quantization.
+Canvas stores an `Array` of `Color` value objects (`Data.define`). Each `Color` is a frozen,
+compact struct (~40 bytes on CRuby 3.2+), so an 800x480 Canvas uses ~15MB (384K pixels ×
+~40 bytes) vs 48KB for a mono Framebuffer. On a Raspberry Pi with 1–8GB RAM this is
+acceptable. For memory-constrained scenarios, users can draw directly on a Framebuffer via
+the `Surface` protocol — the path exists, it just skips Canvas compositing and Renderer
+quantization.
 
 > **Future optimization:** If Canvas memory becomes an issue, a C-backed RGBA buffer (4
 > bytes/pixel, ~1.5MB for 800x480) can replace the Ruby Array without changing the Surface
@@ -861,43 +945,55 @@ and images.
 ### 4.2 Color Model (RGBA)
 
 Canvas compositing requires a richer color representation than the display's final palette.
-Colors are modeled as **RGBA values** with a bridge to named palette symbols:
+Colors are modeled as **frozen RGBA value objects** using `Data.define` (Ruby 3.2+), with a
+bridge to named palette symbols:
 
 ```ruby
 module ChromaWave
-  class Color
-    attr_reader :r, :g, :b, :a
-
-    def initialize(r, g, b, a = 255)
-      @r = r; @g = g; @b = b; @a = a
+  Color = Data.define(:r, :g, :b, :a) do
+    def initialize(r:, g:, b:, a: 255)
+      super(r:, g:, b:, a:)
     end
 
     def opaque?  = a == 255
     def transparent? = a == 0
 
-    # Alpha compositing (Porter-Duff "source over")
+    # Alpha compositing: source over onto opaque background.
+    # Always produces an opaque result (a=255). This is intentionally
+    # simplified from full Porter-Duff — alpha is only meaningful in the
+    # Canvas layer and is flattened by the Renderer during quantization.
     def over(background)
       return self if opaque?
       return background if transparent?
       alpha = a / 255.0
       Color.new(
-        (r * alpha + background.r * (1 - alpha)).round,
-        (g * alpha + background.g * (1 - alpha)).round,
-        (b * alpha + background.b * (1 - alpha)).round
+        r: (r * alpha + background.r * (1 - alpha)).round,
+        g: (g * alpha + background.g * (1 - alpha)).round,
+        b: (b * alpha + background.b * (1 - alpha)).round
       )
     end
 
+    # Reverse lookup: palette symbol → Color. Used by Palette#nearest_color.
+    NAME_MAP = {}
+    def self.from_name(name) = NAME_MAP.fetch(name)
+
+    def self.register(name, color)
+      const_set(name.upcase, color)
+      NAME_MAP[name.downcase.to_sym] = color
+      color
+    end
+
     # Named constants — RGB values that map to common display palettes
-    BLACK      = new(0,   0,   0)
-    WHITE      = new(255, 255, 255)
-    RED        = new(255, 0,   0)
-    YELLOW     = new(255, 255, 0)
-    GREEN      = new(0,   128, 0)
-    BLUE       = new(0,   0,   255)
-    ORANGE     = new(255, 165, 0)
-    DARK_GRAY  = new(85,  85,  85)
-    LIGHT_GRAY = new(170, 170, 170)
-    TRANSPARENT = new(0, 0, 0, 0)
+    register(:BLACK,      new(r: 0,   g: 0,   b: 0))
+    register(:WHITE,      new(r: 255, g: 255, b: 255))
+    register(:RED,        new(r: 255, g: 0,   b: 0))
+    register(:YELLOW,     new(r: 255, g: 255, b: 0))
+    register(:GREEN,      new(r: 0,   g: 128, b: 0))
+    register(:BLUE,       new(r: 0,   g: 0,   b: 255))
+    register(:ORANGE,     new(r: 255, g: 165, b: 0))
+    register(:DARK_GRAY,  new(r: 85,  g: 85,  b: 85))
+    register(:LIGHT_GRAY, new(r: 170, g: 170, b: 170))
+    TRANSPARENT = new(r: 0, g: 0, b: 0, a: 0)
   end
 end
 ```
@@ -1086,7 +1182,7 @@ module ChromaWave
       glyph[:bitmap].each_with_index do |row, gy|
         row.each_with_index do |alpha, gx|
           next if alpha == 0
-          set_pixel(x + gx, y + gy, Color.new(color.r, color.g, color.b, alpha))
+          set_pixel(x + gx, y + gy, Color.new(r: color.r, g: color.g, b: color.b, a: alpha))
         end
       end
     end
@@ -1315,8 +1411,8 @@ module ChromaWave
           width.times do |x|
             offset = (y * width + x) * 4
             canvas.set_pixel(x, y, Color.new(
-              pixels[offset], pixels[offset + 1],
-              pixels[offset + 2], pixels[offset + 3]
+              r: pixels[offset], g: pixels[offset + 1],
+              b: pixels[offset + 2], a: pixels[offset + 3]
             ))
           end
         end
@@ -1330,8 +1426,8 @@ module ChromaWave
         width.times do |col|
           offset = (row * width + col) * 4
           color = Color.new(
-            pixels[offset], pixels[offset + 1],
-            pixels[offset + 2], pixels[offset + 3]
+            r: pixels[offset], g: pixels[offset + 1],
+            b: pixels[offset + 2], a: pixels[offset + 3]
           )
           canvas.set_pixel(x + col, y + row, color)
         end
@@ -1344,6 +1440,9 @@ module ChromaWave
       case vips_image.bands
       when 1 then vips_image.colourspace(:srgb)                        # grayscale → RGB
                              .bandjoin(vips_image.new_from_image(255)) # + full alpha
+      when 2                                                            # grayscale + alpha
+        gray = vips_image[0].colourspace(:srgb)                        # gray → 3-band RGB
+        gray.bandjoin(vips_image[1])                                   # + original alpha
       when 3 then vips_image.bandjoin(vips_image.new_from_image(255))  # RGB → RGBA
       when 4 then vips_image                                           # already RGBA
       end.cast(:uchar)
@@ -1383,6 +1482,12 @@ display.show(canvas)
 > primitives and text (no photo loading), `Image` is never required — Canvas and Surface
 > work independently.
 
+> **Performance note:** `to_canvas` and `draw_onto` unpack the full image into a Ruby array
+> and iterate pixel-by-pixel (384K `Color.new` calls for an 800x480 image). This is a known
+> hot path. A future C helper (`Canvas#load_rgba_bytes`) that bulk-copies packed RGBA data
+> directly into Canvas storage would eliminate the per-pixel Ruby overhead. Deferred until
+> profiling shows it's needed — e-paper refresh times (2-15 seconds) dwarf image loading.
+
 ### 4.7 Updated Directory Structure
 
 The content pipeline adds the following files:
@@ -1394,7 +1499,8 @@ data/
     LICENSE-lucide.txt                # Lucide license text
 
 lib/chroma_wave/
-  color.rb                            # Color (RGBA value type, named constants, compositing)
+  palette.rb                          # Palette (color lookup, nearest-match, indexing)
+  color.rb                            # Color (RGBA Data.define, named constants, compositing)
   drawing/                            # Drawing primitives (mixed into Surface)
     primitives.rb                     #   line, polyline, rect, rounded_rect, circle,
     |                                 #   ellipse, arc, polygon, flood_fill
@@ -1573,10 +1679,11 @@ Ruby code or eliminated as duplication.
    Device-level functions parameterized by model config. Eliminate ~1,400 lines of duplication.
 3. **Build a two-tier driver registry** (`driver_registry.c`): static config data for simple
    models, optional code overrides for complex ones (~20 models).
-4. **Model `PixelFormat` as a single value object** shared by Framebuffer and Display.
+4. **Model `PixelFormat` and `Palette` as value objects** shared by Framebuffer and Display.
+   `Palette` centralizes color lookup (`nearest_color`, `index_of`, `color_at`).
    Eliminate redundant scale/color_type/bpp representations.
-5. **Model `Color` as an RGBA value type** with named constants (`Color::BLACK`, etc.),
-   per-pixel alpha compositing (Porter-Duff source-over), and palette symbol bridging.
+5. **Model `Color` as a `Data.define(:r, :g, :b, :a)` value type** with named constants
+   (`Color::BLACK`, etc.) and alpha compositing (source-over onto opaque background).
 6. **Define the `Surface` protocol** as a Ruby module with `set_pixel`, `get_pixel`, `clear`,
    `width`, `height`, and mixin drawing primitives (see step 8).
 7. **Implement `Canvas`** as a pure-Ruby RGBA pixel buffer that includes `Surface`. Canvas
