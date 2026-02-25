@@ -144,6 +144,12 @@ module ChromaWave
     def self.[](*entries) = new(entries)
 
     def initialize(entries)
+      entries.each do |name|
+        unless Color::NAME_MAP.key?(name)
+          raise ArgumentError, "unknown palette color #{name.inspect}; " \
+                "registered colors: #{Color::NAME_MAP.keys.join(', ')}"
+        end
+      end
       @entries = entries.freeze
       @index = entries.each_with_index.to_h.freeze
     end
@@ -427,17 +433,17 @@ module ChromaWave
     module DualBuffer
       # Pure hardware concern: sends two mono framebuffers over SPI.
       # Canvas → dual-FB splitting is handled by Renderer (see Section 3.7).
-      def show(canvas_or_fb, second_fb = nil)
-        case canvas_or_fb
-        when Canvas
-          black_fb, red_fb = renderer.render_dual(canvas_or_fb)
-          device.synchronize { _epd_display_dual(black_fb, red_fb) }
-        when Framebuffer
-          raise ArgumentError, "DualBuffer#show requires two framebuffers" unless second_fb
 
-          [canvas_or_fb, second_fb].each { validate_format!(_1) }
-          device.synchronize { _epd_display_dual(canvas_or_fb, second_fb) }
-        end
+      # Common path: Canvas is auto-split into two mono FBs via Renderer.
+      def show(canvas)
+        black_fb, red_fb = renderer.render_dual(canvas)
+        device.synchronize { _epd_display_dual(black_fb, red_fb) }
+      end
+
+      # Power-user path: provide two pre-rendered mono Framebuffers directly.
+      def show_raw(black_fb, red_fb)
+        [black_fb, red_fb].each { validate_format!(_1) }
+        device.synchronize { _epd_display_dual(black_fb, red_fb) }
       end
     end
 
@@ -486,7 +492,7 @@ fb = renderer.render(canvas)
 display.show(fb)                                     # send pre-rendered framebuffer
 
 # Dual-buffer power path: provide two raw framebuffers
-display.show(custom_black_fb, custom_red_fb)
+display.show_raw(custom_black_fb, custom_red_fb)
 ```
 
 The Canvas is **independent of any Display** — it can be created, drawn on, and composed
@@ -647,7 +653,7 @@ module ChromaWave
   module Surface
     # Required by includers:
     #   #width, #height     → Integer
-    #   #set_pixel(x, y, color)
+    #   #set_pixel(x, y, color = Color::BLACK)
     #   #get_pixel(x, y) → color
 
     def in_bounds?(x, y) = x >= 0 && x < width && y >= 0 && y < height
@@ -1539,6 +1545,13 @@ operations (`Display#show`, `Display#clear`, `Device.new`) raise `ChromaWave::De
 at runtime with a clear message. This ensures the gem is usable for development, testing, and
 CI without hardware.
 
+**FreeType is optional.** `extconf.rb` checks for `libfreetype` via `have_library('freetype')`
+and `find_header('ft2build.h')`. If FreeType is not found, the extension compiles without
+`freetype.c` and sets a `-DNO_FREETYPE` flag. At runtime, `Font.new`, `IconFont.new`, and
+`Surface#draw_text` raise `ChromaWave::DependencyError` with an install hint
+(`apt install libfreetype-dev`). Canvas, Framebuffer, drawing primitives, and all non-text
+functionality work normally without FreeType.
+
 ### 5.2 Buffer Ownership and GC Integration
 
 Framebuffers own pixel data allocated via `xmalloc`/`xfree` (Ruby's tracked allocator).
@@ -1614,6 +1627,7 @@ ChromaWave::DeviceError < ChromaWave::Error    # SPI/GPIO failures
 ChromaWave::InitError < ChromaWave::DeviceError    # DEV_Module_Init failed
 ChromaWave::BusyTimeoutError < ChromaWave::DeviceError  # ReadBusy exceeded timeout
 ChromaWave::SPIError < ChromaWave::DeviceError     # SPI transfer failed
+ChromaWave::DependencyError < ChromaWave::Error  # optional dep missing (FreeType)
 
 # API misuse (programmer errors, fail fast)
 ChromaWave::FormatMismatchError < ArgumentError  # wrong PixelFormat for display
