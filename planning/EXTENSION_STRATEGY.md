@@ -44,7 +44,7 @@ What we use from the vendor library and how:
 
 - **Model selection** -- the vendor library is compile-time-selected. We compile all drivers
   and select at runtime via a two-tier registry (config data + optional code overrides).
-  Total code size of all 70 drivers is modest (~500KB compiled). See Section 3.4.
+  Total code size of all 70 drivers is modest (~500KB compiled). See Section 3.5.
 - **Platform selection** -- similarly compile-time. For the gem, we should:
   - Default to `USE_LGPIO_LIB` for RPi 5 / modern Raspberry Pi OS
   - Allow `USE_DEV_LIB` as fallback (gpiod, most portable)
@@ -134,12 +134,14 @@ registry). It should be modeled once.
 ```ruby
 module ChromaWave
   class PixelFormat
-    attr_reader :name, :bits_per_pixel, :pixels_per_byte, :scale, :palette
+    attr_reader :name, :bits_per_pixel, :palette
 
-    MONO   = new(name: :mono,   bpp: 1, scale: 2,  palette: %i[black white])
-    GRAY4  = new(name: :gray4,  bpp: 2, scale: 4,  palette: %i[black dark_gray light_gray white])
-    COLOR4 = new(name: :color4, bpp: 4, scale: 6,  palette: %i[black white yellow red])
-    COLOR7 = new(name: :color7, bpp: 4, scale: 7,
+    def pixels_per_byte = 8 / bits_per_pixel
+
+    MONO   = new(name: :mono,   bpp: 1, palette: %i[black white])
+    GRAY4  = new(name: :gray4,  bpp: 2, palette: %i[black dark_gray light_gray white])
+    COLOR4 = new(name: :color4, bpp: 4, palette: %i[black white yellow red])
+    COLOR7 = new(name: :color7, bpp: 4,
                  palette: %i[black white green blue red yellow orange])
 
     def buffer_size(width, height)
@@ -152,13 +154,23 @@ module ChromaWave
 end
 ```
 
+> **Note on palette ordering:** The vendor library names its grayscale values in reverse
+> (`GRAY1` = blackest, `GRAY4` = white). Our `GRAY4` format intentionally reorders the palette
+> to `[:black, :dark_gray, :light_gray, :white]` (dark-to-light), which is more intuitive. The
+> numeric mapping to vendor values happens at the C boundary.
+
+> **Note on `scale`:** The vendor library uses a `Scale` integer (2, 4, 6, 7) as an enum
+> discriminator for pixel-packing mode. This value is **not exposed** in the Ruby `PixelFormat`
+> API — it is an internal detail used only at the C boundary where `framebuffer.c` maps
+> `pixel_format` enum values to packing logic.
+
 Both `Display` and `Framebuffer` reference a `PixelFormat`. The Display declares what format it
 requires. The Framebuffer declares what format it contains. Compatibility is checked once at
 the point of use (`display.show(framebuffer)`), not scattered across layers.
 
 **Dual-buffer displays** (black + red/yellow) are modeled as two Framebuffers, both `MONO`
-format, not as a special pixel format. The Display's capability module knows it needs two
-buffers.
+format, not as a special pixel format. The Display's `DualBuffer` capability module knows it
+needs two buffers and provides a layered Canvas for convenience (see Section 3.3).
 
 ### 3.2 Directory Structure
 
@@ -179,85 +191,161 @@ ext/chroma_wave/                    # C -- only what MUST be C
   |                                   #   Complex models provide override function pointers.
   extconf.rb                          # Platform detection, backend selection, compiler flags
   |
-  vendor/                             # Vendored C sources (copied from vendor/waveshare_epd)
+  vendor/                             # Vendored C sources (restructured from vendor/waveshare_epd)
     config/                           #   DEV_Config.c, platform backends (as-is)
     drivers/                          #   All EPD_*.c files -- compiled unconditionally.
     |                                 #   Boilerplate (Reset/SendCommand/SendData/ReadBusy)
     |                                 #   is stripped; these files provide only Init register
     |                                 #   sequences, LUT tables, and model-specific Display
     |                                 #   logic for complex models.
+    |                                 #   Root vendor/waveshare_epd/ kept as upstream reference.
 
 lib/chroma_wave/                    # Ruby -- everything that doesn't need to be C
   chroma_wave.rb                      # Top-level require, autoloads
   version.rb                          # VERSION constant
+  errors.rb                           # Exception hierarchy (Error, DeviceError, etc.)
   pixel_format.rb                     # PixelFormat value object (MONO, GRAY4, COLOR7, etc.)
   framebuffer.rb                      # Ruby wrapper for C-backed Framebuffer
-  canvas.rb                           # Drawing primitives, coordinate transforms, compositing & state management
+  canvas.rb                           # Drawing primitives, color routing, layer management
   transform.rb                        # Rotation, mirroring, coordinate mapping
-  device.rb                           # Hardware lifecycle, connection management
-  display.rb                          # Base Display class (init, clear, show, sleep)
-  capabilities/                       # Composable capability modules
+  device.rb                           # Hardware lifecycle, connection management, Mutex
+  display.rb                          # Display factory (symbol registry), base methods
+  registry.rb                         # Model registry: builds subclasses from C config data
+  capabilities/                       # Composable capability modules (wrap private C methods)
     partial_refresh.rb                #   display_partial, display_base
     fast_refresh.rb                   #   init_fast, display_fast
     grayscale_mode.rb                 #   init_grayscale, display_grayscale
-    dual_buffer.rb                    #   show(black_fb, red_fb)
+    dual_buffer.rb                    #   show(black_fb, red_fb), layered Canvas support
     regional_refresh.rb               #   display_region(fb, x, y, w, h)
-  models/                             # One file per model family, not per SKU
-    mono.rb                           #   Simple monochrome (2in13_V4, 13in3k, etc.)
-    dual_color.rb                     #   B+R / B+Y displays (2in13b_V4, 4in2bc, etc.)
-    grayscale.rb                      #   4-gray displays (1in64g, 3in7, etc.)
-    multicolor.rb                     #   7-color ACeP displays (5in65f, 4in01f, etc.)
 ```
 
-### 3.3 Capabilities as Composable Modules
+### 3.3 Model Instantiation and the Registry
+
+Users instantiate displays via a **symbol registry**. `Display.new` is a factory that returns
+an instance of a dynamically-constructed subclass with the correct capability modules:
+
+```ruby
+display = ChromaWave::Display.new(model: :epd_2in13_v4)
+display.class                                  # => anonymous subclass of Display
+display.respond_to?(:display_partial)          # => true
+display.is_a?(Capabilities::PartialRefresh)    # => true
+
+# Discovery
+ChromaWave::Display.models  # => [:epd_2in13_v4, :epd_7in5_v2, ...]
+
+# Typo raises immediately
+ChromaWave::Display.new(model: :epd_2in13)
+# => ChromaWave::ModelNotFoundError: unknown model :epd_2in13
+#    Did you mean: :epd_2in13_v4, :epd_2in13b_v4?
+```
+
+At gem load time, the registry iterates C-side model configs and builds one Ruby subclass per
+model, including the appropriate capability modules based on the config's capability bitfield:
+
+```ruby
+CAPABILITY_MAP = {
+  EPD_CAP_PARTIAL   => Capabilities::PartialRefresh,
+  EPD_CAP_FAST      => Capabilities::FastRefresh,
+  EPD_CAP_GRAYSCALE => Capabilities::GrayscaleMode,
+  EPD_CAP_DUAL_BUF  => Capabilities::DualBuffer,
+}.freeze
+
+ChromaWave::Native.each_model_config do |name, config|
+  klass = Class.new(Display) do
+    config.capability_flags.each { |flag| include CAPABILITY_MAP[flag] }
+  end
+  registry[name.to_sym] = klass
+end
+```
+
+### 3.4 Capabilities as Composable Modules
 
 The vendor drivers expose capabilities as inconsistently-named optional functions
 (`Init_Fast`, `Display_Partial`, `Display_Part`, `Display_part`). Rather than modeling these
-as nullable function pointers in a flat C struct, use Ruby modules:
+as nullable function pointers in a flat C struct, use Ruby modules that wrap private C methods:
+
+#### Ruby <=> C Bridge
+
+All C-backed display operations are defined as **private methods on the Display base class**
+in `Init_chroma_wave`. The Ruby capability modules provide the public API with validation:
+
+```c
+/* In chroma_wave.c Init_chroma_wave(): */
+rb_define_private_method(rb_cDisplay, "_epd_display_partial",
+                         rb_epd_display_partial, 1);
+rb_define_private_method(rb_cDisplay, "_epd_init_fast",
+                         rb_epd_init_fast, 0);
+rb_define_private_method(rb_cDisplay, "_epd_display_fast",
+                         rb_epd_display_fast, 1);
+rb_define_private_method(rb_cDisplay, "_epd_display_dual",
+                         rb_epd_display_dual, 2);
+/* ... etc. C implementations check driver->custom_display or fall
+   through to the generic config-driven path. */
+```
 
 ```ruby
 module ChromaWave
   module Capabilities
     module PartialRefresh
       def display_partial(framebuffer)
-        # Validates framebuffer format, calls C: epd_display_partial(driver, buf)
+        validate_format!(framebuffer)
+        _epd_display_partial(framebuffer)   # private C method
       end
 
       def display_base(framebuffer)
-        # Write base frame for subsequent partials
+        validate_format!(framebuffer)
+        _epd_display_base(framebuffer)
       end
     end
 
     module FastRefresh
-      def init_fast  = ... # C: epd_init_fast(driver)
-      def display_fast(framebuffer) = ...
+      def init_fast  = _epd_init_fast
+      def display_fast(framebuffer)
+        validate_format!(framebuffer)
+        _epd_display_fast(framebuffer)
+      end
     end
 
     module GrayscaleMode
-      def init_grayscale = ...
-      def display_grayscale(framebuffer) = ...
+      def init_grayscale = _epd_init_grayscale
+      def display_grayscale(framebuffer)
+        validate_format!(framebuffer)
+        _epd_display_grayscale(framebuffer)
+      end
     end
 
     module DualBuffer
       def show(black_framebuffer, red_framebuffer)
-        # Validates both are MONO format, calls C: epd_display_dual(driver, black, red)
+        [black_framebuffer, red_framebuffer].each { validate_format!(_1) }
+        _epd_display_dual(black_framebuffer, red_framebuffer)
       end
     end
   end
-
-  # Each model class includes only its supported capabilities
-  class EPD_2in13_V4 < Display
-    include Capabilities::PartialRefresh
-    include Capabilities::FastRefresh
-    # Inherits base: init, clear, show, sleep
-  end
-
-  class EPD_2in13b_V4 < Display
-    include Capabilities::DualBuffer
-    # Full refresh only, dual-buffer
-  end
 end
 ```
+
+#### Dual-Buffer Canvas UX
+
+For dual-color displays (B+R, B+Y), the `DualBuffer` capability provides a **layered Canvas**
+as the default workflow, with an escape hatch to raw framebuffers for power users:
+
+```ruby
+# Simple path: single Canvas with color routing
+canvas = display.canvas                              # auto-creates dual framebuffers
+canvas.draw_rect(10, 10, 100, 50, color: :black)
+canvas.draw_circle(60, 60, 30, color: :red)
+display.show(canvas)                                 # extracts both layers
+
+# Power-user escape hatch: direct layer access
+canvas.layers[:black]                                # => Framebuffer
+canvas.layers[:red]                                  # => Framebuffer
+
+# Or bypass Canvas entirely with raw framebuffers
+display.show(custom_black_fb, custom_red_fb)
+```
+
+The Canvas detects whether the underlying display uses `DualBuffer` and routes colors to the
+appropriate layer. For single-buffer displays, `canvas.layers` returns `{ default: fb }`.
 
 **Advantages over nullable function pointers:**
 - Shared behavior is defined once per capability, reused across all models that support it
@@ -265,8 +353,9 @@ end
 - `display.is_a?(Capabilities::FastRefresh)` for type-based dispatch
 - New capabilities are added without changing existing code (Open/Closed Principle)
 - Documentation and tests live with each capability module
+- C bridge is explicit: Ruby modules wrap private C methods with validation
 
-### 3.4 Two-Tier Driver Registry
+### 3.5 Two-Tier Driver Registry
 
 Analysis of all 70 driver files reveals that **60-70% of driver code is identical boilerplate**
 (see [WAVESHARE_LIBRARY.md, Section 9](WAVESHARE_LIBRARY.md#9-driver-variation-analysis)):
@@ -281,7 +370,7 @@ and reset timing varying. What actually differs per model:
 | Init register sequence  | Data     | Yes -- encoded as `{cmd, len, data...}` pairs |
 | Display write command   | Data     | Yes -- `0x24` vs `0x10` |
 | Pixel format            | Data     | Yes -- maps to `PixelFormat` enum |
-| LUT waveform tables     | Data     | Yes -- raw byte arrays |
+| LUT waveform tables     | **Code** | No -- Tier 2 overrides own their LUT data (see below) |
 | Capability flags        | Data     | Yes -- bitmask |
 | LUT selection logic     | **Code** | No -- runtime mode selection (EPD_4in2, EPD_3in7) |
 | 4-gray pixel repacking  | **Code** | No -- controller-specific bit manipulation |
@@ -321,10 +410,33 @@ A single `epd_generic_init()` function interprets `init_sequence` byte arrays an
 config struct entry. Complex models (EPD_4in2 with LUT selection, EPD_5in65f with power
 cycling, EPD_3in7 with 4-gray repacking) provide override function pointers.
 
+**LUT tables are Tier 2 concerns.** Models that need LUT waveform tables (EPD_4in2 has 5,
+EPD_3in7 has mode-dependent LUTs) always need a `custom_init` override for runtime LUT
+selection logic. The override function owns its LUT data as `static const` byte arrays:
+
+```c
+/* Tier 2 override for EPD_4in2 -- owns its own LUT tables */
+static const uint8_t lut_full[]    = { /* ... */ };
+static const uint8_t lut_partial[] = { /* ... */ };
+
+static int epd_4in2_custom_init(
+    const epd_model_config_t *cfg, uint8_t mode) {
+    epd_generic_init(cfg);  /* shared register sequence from Tier 1 */
+    switch (mode) {
+        case MODE_FULL:    load_lut(lut_full, sizeof(lut_full)); break;
+        case MODE_PARTIAL: load_lut(lut_partial, sizeof(lut_partial)); break;
+    }
+    return EPD_OK;
+}
+```
+
+This keeps the Tier 1 config struct simple — no LUT pointer fields — while giving Tier 2
+models full control over LUT lifecycle and selection.
+
 **Impact:** Adding support for a new simple display model is adding ~10 lines of config data
 rather than writing a new C file.
 
-### 3.5 Device Owns I/O Primitives
+### 3.6 Device Owns I/O Primitives
 
 The vendor library duplicates `Reset()`, `SendCommand()`, `SendData()`, and `ReadBusy()` as
 static functions in every one of 70 driver files. These are identical except for:
@@ -345,7 +457,7 @@ int  epd_read_busy(const epd_model_config_t *cfg, uint32_t timeout_ms);
 This eliminates ~20 lines x 70 drivers = **~1,400 lines of duplicated C code** and centralizes
 the timeout/interruptibility improvement (see Section 4.3) in one place.
 
-### 3.6 Framebuffer: Pixel Storage Without Drawing
+### 3.7 Framebuffer: Pixel Storage Without Drawing
 
 The vendor's `PAINT` struct conflates pixel storage, coordinate transforms, and drawing state
 into a single global. In our design, these are three separate concerns:
@@ -372,6 +484,11 @@ The Framebuffer's C implementation extracts only the pixel-packing logic from `G
 No forking of GUI_Paint.c is needed. The drawing primitives are reimplemented in Ruby where
 they can be tested, extended, and composed with Ruby's image processing ecosystem.
 
+> **Padding invariant:** For non-byte-aligned widths (e.g., 122px mono = 15.25 bytes/row),
+> the trailing bits in the last byte of each row are **always zero**. `set_pixel` never writes
+> to padding positions, and `clear` zeros the entire buffer including padding. This invariant
+> must be preserved by `framebuffer.c` to prevent display artifacts from garbage padding bits.
+
 ---
 
 ## 4. Integration Challenges
@@ -383,7 +500,14 @@ Need to:
 - Check for corresponding `-l` libraries
 - Auto-select the best available backend
 - Provide a `--with-epd-backend=` configure option for override
-- Define a `MOCK` backend for test environments (no hardware)
+- Define a `MOCK` backend for development/testing on non-RPi systems
+
+**Fallback behavior:** If no GPIO/SPI library is found, `extconf.rb` **auto-selects the MOCK
+backend** and emits a warning. The gem always installs. Under MOCK, `Framebuffer`, `Canvas`,
+`PixelFormat`, and all drawing operations work normally (pure memory, no hardware). Hardware
+operations (`Display#show`, `Display#clear`, `Device.new`) raise `ChromaWave::DeviceError`
+at runtime with a clear message. This ensures the gem is usable for development, testing, and
+CI without hardware.
 
 ### 4.2 Buffer Ownership and GC Integration
 
@@ -424,6 +548,80 @@ layer must either:
   `buffer_bytes` export rather than modifying the source
 
 **(A) is simpler** and the copy cost is negligible (800x480/8 = 48KB, microseconds to copy).
+
+### 4.5 EPD_5in65f Dual Busy Polarity
+
+`EPD_5in65f` uses both busy-HIGH and busy-LOW waits in different lifecycle phases (power-on
+waits for HIGH, post-refresh waits for LOW). The Tier 1 config struct has a single
+`busy_active_level` field, which is insufficient.
+
+**Resolution:** EPD_5in65f already requires a Tier 2 override for its power-on/off-per-refresh
+cycle. The override owns its busy-wait logic entirely, calling polarity-specific helpers
+internally. No change to the Tier 1 config struct is needed:
+
+```c
+static int epd_5in65f_custom_display(
+    const epd_model_config_t *cfg, const uint8_t *buf, size_t len) {
+    epd_5in65f_power_on();
+    epd_wait_busy_high(cfg, 5000);     /* wait for HIGH (power ready) */
+    send_buffer(buf, len);
+    epd_wait_busy_low(cfg, 30000);     /* wait for LOW (refresh done) */
+    epd_5in65f_power_off();
+    return EPD_OK;
+}
+```
+
+### 4.6 Error Handling Strategy
+
+The vendor library has essentially no error handling — functions don't return error codes, SPI
+failures are silent, and the only error path is `DEV_Module_Init()` returning 1. Our extension
+defines a **categorized exception hierarchy**:
+
+```ruby
+# Hardware errors (runtime failures, things go wrong with the device)
+ChromaWave::Error < StandardError              # base class for all gem errors
+ChromaWave::DeviceError < ChromaWave::Error    # SPI/GPIO failures
+ChromaWave::InitError < ChromaWave::DeviceError    # DEV_Module_Init failed
+ChromaWave::BusyTimeoutError < ChromaWave::DeviceError  # ReadBusy exceeded timeout
+ChromaWave::SPIError < ChromaWave::DeviceError     # SPI transfer failed
+
+# API misuse (programmer errors, fail fast)
+ChromaWave::FormatMismatchError < ArgumentError  # wrong PixelFormat for display
+ChromaWave::ModelNotFoundError < ArgumentError   # unknown model symbol
+```
+
+**Design rationale:** Hardware errors inherit from `ChromaWave::Error` (a `StandardError`
+subclass) so `rescue ChromaWave::DeviceError` catches all hardware problems. API misuse errors
+inherit from `ArgumentError` / `TypeError` — these are programmer mistakes that should fail
+fast and loud, and they integrate with Ruby's standard exception semantics.
+
+**C-side error propagation:** C functions return `int` status codes (`EPD_OK`, `EPD_ERR_TIMEOUT`,
+`EPD_ERR_SPI`). The Ruby method wrappers check return values and raise the appropriate exception.
+`rb_set_errinfo(Qnil)` is called after handling to clear `$!`.
+
+### 4.7 Thread Safety
+
+The SPI bus is shared hardware with no concurrent access support. Our design provides
+**Device-level mutual exclusion** via a Ruby `Mutex`:
+
+```ruby
+class Device
+  def initialize
+    @mutex = Mutex.new
+  end
+
+  def synchronize(&block) = @mutex.synchronize(&block)
+end
+```
+
+All hardware operations (`Display#show`, `Display#clear`, `Display#init`) synchronize through
+the Device's mutex. `Framebuffer#set_pixel` and other pure-memory operations are **not locked**
+— they have no hardware interaction and contention is the caller's responsibility.
+
+The GVL release (Section 4.3) composes correctly with this: the mutex is acquired before
+entering C, the GVL is released inside C for the busy-wait, and the mutex is released after
+the C call returns. Other Ruby threads can run during the busy-wait but cannot start a
+concurrent hardware operation.
 
 ---
 
