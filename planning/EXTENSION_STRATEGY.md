@@ -157,6 +157,13 @@ module ChromaWave
       end
       @entries = entries.freeze
       @index = entries.each_with_index.to_h.freeze
+      # Pre-resolve palette names → RGBA for distance calculations.
+      # Avoids repeated Color.from_name lookups during quantization.
+      @rgba_by_entry = entries.map { |name| [name, Color.from_name(name)] }.to_h.freeze
+      # Memoization cache: RGBA packed bytes → nearest palette name.
+      # Dashboard UIs reuse the same few colors across thousands of pixels;
+      # this cache turns O(palette_size) per pixel into O(1) for repeats.
+      @nearest_cache = {}
     end
 
     def each(&) = entries.each(&)
@@ -166,10 +173,14 @@ module ChromaWave
     def index_of(color) = @index.fetch(color)
     def color_at(index) = entries.fetch(index)
 
-    # Map an RGBA Color to the nearest palette entry.
-    # Used by the Renderer during quantization.
+    # Map an RGBA Color to the nearest palette name.
+    # Used by the Renderer during quantization. Results are memoized
+    # by packed RGBA bytes — repeated colors (common in UI rendering)
+    # hit the cache after the first lookup.
     def nearest_color(rgba)
-      entries.min_by { |name| color_distance(rgba, Color.from_name(name)) }
+      key = rgba.to_rgba_bytes
+      @nearest_cache[key] ||=
+        entries.min_by { |name| color_distance(rgba, @rgba_by_entry[name]) }
     end
 
     private
@@ -646,7 +657,7 @@ into a single global. Our design separates these into three layers with distinct
 │                   🔄 Rendering Layer                     │
 │                                                          │
 │  Renderer: Canvas → Framebuffer                          │
-│    • Palette mapping (RGB → display palette entries)     │
+│    • Palette mapping (Color → palette name)              │
 │    • Dithering (Floyd-Steinberg, ordered, threshold)     │
 │    • Dual-buffer splitting (one Canvas → two mono FBs)   │
 │                                                          │
@@ -750,7 +761,11 @@ module ChromaWave
     def clear(color = Color::WHITE)
       _canvas_clear(color.r, color.g, color.b, color.a)
     rescue NoMethodError
-      @buffer = (color.to_rgba_bytes * (width * height)).b
+      # Replace buffer contents in-place to avoid allocating a second
+      # 1.5MB String and triggering a GC cycle. The 4-byte pattern is
+      # repeated across the existing buffer with no intermediate copies.
+      pixel = color.to_rgba_bytes
+      @buffer.replace(pixel * (width * height))
     end
 
     # C-accelerated: per-pixel alpha composite of source onto self.
@@ -896,11 +911,11 @@ module ChromaWave
     private
 
     def quantize(canvas, fb)
-      # Iterate canvas.rgba_bytes directly (4-byte stride per pixel) —
-      # no Color materialization, no get_pixel overhead.
-      # Map each RGBA tuple → nearest palette entry via Palette#nearest_color
-      # Apply dithering algorithm to distribute quantization error
-      # Write packed pixels to fb.set_pixel
+      # Iterate canvas.rgba_bytes directly (4-byte stride per pixel).
+      # For each pixel, materialize a Color only for the Palette#nearest_color
+      # call (memoized — repeated colors hit the cache). Map the result to a
+      # palette name, apply dithering to distribute quantization error, and
+      # write the palette name to fb.set_pixel.
     end
 
     def split_channels(canvas, black_fb, red_fb)
@@ -944,6 +959,25 @@ Framebuffer (C-backed, TypedData)
 The C implementation extracts only the pixel-packing logic from `GUI_Paint.c` (~100 lines:
 the `Scale`-dependent bit-twiddling in `Paint_SetPixel` and `Paint_Clear`). No forking of
 GUI_Paint.c is needed.
+
+> **`set_pixel` color contract:** Framebuffer's `set_pixel` accepts a **palette name**
+> (`:black`, `:red`, etc.) — the same lowercase symbols used in `Palette` entries. The C
+> implementation maps the palette name to its integer index via `Palette#index_of`, then
+> bit-packs that index into the buffer at the correct position. `get_pixel` does the reverse:
+> extracts the integer index and returns the palette name via `Palette#color_at`. This means
+> drawing directly on a Framebuffer uses palette names, not `Color` objects:
+>
+> ```ruby
+> fb.set_pixel(10, 20, :black)     # palette name → index → bit-packed
+> fb.get_pixel(10, 20)             # → :black
+> ```
+>
+> The `Surface` mixin's drawing primitives accept a `color:` keyword. On a Canvas, this is a
+> `Color` (RGBA). On a Framebuffer, this is a palette name. The `Surface` protocol doesn't
+> constrain the type — it just passes whatever `color:` value through to `set_pixel`. This
+> duck-typing means the same `draw_rect` call works on both, with the color type matching the
+> surface's storage format. The `Renderer` is the bridge: it maps `Color` → palette name
+> during quantization, writing palette names into the Framebuffer.
 
 > **Padding invariant:** For non-byte-aligned widths, the trailing bits in the last byte of
 > each row are **always zero**. This applies to all sub-byte formats: MONO (1 bpp, e.g.,
@@ -1057,7 +1091,9 @@ and images.
 
 Canvas compositing requires a richer color representation than the display's final palette.
 Colors are modeled as **frozen RGBA value objects** using `Data.define` (Ruby 3.2+), with a
-bridge to named palette symbols:
+bridge to **palette names** — the lowercase symbols (`:black`, `:red`, `:dark_gray`) that
+Palettes, Framebuffers, and the Renderer use to identify colors in the display's native
+format:
 
 ```ruby
 module ChromaWave
@@ -1093,26 +1129,31 @@ module ChromaWave
       )
     end
 
-    # Reverse lookup: palette symbol → Color. Used by Palette#nearest_color.
+    # Reverse lookup: palette name → Color. Used by Palette#nearest_color.
+    # Keys are always lowercase symbols (:black, :red, etc.).
     NAME_MAP = {}
     def self.from_name(name) = NAME_MAP.fetch(name)
 
+    # Register a named color. `name` is always a lowercase symbol (:black,
+    # :dark_gray, etc.). This creates an uppercase constant (Color::BLACK)
+    # and a NAME_MAP entry keyed by the original symbol.
     def self.register(name, color)
       const_set(name.upcase, color)
-      NAME_MAP[name.downcase.to_sym] = color
+      NAME_MAP[name] = color
       color
     end
 
-    # Named constants — RGB values that map to common display palettes
-    register(:BLACK,      new(r: 0,   g: 0,   b: 0))
-    register(:WHITE,      new(r: 255, g: 255, b: 255))
-    register(:RED,        new(r: 255, g: 0,   b: 0))
-    register(:YELLOW,     new(r: 255, g: 255, b: 0))
-    register(:GREEN,      new(r: 0,   g: 128, b: 0))
-    register(:BLUE,       new(r: 0,   g: 0,   b: 255))
-    register(:ORANGE,     new(r: 255, g: 165, b: 0))
-    register(:DARK_GRAY,  new(r: 85,  g: 85,  b: 85))
-    register(:LIGHT_GRAY, new(r: 170, g: 170, b: 170))
+    # Named color constants — RGB values that map to common display palettes.
+    # Registration names are lowercase symbols; constants are uppercase.
+    register(:black,      new(r: 0,   g: 0,   b: 0))
+    register(:white,      new(r: 255, g: 255, b: 255))
+    register(:red,        new(r: 255, g: 0,   b: 0))
+    register(:yellow,     new(r: 255, g: 255, b: 0))
+    register(:green,      new(r: 0,   g: 128, b: 0))
+    register(:blue,       new(r: 0,   g: 0,   b: 255))
+    register(:orange,     new(r: 255, g: 165, b: 0))
+    register(:dark_gray,  new(r: 85,  g: 85,  b: 85))
+    register(:light_gray, new(r: 170, g: 170, b: 170))
     TRANSPARENT = new(r: 0, g: 0, b: 0, a: 0)
   end
 end
@@ -1129,7 +1170,7 @@ end
 | `load_rgba_bytes`  | Raw RGBA bytes → buffer | Bulk memcpy, no Color objects       |
 | `render_glyph`     | `Color` (RGBA)       | Per-pixel alpha compositing (source over)|
 | Renderer quantize  | `rgba_bytes` → palette | Iterates packed bytes directly, no Color |
-| Framebuffer        | Palette index (int)  | No alpha — device format is opaque      |
+| Framebuffer        | Palette name (symbol)| No alpha — device format is opaque      |
 
 Alpha exists only in the Canvas layer. The Renderer flattens it during quantization
 (compositing against a configurable background, typically white for e-paper). The
@@ -1142,12 +1183,14 @@ Framebuffer and Display never see alpha — they work with opaque palette indice
 > dashboard render creates dozens of Color objects (one per drawing call), not hundreds of
 > thousands (one per pixel).
 
-> **Named colors and palettes:** `Color::RED` is an RGB value. The `Renderer` maps it to
-> the nearest palette entry during quantization (e.g., index 3 on a COLOR4 display). Users
-> can also use `PixelFormat#palette` symbols (`:red`, `:black`) when drawing directly onto
-> a Framebuffer via the Surface protocol — these bypass the Renderer and write palette
-> indices directly. The two systems coexist: RGB for Canvas compositing, palette symbols for
-> direct Framebuffer access.
+> **Color vs palette name:** The two color representations serve different layers.
+> `Color` objects (`Color::RED`, `Color.new(r: 255, g: 0, b: 0)`) are RGBA values used on
+> Canvas for compositing. **Palette names** (`:red`, `:black`, `:dark_gray`) are the
+> lowercase symbols used on Framebuffer for direct pixel access. The `Renderer` bridges
+> the two: it maps each Canvas `Color` to the nearest palette name during quantization.
+> Users drawing on a Canvas use `Color` objects; users drawing directly on a Framebuffer
+> use palette names. The `Surface` protocol is agnostic — `set_pixel` accepts whatever
+> the concrete surface expects.
 
 ### 4.3 Shape Primitives
 
@@ -1813,37 +1856,37 @@ Ruby code or eliminated as duplication.
 5. **Model `Color` as a `Data.define(:r, :g, :b, :a)` value type** with named constants
    (`Color::BLACK`, etc.) and alpha compositing (source-over onto opaque background).
 6. **Define the `Surface` protocol** as a Ruby module with `set_pixel`, `get_pixel`, `clear`,
-   `width`, `height`, and mixin drawing primitives (see step 8).
+   `width`, `height`, and mixin drawing primitives (see step 9).
 7. **Implement `Canvas`** as a packed-String RGBA pixel buffer (4 bytes/pixel) that includes
    `Surface`. Storage is a single binary String — one GC object regardless of resolution.
    `get_pixel` lazily materializes `Color` objects; `set_pixel` decomposes them back into
    bytes. Expose `rgba_bytes` for direct byte access by the Renderer.
-7a. **Implement Canvas C accelerators** (`canvas.c`, ~80 lines): `_canvas_clear`,
+8. **Implement Canvas C accelerators** (`canvas.c`, ~80 lines): `_canvas_clear`,
    `_canvas_blit_alpha`, `_canvas_load_rgba`. These operate on `Canvas`'s String buffer via
    `RSTRING_PTR`. All three have Ruby fallbacks for graceful degradation.
-8. **Implement drawing primitives** as `Surface` mixin methods: line, polyline, rect,
+9. **Implement drawing primitives** as `Surface` mixin methods: line, polyline, rect,
    rounded_rect, circle, ellipse, arc, polygon, flood_fill. All with `stroke_width:` and
    `fill:` support.
-9. **Implement `Layer`** as a clipped, offset sub-region of any Surface. Enables widget-based
-   UI composition where each component draws in its own local coordinate space.
-10. **Implement `Renderer`** to bridge Canvas → Framebuffer. Owns palette mapping, dithering
+10. **Implement `Layer`** as a clipped, offset sub-region of any Surface. Enables widget-based
+    UI composition where each component draws in its own local coordinate space.
+11. **Implement `Renderer`** to bridge Canvas → Framebuffer. Owns palette mapping, dithering
     strategy selection (Floyd-Steinberg, ordered, threshold), and dual-buffer channel
     splitting. The only place quantization occurs.
-11. **Compose display capabilities via Ruby modules** (`PartialRefresh`, `FastRefresh`,
+12. **Compose display capabilities via Ruby modules** (`PartialRefresh`, `FastRefresh`,
     `GrayscaleMode`, `DualBuffer`). `DualBuffer` is hardware-only (SPI send); channel
     splitting is delegated to the Renderer.
-12. **Link FreeType in the C extension** (`freetype.c`). Expose glyph rasterization and
+13. **Link FreeType in the C extension** (`freetype.c`). Expose glyph rasterization and
     metrics as private C methods on `ChromaWave::Font`. Ruby-side `Font` class handles font
     discovery, measurement, and `draw_text` layout (alignment, word wrapping).
-13. **Implement `IconFont`** as a `Font` subclass with symbol → codepoint registry. Bundle
+14. **Implement `IconFont`** as a `Font` subclass with symbol → codepoint registry. Bundle
     Lucide (~120KB TTF, ISC license) in `data/fonts/`. Add `rake icons:generate` task to
     produce the glyph map from Lucide's metadata.
-14. **Implement `Image`** as a ruby-vips wrapper. Handles loading any image format,
+15. **Implement `Image`** as a ruby-vips wrapper. Handles loading any image format,
     resize/crop, RGBA conversion. Uses `Canvas#load_rgba_bytes` for bulk transfer —
     vips' packed RGBA output maps directly to Canvas's packed String buffer.
-15. **Compile all drivers unconditionally** -- total binary size is negligible.
-16. **Detect platform in `extconf.rb`**, set `-D` flags for the appropriate GPIO/SPI backend.
+16. **Compile all drivers unconditionally** -- total binary size is negligible.
+17. **Detect platform in `extconf.rb`**, set `-D` flags for the appropriate GPIO/SPI backend.
     Also detect and link `libfreetype`.
-17. **Add a mock backend** for development and CI testing without hardware.
-18. **Release the GVL** during display refresh operations via `rb_thread_call_without_gvl()`.
-19. **Add timeout to busy-wait** with an interruptible loop and configurable max duration.
+18. **Add a mock backend** for development and CI testing without hardware.
+19. **Release the GVL** during display refresh operations via `rb_thread_call_without_gvl()`.
+20. **Add timeout to busy-wait** with an interruptible loop and configurable max duration.
