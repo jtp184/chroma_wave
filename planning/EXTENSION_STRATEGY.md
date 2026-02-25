@@ -221,6 +221,7 @@ lib/chroma_wave/                    # Ruby -- everything that doesn't need to be
     |                                 #   ellipse, arc, polygon, flood_fill
     text.rb                           #   draw_text, word_wrap, render_glyph
   font.rb                            # Font loading, measurement, glyph iteration (wraps C)
+  icon_font.rb                       # IconFont (Font subclass, symbol→codepoint registry)
   image.rb                           # Image loading via ruby-vips (load, resize, crop, blit)
   transform.rb                        # Rotation, mirroring, coordinate mapping
   device.rb                           # Hardware lifecycle, connection management, Mutex
@@ -1083,6 +1084,123 @@ module ChromaWave
 end
 ```
 
+#### Icon Support (Bundled Lucide + IconFont)
+
+Icons are a special case of text rendering — icon fonts are TTF files where glyphs are
+symbols instead of letters. Since we already have FreeType, the infrastructure is free. The
+gap is **convenience**: mapping human-readable names to Unicode codepoints.
+
+##### Bundled Font
+
+The gem ships [Lucide](https://lucide.dev/) (ISC license, ~120KB TTF, ~1,500 icons) as a
+zero-config icon set. The font and its license live in the gem's `data/` directory:
+
+```
+data/
+  fonts/
+    lucide.ttf
+    LICENSE-lucide.txt
+```
+
+Accessed at runtime via a root path helper:
+
+```ruby
+module ChromaWave
+  def self.data_path(*segments)
+    File.join(File.expand_path("../..", __dir__), "data", *segments)
+  end
+end
+```
+
+##### IconFont Class
+
+`IconFont` subclasses `Font` and adds a symbol → codepoint registry. It works with any
+icon font (Font Awesome, Material Symbols, Phosphor, etc.), not just the bundled Lucide:
+
+```ruby
+module ChromaWave
+  class IconFont < Font
+    attr_reader :glyphs
+
+    def initialize(path_or_name = nil, size:, glyphs: {})
+      path = path_or_name || ChromaWave.data_path("fonts", "lucide.ttf")
+      super(path, size:)
+      @glyphs = glyphs.freeze
+    end
+
+    # Look up a glyph by name
+    def codepoint(name)
+      glyphs.fetch(name) do
+        raise ArgumentError, "Unknown icon: #{name}. " \
+              "Available: #{glyphs.keys.first(10).join(', ')}..."
+      end
+    end
+
+    # Convenience: render a single icon onto a Surface
+    def draw(surface, name, x:, y:, color: Color::BLACK)
+      surface.draw_text(codepoint(name).chr(Encoding::UTF_8),
+                        x:, y:, font: self, color:)
+    end
+
+    # Built-in Lucide icon set with pre-mapped names
+    def self.lucide(size:)
+      new(size:, glyphs: LUCIDE_GLYPHS)
+    end
+
+    # Subset of Lucide's ~1,500 icons — the full map is generated from
+    # Lucide's metadata at gem build time
+    LUCIDE_GLYPHS = {
+      wifi:          0xE801,
+      battery_full:  0xE802,
+      battery_low:   0xE803,
+      sun:           0xE804,
+      cloud:         0xE805,
+      cloud_rain:    0xE806,
+      thermometer:   0xE807,
+      arrow_up:      0xE808,
+      arrow_down:    0xE809,
+      check:         0xE80A,
+      x:             0xE80B,
+      alert_triangle: 0xE80C,
+      clock:         0xE80D,
+      settings:      0xE80E,
+      # ... ~1,500 total, generated from Lucide metadata
+    }.freeze
+  end
+end
+```
+
+##### Usage
+
+```ruby
+# Zero-config: bundled Lucide icons
+icons = ChromaWave::IconFont.lucide(size: 32)
+icons.draw(canvas, :wifi, x: 10, y: 10)
+icons.draw(canvas, :battery_full, x: 50, y: 10, color: Color::BLACK)
+icons.draw(canvas, :cloud_rain, x: 90, y: 10)
+
+# Or inline with draw_text for mixed content
+font  = ChromaWave::Font.new("DejaVuSans", size: 16)
+canvas.draw_text("Signal: Strong ", x: 50, y: 14, font:)
+icons.draw(canvas, :wifi, x: 170, y: 10)
+
+# Custom icon font (e.g., Font Awesome)
+fa = ChromaWave::IconFont.new(
+  "/usr/share/fonts/FontAwesome.ttf",
+  size: 24,
+  glyphs: { home: 0xF015, user: 0xF007, cog: 0xF013 }
+)
+fa.draw(canvas, :home, x: 10, y: 100)
+```
+
+> **Glyph map generation:** The `LUCIDE_GLYPHS` hash is generated from Lucide's
+> `info.json` metadata file via a Rake task (`rake icons:generate`). This runs at gem
+> build/development time, not at runtime. The generated file is checked into the repo.
+
+> **Why Lucide:** ISC license (MIT-compatible, no attribution clause in binary
+> distribution). ~1,500 icons with good coverage of dashboard-relevant symbols (weather,
+> connectivity, status, navigation, devices). Actively maintained. Small file (~120KB TTF).
+
 #### Image Loading (ruby-vips)
 
 Images are loaded via **ruby-vips** and converted to Canvas-compatible pixel data. The
@@ -1207,9 +1325,14 @@ display.show(canvas)
 
 #### Updated Directory Structure
 
-The content pipeline adds the following files to the Ruby layer:
+The content pipeline adds the following files:
 
 ```
+data/
+  fonts/
+    lucide.ttf                        # Bundled icon font (~120KB, ISC license)
+    LICENSE-lucide.txt                # Lucide license text
+
 lib/chroma_wave/
   color.rb                            # Color (RGBA value type, named constants, compositing)
   drawing/                            # Drawing primitives (mixed into Surface)
@@ -1217,6 +1340,9 @@ lib/chroma_wave/
     |                                 #   ellipse, arc, polygon, flood_fill
     text.rb                           #   draw_text, word_wrap, render_glyph
   font.rb                            # Font (FreeType wrapper, measurement, glyph iteration)
+  icon_font.rb                       # IconFont (Font subclass, symbol→codepoint registry)
+  icon_font/
+    lucide_glyphs.rb                  #   Generated glyph map (rake icons:generate)
   image.rb                           # Image (Vips wrapper, load/resize/crop/blit)
 
 ext/chroma_wave/
@@ -1418,11 +1544,14 @@ Ruby code or eliminated as duplication.
 12. **Link FreeType in the C extension** (`freetype.c`). Expose glyph rasterization and
     metrics as private C methods on `ChromaWave::Font`. Ruby-side `Font` class handles font
     discovery, measurement, and `draw_text` layout (alignment, word wrapping).
-13. **Implement `Image`** as a ruby-vips wrapper. Handles loading any image format,
+13. **Implement `IconFont`** as a `Font` subclass with symbol → codepoint registry. Bundle
+    Lucide (~120KB TTF, ISC license) in `data/fonts/`. Add `rake icons:generate` task to
+    produce the glyph map from Lucide's metadata.
+14. **Implement `Image`** as a ruby-vips wrapper. Handles loading any image format,
     resize/crop, RGBA conversion, and blitting onto Canvas.
-14. **Compile all drivers unconditionally** -- total binary size is negligible.
-15. **Detect platform in `extconf.rb`**, set `-D` flags for the appropriate GPIO/SPI backend.
+15. **Compile all drivers unconditionally** -- total binary size is negligible.
+16. **Detect platform in `extconf.rb`**, set `-D` flags for the appropriate GPIO/SPI backend.
     Also detect and link `libfreetype`.
-16. **Add a mock backend** for development and CI testing without hardware.
-17. **Release the GVL** during display refresh operations via `rb_thread_call_without_gvl()`.
-18. **Add timeout to busy-wait** with an interruptible loop and configurable max duration.
+17. **Add a mock backend** for development and CI testing without hardware.
+18. **Release the GVL** during display refresh operations via `rb_thread_call_without_gvl()`.
+19. **Add timeout to busy-wait** with an interruptible loop and configurable max duration.
