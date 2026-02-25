@@ -6,6 +6,8 @@ library. For documentation of the vendor library itself, see [WAVESHARE_LIBRARY.
 **Companion documents:**
 - [API_REFERENCE.md](API_REFERENCE.md) — Full code contracts for all classes and C structs
 - [CONTENT_PIPELINE.md](CONTENT_PIPELINE.md) — Color, drawing, text, icons, and image loading
+- [ROADMAP.md](ROADMAP.md) — Phased task breakdown with subtasks and acceptance criteria
+- [MOCKING.md](MOCKING.md) — Mock hardware strategy for development and testing
 
 ---
 
@@ -548,53 +550,3 @@ is deferred to a future version — v1 supports one Display per Device (1:1).
 | FreeType bindings   | 0           | ~200           | New: glyph rasterization bridge |
 | **Total**           | **~42,400** | **~9,580**     | **23% of original**             |
 
----
-
-## 7. Implementation Strategy Summary
-
-1. **Extract pixel-packing core** from GUI_Paint.c (~100 lines) into `framebuffer.c`.
-   Parameterize with a `Framebuffer*` struct. Do **not** fork the full 850-line file.
-2. **Factor I/O primitives** (`Reset`, `SendCommand`, `SendData`, `ReadBusy`) into shared
-   Device-level functions parameterized by model config. Eliminate ~1,400 lines of duplication.
-3. **Build a two-tier driver registry** (`driver_registry.c`): static config data for simple
-   models, optional code overrides for complex ones (~20 models).
-4. **Model `PixelFormat` and `Palette` as value objects** shared by Framebuffer and Display.
-   `Palette` centralizes color lookup (`nearest_color`, `index_of`, `color_at`).
-   Eliminate redundant scale/color_type/bpp representations.
-5. **Model `Color` as a `Data.define(:r, :g, :b, :a)` value type** with named constants
-   (`Color::BLACK`, etc.) and alpha compositing (source-over onto opaque background).
-6. **Define the `Surface` protocol** as a Ruby module with `set_pixel`, `get_pixel`, `clear`,
-   `width`, `height`, and mixin drawing primitives (see step 9).
-7. **Implement `Canvas`** as a packed-String RGBA pixel buffer (4 bytes/pixel) that includes
-   `Surface`. Storage is a single binary String — one GC object regardless of resolution.
-   `get_pixel` lazily materializes `Color` objects; `set_pixel` decomposes them back into
-   bytes. Expose `rgba_bytes` for direct byte access by the Renderer.
-8. **Implement Canvas C accelerators** (`canvas.c`, ~80 lines): `_canvas_clear`,
-   `_canvas_blit_alpha`, `_canvas_load_rgba`. These operate on `Canvas`'s String buffer via
-   `RSTRING_PTR`. All three have Ruby fallbacks for graceful degradation.
-9. **Implement drawing primitives** as `Surface` mixin methods: line, polyline, rect,
-   rounded_rect, circle, ellipse, arc, polygon, flood_fill. All with `stroke_width:` and
-   `fill:` support.
-10. **Implement `Layer`** as a clipped, offset sub-region of any Surface. Enables widget-based
-    UI composition where each component draws in its own local coordinate space.
-11. **Implement `Renderer`** to bridge Canvas → Framebuffer. Owns palette mapping, dithering
-    strategy selection (Floyd-Steinberg, ordered, threshold), and dual-buffer channel
-    splitting. The only place quantization occurs.
-12. **Compose display capabilities via Ruby modules** (`PartialRefresh`, `FastRefresh`,
-    `GrayscaleMode`, `DualBuffer`). `DualBuffer` is hardware-only (SPI send); channel
-    splitting is delegated to the Renderer.
-13. **Link FreeType in the C extension** (`freetype.c`). Expose glyph rasterization and
-    metrics as private C methods on `ChromaWave::Font`. Ruby-side `Font` class handles font
-    discovery, measurement, and `draw_text` layout (alignment, word wrapping).
-14. **Implement `IconFont`** as a `Font` subclass with symbol → codepoint registry. Bundle
-    Lucide (~120KB TTF, ISC license) in `data/fonts/`. Add `rake icons:generate` task to
-    produce the glyph map from Lucide's metadata.
-15. **Implement `Image`** as a ruby-vips wrapper. Handles loading any image format,
-    resize/crop, RGBA conversion. Uses `Canvas#load_rgba_bytes` for bulk transfer —
-    vips' packed RGBA output maps directly to Canvas's packed String buffer.
-16. **Compile all drivers unconditionally** -- total binary size is negligible.
-17. **Detect platform in `extconf.rb`**, set `-D` flags for the appropriate GPIO/SPI backend.
-    Also detect and link `libfreetype`.
-18. **Add a mock backend** for development and CI testing without hardware.
-19. **Release the GVL** during display refresh operations via `rb_thread_call_without_gvl()`.
-20. **Add timeout to busy-wait** with an interruptible loop and configurable max duration.
