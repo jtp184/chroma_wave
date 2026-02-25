@@ -40,7 +40,8 @@ Phase 5: Content Pipeline          ← depends on Phase 3 (draws onto Surfaces)
           │
 Phase 6: Build & Platform          ← can start early, but final integration last
   ├── 19. extconf.rb platform detection
-  └── 20. Mock backend
+  ├── 20. Mock backend (C-level)
+  └── 21. MockDevice (Ruby-level)
 ```
 
 ---
@@ -433,9 +434,9 @@ Auto-detect GPIO/SPI backend and configure compiler flags.
 
 ---
 
-### 20. Mock backend
+### 20. Mock backend (C-level)
 
-Development and CI testing without hardware.
+C-level no-op stubs so the extension compiles on any platform without GPIO/SPI hardware.
 
 - [ ] Define `MOCK` backend that stubs all GPIO/SPI calls
 - [ ] `Framebuffer`, `Canvas`, `PixelFormat`, and all drawing operations work normally (pure memory)
@@ -447,3 +448,30 @@ Development and CI testing without hardware.
 **Refs:** [EXTENSION_STRATEGY.md §5.1](EXTENSION_STRATEGY.md#51-platform-detection-in-extconfrb)
 **Depends on:** Task 19
 **Acceptance:** Full test suite passes on x86_64 Linux/macOS with no GPIO hardware. Hardware operations give helpful errors, not segfaults.
+
+---
+
+### 21. MockDevice (Ruby-level)
+
+Ruby `Display` subclass that replaces C hardware calls with no-op stubs, records every
+operation as an inspectable log, and supports palette-accurate PNG export. This is the
+primary interface for test suites and development scripts.
+
+- [ ] `MockDevice` subclass of `Display` — loads same model config, includes same capability modules
+- [ ] Constructor: `MockDevice.new(model:, busy_duration: 0)` — `model:` required, `busy_duration:` controls simulated refresh delay
+- [ ] Override private C hardware methods (`_epd_display`, `_epd_clear`, etc.) with Ruby stubs
+- [ ] Operation log: append `{ op:, timestamp:, **metadata }` for each hardware operation (`:init`, `:show`, `:clear`, `:sleep`, `:close`)
+- [ ] Thread-safe operation log protected by Mutex
+- [ ] Convenience queries: `operations(type = nil)`, `last_operation`, `operation_count(type)`, `clear_operations!`
+- [ ] `last_framebuffer` — stores the most recently rendered Framebuffer for inspection
+- [ ] `save_png(path)` — palette-accurate PNG export of `last_framebuffer` via ruby-vips (native resolution, no scaling)
+- [ ] Busy-wait simulation: when `busy_duration > 0`, `show` blocks for the configured duration (exercises timeout/interrupt paths)
+- [ ] `BusyTimeoutError` raised when display timeout < `busy_duration`
+- [ ] All capability methods work: `display_partial`, `init_fast`, `init_grayscale`, `display_region`, `DualBuffer#show`
+- [ ] RSpec helper: `:hardware` metadata tag with `mock_device` injection (see [MOCKING.md §4.1](MOCKING.md#41-rspec-helper))
+- [ ] Specs for operation logging, PNG export accuracy, busy-wait timeout, capability dispatch, thread safety
+
+**Files:** `lib/chroma_wave/mock_device.rb`, `spec/support/mock_device.rb`
+**Refs:** [MOCKING.md §2.2–§4](MOCKING.md#22-ruby-level-mockdevice)
+**Depends on:** Tasks 11, 12, 20 (Renderer, Display capabilities, C mock backend)
+**Acceptance:** `MockDevice.new(model: :epd_2in13_v4).is_a?(Display)` is true. Operation log captures all hardware calls. `save_png` produces a palette-accurate image matching what the physical display would show. Full test suite uses MockDevice for all hardware integration tests.
