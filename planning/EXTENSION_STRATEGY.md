@@ -157,12 +157,13 @@ module ChromaWave
       end
       @entries = entries.freeze
       @index = entries.each_with_index.to_h.freeze
-      # Pre-resolve palette names → RGBA for distance calculations.
+      # Pre-resolve palette entries → RGBA for distance calculations.
       # Avoids repeated Color.from_name lookups during quantization.
       @rgba_by_entry = entries.map { |name| [name, Color.from_name(name)] }.to_h.freeze
-      # Memoization cache: RGBA packed bytes → nearest palette name.
+      # Memoization cache: packed RGBA integer → nearest palette entry.
       # Dashboard UIs reuse the same few colors across thousands of pixels;
       # this cache turns O(palette_size) per pixel into O(1) for repeats.
+      # Key is a packed 32-bit integer (not a String) to avoid allocation per lookup.
       @nearest_cache = {}
     end
 
@@ -173,26 +174,31 @@ module ChromaWave
     def index_of(color) = @index.fetch(color)
     def color_at(index) = entries.fetch(index)
 
-    # Map an RGBA Color to the nearest palette name.
+    # Map an RGBA Color to the nearest palette entry.
     # Used by the Renderer during quantization. Results are memoized
-    # by packed RGBA bytes — repeated colors (common in UI rendering)
-    # hit the cache after the first lookup.
+    # by a packed integer key — zero allocation per cache hit.
     def nearest_color(rgba)
-      key = rgba.to_rgba_bytes
+      key = (rgba.r << 24) | (rgba.g << 16) | (rgba.b << 8) | rgba.a
       @nearest_cache[key] ||=
         entries.min_by { |name| color_distance(rgba, @rgba_by_entry[name]) }
     end
 
     private
 
+    # Redmean color distance — a cheap perceptual approximation that weights
+    # RGB channels based on human vision sensitivity. Dramatically better than
+    # Euclidean RGB for palette mapping (e.g., dark blues correctly map to blue
+    # instead of black). See https://www.compuphase.com/cmetric.htm
     def color_distance(a, b)
-      (a.r - b.r)**2 + (a.g - b.g)**2 + (a.b - b.b)**2
+      rmean = (a.r + b.r) / 2.0
+      dr = a.r - b.r
+      dg = a.g - b.g
+      db = a.b - b.b
+      (2 + rmean / 256.0) * dr**2 + 4 * dg**2 + (2 + (255 - rmean) / 256.0) * db**2
     end
   end
 
-  class PixelFormat
-    attr_reader :name, :bits_per_pixel, :palette
-
+  PixelFormat = Data.define(:name, :bits_per_pixel, :palette) do
     def pixels_per_byte = 8 / bits_per_pixel
 
     MONO   = new(name: :mono,   bits_per_pixel: 1, palette: Palette[:black, :white])
@@ -353,6 +359,7 @@ overrides it (see below):
 module ChromaWave
   class Display
     def show(canvas_or_fb)
+      ensure_initialized!
       fb = case canvas_or_fb
            when Canvas     then renderer.render(canvas_or_fb)
            when Framebuffer then canvas_or_fb
@@ -363,11 +370,13 @@ module ChromaWave
     end
 
     def clear(color: :white)
+      ensure_initialized!
       device.synchronize { _epd_clear(color) }
     end
 
     def sleep
       device.synchronize { _epd_sleep }
+      @initialized = false
     end
 
     def close
@@ -388,6 +397,19 @@ module ChromaWave
         display.close
       end
     end
+
+    private
+
+    # Lazy initialization: the hardware init sequence runs on first use,
+    # not at construction time. This allows Display objects to be created
+    # without hardware present (useful for testing, configuration, and
+    # querying model capabilities). The MOCK backend's init is a no-op.
+    def ensure_initialized!
+      return if @initialized
+
+      device.synchronize { _epd_init }
+      @initialized = true
+    end
   end
 end
 ```
@@ -399,6 +421,8 @@ in `Init_chroma_wave`. The Ruby capability modules provide the public API with v
 
 ```c
 /* In chroma_wave.c Init_chroma_wave(): */
+rb_define_private_method(rb_cDisplay, "_epd_init",
+                         rb_epd_init, 0);
 rb_define_private_method(rb_cDisplay, "_epd_clear",
                          rb_epd_clear, 1);
 rb_define_private_method(rb_cDisplay, "_epd_sleep",
@@ -657,7 +681,7 @@ into a single global. Our design separates these into three layers with distinct
 │                   🔄 Rendering Layer                     │
 │                                                          │
 │  Renderer: Canvas → Framebuffer                          │
-│    • Palette mapping (Color → palette name)              │
+│    • Palette mapping (Color → palette entry)              │
 │    • Dithering (Floyd-Steinberg, ordered, threshold)     │
 │    • Dual-buffer splitting (one Canvas → two mono FBs)   │
 │                                                          │
@@ -716,6 +740,21 @@ By defining drawing as a module mixed into Surface implementors, rather than a w
 drawing works uniformly on any pixel storage. This replaces the old model where Canvas
 "wrapped" a Framebuffer — now both are peers that share the same drawing interface.
 
+> **Bounds contract:** `set_pixel` silently drops out-of-bounds writes (clipping behavior).
+> `get_pixel` returns `nil` for out-of-bounds coordinates — callers that read pixels near
+> edges must check for `nil` or use `in_bounds?` first. Drawing primitives (which only call
+> `set_pixel`) are naturally safe. Code that reads pixels (e.g., `blit` compositing) must
+> guard against `nil` returns from the destination surface. This asymmetry is intentional:
+> silent clipping on writes avoids bounds-check overhead in the hot drawing path, while
+> explicit `nil` on reads prevents silent use of garbage data.
+
+> **Layer bounds are not validated against the parent.** `Layer.new` does not check that the
+> region falls within the parent's dimensions. A Layer extending past the parent edge will
+> delegate out-of-bounds coordinates to the parent's `set_pixel`/`get_pixel`, which clip
+> silently (writes) or return `nil` (reads). This is by design — it avoids validation
+> overhead and allows intentional "overflow" patterns where a Layer is used as a logical
+> coordinate space even if partially off-screen.
+
 #### Canvas: RGB Compositing Surface
 
 Canvas is an RGBA pixel buffer that stores colors in a **packed binary String** (4 bytes
@@ -761,9 +800,10 @@ module ChromaWave
     def clear(color = Color::WHITE)
       _canvas_clear(color.r, color.g, color.b, color.a)
     rescue NoMethodError
-      # Replace buffer contents in-place to avoid allocating a second
-      # 1.5MB String and triggering a GC cycle. The 4-byte pattern is
-      # repeated across the existing buffer with no intermediate copies.
+      # Build a full-size RGBA string from the 4-byte color pattern, then
+      # replace the buffer contents. This allocates one transient String
+      # (~1.5MB for 800×480) but avoids 384K individual String#[]= calls.
+      # The transient is eligible for GC immediately after replace returns.
       pixel = color.to_rgba_bytes
       @buffer.replace(pixel * (width * height))
     end
@@ -914,8 +954,8 @@ module ChromaWave
       # Iterate canvas.rgba_bytes directly (4-byte stride per pixel).
       # For each pixel, materialize a Color only for the Palette#nearest_color
       # call (memoized — repeated colors hit the cache). Map the result to a
-      # palette name, apply dithering to distribute quantization error, and
-      # write the palette name to fb.set_pixel.
+      # palette entry, apply dithering to distribute quantization error, and
+      # write the palette entry to fb.set_pixel.
     end
 
     def split_channels(canvas, black_fb, red_fb)
@@ -960,24 +1000,24 @@ The C implementation extracts only the pixel-packing logic from `GUI_Paint.c` (~
 the `Scale`-dependent bit-twiddling in `Paint_SetPixel` and `Paint_Clear`). No forking of
 GUI_Paint.c is needed.
 
-> **`set_pixel` color contract:** Framebuffer's `set_pixel` accepts a **palette name**
+> **`set_pixel` color contract:** Framebuffer's `set_pixel` accepts a **palette entry**
 > (`:black`, `:red`, etc.) — the same lowercase symbols used in `Palette` entries. The C
-> implementation maps the palette name to its integer index via `Palette#index_of`, then
+> implementation maps the palette entry to its integer index via `Palette#index_of`, then
 > bit-packs that index into the buffer at the correct position. `get_pixel` does the reverse:
-> extracts the integer index and returns the palette name via `Palette#color_at`. This means
-> drawing directly on a Framebuffer uses palette names, not `Color` objects:
+> extracts the integer index and returns the palette entry via `Palette#color_at`. This means
+> drawing directly on a Framebuffer uses palette entries, not `Color` objects:
 >
 > ```ruby
-> fb.set_pixel(10, 20, :black)     # palette name → index → bit-packed
+> fb.set_pixel(10, 20, :black)     # palette entry → index → bit-packed
 > fb.get_pixel(10, 20)             # → :black
 > ```
 >
 > The `Surface` mixin's drawing primitives accept a `color:` keyword. On a Canvas, this is a
-> `Color` (RGBA). On a Framebuffer, this is a palette name. The `Surface` protocol doesn't
+> `Color` (RGBA). On a Framebuffer, this is a palette entry. The `Surface` protocol doesn't
 > constrain the type — it just passes whatever `color:` value through to `set_pixel`. This
 > duck-typing means the same `draw_rect` call works on both, with the color type matching the
-> surface's storage format. The `Renderer` is the bridge: it maps `Color` → palette name
-> during quantization, writing palette names into the Framebuffer.
+> surface's storage format. The `Renderer` is the bridge: it maps `Color` → palette entry
+> during quantization, writing palette entries into the Framebuffer.
 
 > **Padding invariant:** For non-byte-aligned widths, the trailing bits in the last byte of
 > each row are **always zero**. This applies to all sub-byte formats: MONO (1 bpp, e.g.,
@@ -1077,6 +1117,11 @@ Transform (Ruby value object)
 The Display applies the correct Transform based on its model config when rendering a Canvas
 to a Framebuffer. Users can also apply transforms explicitly for custom coordinate systems.
 
+> **Deferred design:** The concrete Transform API (wrapper class, composition semantics,
+> integration with Renderer) will be designed during implementation. The key constraint is
+> that Canvas always operates in logical (unrotated) coordinates — physical rotation is
+> applied at the Renderer→Framebuffer boundary, not inside Canvas or Surface.
+
 ---
 
 ## 4. Content Pipeline
@@ -1091,7 +1136,7 @@ and images.
 
 Canvas compositing requires a richer color representation than the display's final palette.
 Colors are modeled as **frozen RGBA value objects** using `Data.define` (Ruby 3.2+), with a
-bridge to **palette names** — the lowercase symbols (`:black`, `:red`, `:dark_gray`) that
+bridge to **palette entries** — the lowercase symbols (`:black`, `:red`, `:dark_gray`) that
 Palettes, Framebuffers, and the Renderer use to identify colors in the display's native
 format:
 
@@ -1116,8 +1161,14 @@ module ChromaWave
 
     # Alpha compositing: source over onto opaque background.
     # Always produces an opaque result (a=255). This is intentionally
-    # simplified from full Porter-Duff — alpha is only meaningful in the
-    # Canvas layer and is flattened by the Renderer during quantization.
+    # simplified from full Porter-Duff — background is assumed opaque.
+    # Alpha is only meaningful in the Canvas layer and is flattened by
+    # the Renderer during quantization.
+    #
+    # NOTE: If background has a < 255, the background's alpha is silently
+    # ignored (the result is still opaque). Full Porter-Duff compositing
+    # with output alpha (for stacked semi-transparency) is deferred as a
+    # future enhancement if real-world use cases require it.
     def over(background)
       return self if opaque?
       return background if transparent?
@@ -1129,7 +1180,7 @@ module ChromaWave
       )
     end
 
-    # Reverse lookup: palette name → Color. Used by Palette#nearest_color.
+    # Reverse lookup: palette entry → Color. Used by Palette#nearest_color.
     # Keys are always lowercase symbols (:black, :red, etc.).
     NAME_MAP = {}
     def self.from_name(name) = NAME_MAP.fetch(name)
@@ -1183,13 +1234,13 @@ Framebuffer and Display never see alpha — they work with opaque palette indice
 > dashboard render creates dozens of Color objects (one per drawing call), not hundreds of
 > thousands (one per pixel).
 
-> **Color vs palette name:** The two color representations serve different layers.
+> **Color vs palette entry:** The two color representations serve different layers.
 > `Color` objects (`Color::RED`, `Color.new(r: 255, g: 0, b: 0)`) are RGBA values used on
-> Canvas for compositing. **Palette names** (`:red`, `:black`, `:dark_gray`) are the
+> Canvas for compositing. **Palette entries** (`:red`, `:black`, `:dark_gray`) are the
 > lowercase symbols used on Framebuffer for direct pixel access. The `Renderer` bridges
-> the two: it maps each Canvas `Color` to the nearest palette name during quantization.
+> the two: it maps each Canvas `Color` to the nearest palette entry during quantization.
 > Users drawing on a Canvas use `Color` objects; users drawing directly on a Framebuffer
-> use palette names. The `Surface` protocol is agnostic — `set_pixel` accepts whatever
+> use palette entries. The `Surface` protocol is agnostic — `set_pixel` accepts whatever
 > the concrete surface expects.
 
 ### 4.3 Shape Primitives
@@ -1319,7 +1370,9 @@ module ChromaWave
     # Iterate glyphs with position info — used by draw_text
     def each_glyph(text, &block)
       # Yields: { char:, bitmap:, x:, y:, width:, height: }
-      # bitmap is a 2D grayscale array (0-255 alpha values)
+      # bitmap is a packed binary String (1 byte per pixel, alpha values 0-255).
+      # Row-major layout: width * height bytes. Matches Canvas's packed-buffer
+      # philosophy and avoids allocating nested Arrays per glyph.
     end
   end
 
@@ -1353,8 +1406,11 @@ module ChromaWave
     private
 
     def render_glyph(glyph, x, y, color)
-      glyph[:bitmap].each_with_index do |row, gy|
-        row.each_with_index do |alpha, gx|
+      bitmap = glyph[:bitmap]
+      w, h = glyph[:width], glyph[:height]
+      h.times do |gy|
+        w.times do |gx|
+          alpha = bitmap.getbyte(gy * w + gx)
           next if alpha == 0
           set_pixel(x + gx, y + gy, Color.new(r: color.r, g: color.g, b: color.b, a: alpha))
         end
@@ -1597,14 +1653,23 @@ module ChromaWave
     private
 
     def ensure_rgba(vips_image)
-      case vips_image.bands
-      when 1 then vips_image.colourspace(:srgb)                        # grayscale → RGB
-                             .bandjoin(vips_image.new_from_image(255)) # + full alpha
-      when 2                                                            # grayscale + alpha
-        gray = vips_image[0].colourspace(:srgb)                        # gray → 3-band RGB
-        gray.bandjoin(vips_image[1])                                   # + original alpha
-      when 3 then vips_image.bandjoin(vips_image.new_from_image(255))  # RGB → RGBA
-      when 4 then vips_image                                           # already RGBA
+      # Normalize non-RGB color spaces (CMYK, LAB, etc.) to sRGB first.
+      # Without this, a 4-band CMYK image would be misinterpreted as RGBA.
+      img = if vips_image.interpretation != :srgb &&
+                vips_image.interpretation != :b_w
+               vips_image.colourspace(:srgb)
+             else
+               vips_image
+             end
+
+      case img.bands
+      when 1 then img.colourspace(:srgb)                        # grayscale → RGB
+                     .bandjoin(img.new_from_image(255))         # + full alpha
+      when 2                                                     # grayscale + alpha
+        gray = img[0].colourspace(:srgb)                        # gray → 3-band RGB
+        gray.bandjoin(img[1])                                   # + original alpha
+      when 3 then img.bandjoin(img.new_from_image(255))         # RGB → RGBA
+      when 4 then img                                            # already RGBA
       end.cast(:uchar)
     end
   end
@@ -1822,6 +1887,19 @@ The GVL release (Section 5.3) composes correctly with this: the mutex is acquire
 entering C, the GVL is released inside C for the busy-wait, and the mutex is released after
 the C call returns. Other Ruby threads can run during the busy-wait but cannot start a
 concurrent hardware operation.
+
+### 5.8 Multi-Display (Out of Scope for v1)
+
+Multiple displays on one Raspberry Pi are architecturally possible — the SPI bus is shared
+(MOSI/SCLK) while each display needs its own CS, DC, RST, and BUSY GPIO pins (~4 pins per
+display). Displays can refresh in parallel (refresh is internal to the controller, no SPI
+needed), with SPI transactions serialized. However, the vendor HAL (`DEV_Config`) hardcodes
+pin assignments as global integers and supports only one active display.
+
+Supporting multi-display would require reworking the HAL to accept per-display pin
+configuration, making Device a shared SPI handle rather than a global, and changing the mutex
+granularity to serialize SPI transactions while allowing parallel busy-waits. This is deferred
+to a future version — v1 supports one Display per Device (1:1).
 
 ---
 
