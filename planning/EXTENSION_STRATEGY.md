@@ -112,16 +112,21 @@ completes well under a second.
 | Pixel packing into buffer  | C     | Bit-twiddling (MSB bitmask, nibble packing)   |
 | Buffer allocation/free     | C     | `xmalloc`/`xfree` with `TypedData` lifecycle  |
 | Bulk buffer clear/fill     | C     | Format-aware memset, faster than per-pixel    |
+| Canvas bulk ops            | C*    | clear, blit_alpha, load_rgba (~80 lines)      |
 | Coordinate transforms      | Ruby  | Rotation/mirror matrix math, no hardware      |
 | Surface protocol           | Ruby  | Abstract drawing target (duck-type interface) |
-| Canvas (RGB buffer)        | Ruby  | Off-screen compositing in full color space    |
+| Canvas (RGBA buffer)       | Ruby  | Packed String storage, Ruby API, C hot paths  |
 | Layer composition          | Ruby  | Clip regions, offset blitting, widget bounds  |
 | Drawing primitives         | Ruby  | Bresenham algorithms, calls `Surface#set_pixel`|
-| Rendering / quantization   | Ruby  | RGB→palette mapping, dithering, dual-buf split|
+| Rendering / quantization   | Ruby  | RGBA→palette mapping, dithering, dual-buf split|
 | Text rendering             | Ruby  | FreeType or pre-rendered, not bitmap fonts    |
-| Image loading/conversion   | Ruby  | MiniMagick, load into Canvas as RGB pixels    |
+| Image loading/conversion   | Ruby  | ruby-vips, bulk load into Canvas via load_rgba|
 | Display capability queries | Ruby  | `respond_to?` / module inclusion checks       |
 | Model configuration        | Ruby  | Resolution, format, capabilities per model    |
+
+> **C\*:** Canvas C accelerators are optional. All three methods have Ruby fallbacks.
+> The C code operates on Canvas's Ruby String buffer (`RSTRING_PTR`), not its own
+> allocation — Canvas owns its data, C just processes it faster.
 
 ---
 
@@ -228,6 +233,10 @@ ext/chroma_wave/                    # C -- only what MUST be C
   framebuffer.c                       # Framebuffer: pixel packing (set_pixel, get_pixel,
   |                                   #   clear, raw buffer access). ~100 lines extracted
   |                                   #   from GUI_Paint.c. Parameterized, no global state.
+  canvas.c                            # Canvas C accelerators: _canvas_clear, _canvas_blit_alpha,
+  |                                   #   _canvas_load_rgba. ~80 lines. Operates on Canvas's
+  |                                   #   packed String buffer via RSTRING_PTR. Optional —
+  |                                   #   Ruby fallbacks exist for all three methods.
   display.c                           # Display: init/clear/refresh/sleep dispatch.
   |                                   #   Calls device I/O + driver-specific logic.
   driver_registry.c                   # Two-tier registry: config data + optional overrides.
@@ -397,6 +406,14 @@ rb_define_private_method(rb_cDisplay, "_epd_display_region",
                          rb_epd_display_region, 5);
 /* ... etc. C implementations check driver->custom_display or fall
    through to the generic config-driven path. */
+
+/* Canvas C accelerators (canvas.c): operate on Canvas's String buffer */
+rb_define_private_method(rb_cCanvas, "_canvas_clear",
+                         rb_canvas_clear, 4);        /* r, g, b, a */
+rb_define_private_method(rb_cCanvas, "_canvas_blit_alpha",
+                         rb_canvas_blit_alpha, 3);   /* source, x, y */
+rb_define_private_method(rb_cCanvas, "_canvas_load_rgba",
+                         rb_canvas_load_rgba, 5);    /* bytes, w, h, x, y */
 ```
 
 ```ruby
@@ -618,7 +635,7 @@ into a single global. Our design separates these into three layers with distinct
 │                   🎨 Drawing Layer                       │
 │                                                          │
 │  Surface ← duck-type protocol (set_pixel, dimensions)   │
-│    ├── Canvas        (RGB pixel buffer, pure Ruby)       │
+│    ├── Canvas        (RGBA packed String, C-accelerated) │
 │    ├── Layer         (clipped sub-region of a Surface)   │
 │    └── Framebuffer   (device-format, C-backed)           │
 │                                                          │
@@ -690,9 +707,13 @@ drawing works uniformly on any pixel storage. This replaces the old model where 
 
 #### Canvas: RGB Compositing Surface
 
-Canvas is a pure-Ruby pixel buffer that stores colors in a **rich intermediate format**
-(RGB or named palette symbols). It has no knowledge of hardware, pixel packing, or display
-formats. All compositing happens here, and quantization is deferred to the Renderer:
+Canvas is an RGBA pixel buffer that stores colors in a **packed binary String** (4 bytes
+per pixel: R, G, B, A). It has no knowledge of hardware, pixel packing, or display formats.
+All compositing happens here, and quantization is deferred to the Renderer.
+
+The Ruby class owns the data layout and API. C accelerator methods (defined in `canvas.c`,
+~80 lines) handle the hot paths — bulk clear, alpha-compositing blit, and RGBA byte loading.
+These are optional: without the C extension, Canvas falls back to pure-Ruby implementations.
 
 ```ruby
 module ChromaWave
@@ -701,27 +722,69 @@ module ChromaWave
 
     attr_reader :width, :height
 
+    BYTES_PER_PIXEL = 4  # RGBA
+
     def initialize(width:, height:, background: Color::WHITE)
-      @pixels = Array.new(width * height, background)
+      @width = width
+      @height = height
+      # Packed RGBA String — one contiguous allocation, single GC object.
+      # C accelerators operate directly on this buffer via RSTRING_PTR.
+      @buffer = (background.to_rgba_bytes * (width * height)).b
     end
 
     def set_pixel(x, y, color = Color::BLACK)
       return unless in_bounds?(x, y)
-      @pixels[y * width + x] = color
+      @buffer[(y * width + x) * BYTES_PER_PIXEL, BYTES_PER_PIXEL] =
+        color.to_rgba_bytes
     end
 
     def get_pixel(x, y)
       return unless in_bounds?(x, y)
-      @pixels[y * width + x]
+      Color.from_rgba_bytes(
+        @buffer[(y * width + x) * BYTES_PER_PIXEL, BYTES_PER_PIXEL]
+      )
     end
 
+    # C-accelerated: memset-equivalent fill of packed RGBA bytes.
+    # Falls back to Ruby loop if C extension unavailable.
     def clear(color = Color::WHITE)
-      @pixels.fill(color)
+      _canvas_clear(color.r, color.g, color.b, color.a)
+    rescue NoMethodError
+      @buffer = (color.to_rgba_bytes * (width * height)).b
     end
 
-    # Alpha-compositing blit — source pixels are composited over the existing
-    # canvas content via Color#over. Transparent source pixels blend correctly.
+    # C-accelerated: per-pixel alpha composite of source onto self.
+    # Falls back to Ruby loop if C extension unavailable.
     def blit(source, x:, y:)
+      if source.is_a?(Canvas) && respond_to?(:_canvas_blit_alpha, true)
+        _canvas_blit_alpha(source, x, y)
+      else
+        blit_ruby(source, x:, y:)
+      end
+    end
+
+    # Bulk-load packed RGBA bytes (from Image#write_to_memory or similar).
+    # C-accelerated: single memcpy into the buffer. Falls back to Ruby.
+    def load_rgba_bytes(bytes, width: @width, height: @height, x: 0, y: 0)
+      if respond_to?(:_canvas_load_rgba, true)
+        _canvas_load_rgba(bytes, width, height, x, y)
+      else
+        load_rgba_bytes_ruby(bytes, width:, height:, x:, y:)
+      end
+    end
+
+    # Raw buffer access — used by Renderer for direct byte iteration
+    # without per-pixel Color materialization.
+    def rgba_bytes = @buffer
+
+    # Create a clipped sub-region for independent drawing
+    def layer(x:, y:, width:, height:, &block)
+      Layer.new(self, x:, y:, width:, height:).tap { |l| yield l if block }
+    end
+
+    private
+
+    def blit_ruby(source, x:, y:)
       source.height.times do |sy|
         source.width.times do |sx|
           src_color = source.get_pixel(sx, sy)
@@ -734,17 +797,23 @@ module ChromaWave
       end
     end
 
-    # Create a clipped sub-region for independent drawing
-    def layer(x:, y:, width:, height:, &block)
-      Layer.new(self, x:, y:, width:, height:).tap { |l| yield l if block }
+    def load_rgba_bytes_ruby(bytes, width:, height:, x:, y:)
+      height.times do |row|
+        width.times do |col|
+          src_off = (row * width + col) * BYTES_PER_PIXEL
+          dst_off = ((y + row) * @width + (x + col)) * BYTES_PER_PIXEL
+          next unless in_bounds?(x + col, y + row)
+          @buffer[dst_off, BYTES_PER_PIXEL] = bytes[src_off, BYTES_PER_PIXEL]
+        end
+      end
     end
   end
 end
 ```
 
 **Why an RGB intermediate matters:** If Canvas wrote directly to a Framebuffer, every
-`set_pixel` quantizes immediately — a photo blitted onto a mono surface looses all color
-information before text could be composited over it. With an RGB Canvas, composition happens
+`set_pixel` quantizes immediately — a photo blitted onto a mono surface loses all color
+information before text could be composited over it. With an RGBA Canvas, composition happens
 in full color and quantization is applied once at the end by the Renderer. This enables:
 
 - Alpha blending and opacity compositing
@@ -827,7 +896,9 @@ module ChromaWave
     private
 
     def quantize(canvas, fb)
-      # Map each RGB pixel → nearest palette entry via Palette#nearest_color
+      # Iterate canvas.rgba_bytes directly (4-byte stride per pixel) —
+      # no Color materialization, no get_pixel overhead.
+      # Map each RGBA tuple → nearest palette entry via Palette#nearest_color
       # Apply dithering algorithm to distribute quantization error
       # Write packed pixels to fb.set_pixel
     end
@@ -910,18 +981,52 @@ end
 display.show(canvas)
 ```
 
-#### Memory Tradeoff
+#### Memory Design: Packed String + C Accelerators
 
-Canvas stores an `Array` of `Color` value objects (`Data.define`). Each `Color` is a frozen,
-compact struct (~40 bytes on CRuby 3.2+), so an 800x480 Canvas uses ~15MB (384K pixels ×
-~40 bytes) vs 48KB for a mono Framebuffer. On a Raspberry Pi with 1–8GB RAM this is
-acceptable. For memory-constrained scenarios, users can draw directly on a Framebuffer via
-the `Surface` protocol — the path exists, it just skips Canvas compositing and Renderer
-quantization.
+Canvas stores pixels in a **packed binary String** (4 bytes/pixel: R, G, B, A). This is a
+single GC object regardless of resolution, eliminating the per-pixel object overhead of an
+`Array<Color>` approach:
 
-> **Future optimization:** If Canvas memory becomes an issue, a C-backed RGBA buffer (4
-> bytes/pixel, ~1.5MB for 800x480) can replace the Ruby Array without changing the Surface
-> API. This is deferred until profiling shows it's needed.
+| Metric                    | Array\<Color\> (rejected) | Packed String (chosen)   |
+|---------------------------|--------------------------|--------------------------|
+| Memory per 800×480 Canvas | ~15MB (384K × ~40B)      | ~1.5MB (384K × 4B)      |
+| GC objects per Canvas     | ~384,001                 | 2 (Canvas + String)      |
+| `Canvas.new` + clear      | ~120ms (384K Color.new)  | <1ms (String.new)        |
+| `Image#draw_onto` 800×480 | ~800ms (384K Color.new)  | ~5ms (C bulk memcpy)     |
+| `blit` 400×300 with alpha | ~50ms (120K get/over/set)| ~2ms (C alpha loop)      |
+| 4 Layers on Pi Zero       | ~60MB, GC thrashing      | ~6MB, no GC pressure     |
+
+The 10x memory reduction comes from the packed byte layout, not from C per se. The C
+accelerators (~80 lines in `canvas.c`) handle three hot paths that would otherwise require
+per-pixel Ruby→C round-trips:
+
+1. **`_canvas_clear(r, g, b, a)`** — fills the buffer with a repeating 4-byte pattern
+   via `memset`-style loop. Replaces 384K `String#[]=` calls with one C function.
+2. **`_canvas_blit_alpha(source, x, y)`** — per-pixel source-over alpha composite
+   operating directly on both buffers' `RSTRING_PTR`. Avoids materializing any `Color`
+   objects. Integer-only alpha math (no floats).
+3. **`_canvas_load_rgba(bytes, w, h, x, y)`** — bulk-copies packed RGBA data from
+   `Image#write_to_memory` into the canvas buffer. Row-by-row `memcpy` with bounds
+   clipping. Eliminates 384K `Color.new` calls in the image loading path.
+
+**Graceful degradation:** All three C methods have Ruby fallbacks (see Canvas class above).
+On the MOCK backend, in CI, or if the C extension fails to compile, Canvas works identically
+— just slower. The C accelerators are optimizations, not requirements.
+
+**Color materialization is lazy.** `get_pixel` creates a `Color` value object on demand from
+4 bytes. Drawing primitives (Ruby) call `set_pixel` with Color objects, which are immediately
+decomposed back into 4 bytes. The steady-state hot path (drawing shapes, blitting) touches
+very few live Color objects at any given time.
+
+> **Renderer direct-byte access:** The Renderer can iterate `canvas.rgba_bytes` directly
+> (4 bytes per pixel stride) during quantization, avoiding `get_pixel` and Color
+> materialization entirely for the full-canvas render pass. This makes the
+> Canvas→Framebuffer path a single linear scan over packed bytes — optimal for cache
+> locality and completely GC-free.
+
+For truly memory-constrained scenarios, users can still draw directly on a Framebuffer via
+the `Surface` protocol — that path skips Canvas compositing and Renderer quantization
+entirely.
 
 #### Transform Integration
 
@@ -963,6 +1068,15 @@ module ChromaWave
 
     def opaque?  = a == 255
     def transparent? = a == 0
+
+    # Pack into 4-byte binary string (for Canvas packed buffer storage).
+    def to_rgba_bytes = [r, g, b, a].pack("C4")
+
+    # Unpack from 4-byte binary string (lazy materialization from Canvas).
+    def self.from_rgba_bytes(bytes)
+      r, g, b, a = bytes.unpack("C4")
+      new(r:, g:, b:, a:)
+    end
 
     # Alpha compositing: source over onto opaque background.
     # Always produces an opaque result (a=255). This is intentionally
@@ -1008,14 +1122,25 @@ end
 
 | Stage              | Color representation | Alpha behavior                          |
 |--------------------|----------------------|-----------------------------------------|
-| `set_pixel`        | `Color` (RGBA)       | Direct replacement (no compositing)     |
-| `blit` / `render_glyph` | `Color` (RGBA) | Per-pixel alpha compositing (source over)|
-| Renderer quantize  | RGBA → palette index | Alpha flattened against background color|
+| `set_pixel`        | `Color` → 4 packed bytes | Direct replacement (no compositing) |
+| `get_pixel`        | 4 packed bytes → `Color` | Lazy materialization on demand      |
+| `blit` (C accel)   | Packed bytes directly | Per-pixel alpha composite, no Color objects |
+| `blit` (Ruby fallback) | `Color` (RGBA) | Per-pixel alpha compositing (source over)|
+| `load_rgba_bytes`  | Raw RGBA bytes → buffer | Bulk memcpy, no Color objects       |
+| `render_glyph`     | `Color` (RGBA)       | Per-pixel alpha compositing (source over)|
+| Renderer quantize  | `rgba_bytes` → palette | Iterates packed bytes directly, no Color |
 | Framebuffer        | Palette index (int)  | No alpha — device format is opaque      |
 
 Alpha exists only in the Canvas layer. The Renderer flattens it during quantization
 (compositing against a configurable background, typically white for e-paper). The
 Framebuffer and Display never see alpha — they work with opaque palette indices.
+
+> **Minimal Color object creation:** In the common pipeline (load image → compose → render
+> → display), Color objects are created only for drawing primitive calls (`set_pixel`,
+> `draw_line`, etc.) and glyph rendering. Bulk operations (image loading, blit, clear,
+> quantization) operate directly on packed bytes, bypassing Color entirely. A typical
+> dashboard render creates dozens of Color objects (one per drawing call), not hundreds of
+> thousands (one per pixel).
 
 > **Named colors and palettes:** `Color::RED` is an RGB value. The `Renderer` maps it to
 > the nearest palette entry during quantization (e.g., index 3 on a COLOR4 display). Users
@@ -1410,34 +1535,20 @@ module ChromaWave
 
     # --- Canvas integration ---
 
+    # Load into a new Canvas. Uses Canvas#load_rgba_bytes for bulk transfer —
+    # the packed RGBA bytes from vips go directly into Canvas's packed String
+    # buffer without materializing any Color objects.
     def to_canvas
       Canvas.new(width:, height:).tap do |canvas|
-        pixels = @vips_image.write_to_memory.unpack("C*")
-        height.times do |y|
-          width.times do |x|
-            offset = (y * width + x) * 4
-            canvas.set_pixel(x, y, Color.new(
-              r: pixels[offset], g: pixels[offset + 1],
-              b: pixels[offset + 2], a: pixels[offset + 3]
-            ))
-          end
-        end
+        canvas.load_rgba_bytes(@vips_image.write_to_memory)
       end
     end
 
-    # Blit directly onto an existing Canvas (avoids intermediate Canvas)
+    # Blit directly onto an existing Canvas at (x, y). Uses Canvas#load_rgba_bytes
+    # for bulk transfer — C-accelerated memcpy with bounds clipping.
     def draw_onto(canvas, x:, y:)
-      pixels = @vips_image.write_to_memory.unpack("C*")
-      height.times do |row|
-        width.times do |col|
-          offset = (row * width + col) * 4
-          color = Color.new(
-            r: pixels[offset], g: pixels[offset + 1],
-            b: pixels[offset + 2], a: pixels[offset + 3]
-          )
-          canvas.set_pixel(x + col, y + row, color)
-        end
-      end
+      canvas.load_rgba_bytes(@vips_image.write_to_memory,
+                             width:, height:, x:, y:)
     end
 
     private
@@ -1488,11 +1599,11 @@ display.show(canvas)
 > primitives and text (no photo loading), `Image` is never required — Canvas and Surface
 > work independently.
 
-> **Performance note:** `to_canvas` and `draw_onto` unpack the full image into a Ruby array
-> and iterate pixel-by-pixel (384K `Color.new` calls for an 800x480 image). This is a known
-> hot path. A future C helper (`Canvas#load_rgba_bytes`) that bulk-copies packed RGBA data
-> directly into Canvas storage would eliminate the per-pixel Ruby overhead. Deferred until
-> profiling shows it's needed — e-paper refresh times (2-15 seconds) dwarf image loading.
+> **Performance note:** `to_canvas` and `draw_onto` use `Canvas#load_rgba_bytes`, which
+> bulk-copies vips' packed RGBA output directly into Canvas's packed String buffer. With the
+> C accelerator, this is a row-by-row `memcpy` (~5ms for 800×480). Without the C accelerator,
+> the Ruby fallback does byte-slice copying (~50ms). Neither path creates any Color objects.
+> This is a ~160x improvement over the naive per-pixel `Color.new` approach.
 
 ### 4.7 Updated Directory Structure
 
@@ -1518,6 +1629,8 @@ lib/chroma_wave/
   image.rb                           # Image (Vips wrapper, load/resize/crop/blit)
 
 ext/chroma_wave/
+  canvas.c                            # Canvas C accelerators: clear, blit_alpha,
+  |                                   #   load_rgba (~80 lines, optional)
   freetype.c                          # FreeType C bindings: load_face, render_glyph,
   |                                   #   measure_width, line_height, ascent, descent
   freetype.h                          # FT_Library lifecycle, FT_Face struct wrapper
@@ -1677,10 +1790,11 @@ concurrent hardware operation.
 | EPD_*.c drivers     | ~25,000     | ~8,000         | Data tables + ~20 custom files  |
 | GUI_Paint + BMPfile | ~1,200      | ~100           | Pixel packing only              |
 | Fonts               | ~15,000     | 0              | Not vendored                    |
+| Canvas accelerators | 0           | ~80            | New: clear, blit_alpha, load_rgba |
 | FreeType bindings   | 0           | ~200           | New: glyph rasterization bridge |
-| **Total**           | **~42,400** | **~9,500**     | **22% of original**             |
+| **Total**           | **~42,400** | **~9,580**     | **23% of original**             |
 
-The refactored C footprint is roughly **22% of the original**, with the rest replaced by
+The refactored C footprint is roughly **23% of the original**, with the rest replaced by
 Ruby code or eliminated as duplication.
 
 ---
@@ -1700,8 +1814,13 @@ Ruby code or eliminated as duplication.
    (`Color::BLACK`, etc.) and alpha compositing (source-over onto opaque background).
 6. **Define the `Surface` protocol** as a Ruby module with `set_pixel`, `get_pixel`, `clear`,
    `width`, `height`, and mixin drawing primitives (see step 8).
-7. **Implement `Canvas`** as a pure-Ruby RGBA pixel buffer that includes `Surface`. Canvas
-   stores colors in a rich intermediate format, independent of any Display or PixelFormat.
+7. **Implement `Canvas`** as a packed-String RGBA pixel buffer (4 bytes/pixel) that includes
+   `Surface`. Storage is a single binary String — one GC object regardless of resolution.
+   `get_pixel` lazily materializes `Color` objects; `set_pixel` decomposes them back into
+   bytes. Expose `rgba_bytes` for direct byte access by the Renderer.
+7a. **Implement Canvas C accelerators** (`canvas.c`, ~80 lines): `_canvas_clear`,
+   `_canvas_blit_alpha`, `_canvas_load_rgba`. These operate on `Canvas`'s String buffer via
+   `RSTRING_PTR`. All three have Ruby fallbacks for graceful degradation.
 8. **Implement drawing primitives** as `Surface` mixin methods: line, polyline, rect,
    rounded_rect, circle, ellipse, arc, polygon, flood_fill. All with `stroke_width:` and
    `fill:` support.
@@ -1720,7 +1839,8 @@ Ruby code or eliminated as duplication.
     Lucide (~120KB TTF, ISC license) in `data/fonts/`. Add `rake icons:generate` task to
     produce the glyph map from Lucide's metadata.
 14. **Implement `Image`** as a ruby-vips wrapper. Handles loading any image format,
-    resize/crop, RGBA conversion, and blitting onto Canvas.
+    resize/crop, RGBA conversion. Uses `Canvas#load_rgba_bytes` for bulk transfer —
+    vips' packed RGBA output maps directly to Canvas's packed String buffer.
 15. **Compile all drivers unconditionally** -- total binary size is negligible.
 16. **Detect platform in `extconf.rb`**, set `-D` flags for the appropriate GPIO/SPI backend.
     Also detect and link `libfreetype`.
