@@ -20,4 +20,12 @@ Rake::ExtensionTask.new('chroma_wave', GEMSPEC) do |ext|
   ext.lib_dir = 'lib/chroma_wave'
 end
 
+namespace :generate do
+  desc 'Regenerate driver_configs_generated.h from vendor sources'
+  task :driver_configs do
+    require_relative 'lib/chroma_wave/driver_extraction'
+    ChromaWave::DriverExtraction::Runner.new.call
+  end
+end
+
 task default: %i[clobber compile spec rubocop]
