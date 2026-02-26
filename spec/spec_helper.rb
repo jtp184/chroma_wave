@@ -1,5 +1,16 @@
 # frozen_string_literal: true
 
+require 'simplecov'
+
+SimpleCov.start do
+  enable_coverage :branch
+  minimum_coverage line: 90, branch: 80
+
+  add_filter '/spec/'
+  add_filter '/vendor/'
+  add_filter '/tmp/'
+end
+
 require 'chroma_wave'
 
 RSpec.configure do |config|

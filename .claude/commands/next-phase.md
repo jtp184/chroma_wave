@@ -1,4 +1,4 @@
-Begin the next phase of work as outlined in @planning/ROADMAP.md
+Begin the next phase of work as outlined in @./planning/ROADMAP.md
 
 - Determine the specific tasks and milestones for this phase.
   - Interview me as needed for any product direction, questions, clarifications, or additional information.

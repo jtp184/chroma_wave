@@ -13,6 +13,8 @@ gem 'rake-compiler'
 gem 'rspec', '~> 3.0'
 gem 'rubocop', '~> 1.21'
 
+gem 'simplecov', '~> 0.22', require: false
+
 gem 'rubocop-rake', '~> 0.7.1'
 gem 'rubocop-rspec', '~> 3.9'
 

@@ -10,10 +10,12 @@ Task breakdown for the C extension and Ruby library. Derived from the architectu
 ## Phase Overview
 
 ```
-Phase 1: C Foundation
-  ├── 1. Framebuffer pixel packing
-  ├── 2. Device I/O primitives
-  └── 3. Two-tier driver registry
+Phase 1: C Foundation                ✅ COMPLETE (branch: feature/groundwork-phase-1)
+  ├── 1.  Framebuffer pixel packing  ✅
+  ├── 1a. Error hierarchy            ✅  (added during Phase 1)
+  ├── 2.  Device I/O primitives      ⚠️  C-level done; Ruby wrapper deferred
+  ├── 3.  Two-tier driver registry   ⚠️  Tier 1 complete; Tier 2 overrides are stubs
+  └── 3a. Driver extraction pipeline ✅  (added during Phase 1)
           │
 Phase 2: Core Value Types          ← depends on Phase 1 (PixelFormat used by Framebuffer)
   ├── 4. PixelFormat & Palette
@@ -31,7 +33,7 @@ Phase 4: Rendering & Display       ← depends on Phases 1-3
   ├── 12. Display capability modules
   ├── 13. Compile all drivers
   ├── 14. GVL release for refresh
-  └── 15. Busy-wait timeout
+  └── 15. Busy-wait timeout          ⚠️  C-level polling done; Ruby integration deferred
           │
 Phase 5: Content Pipeline          ← depends on Phase 3 (draws onto Surfaces)
   ├── 16. FreeType bindings
@@ -39,78 +41,120 @@ Phase 5: Content Pipeline          ← depends on Phase 3 (draws onto Surfaces)
   └── 18. Image (ruby-vips)
           │
 Phase 6: Build & Platform          ← can start early, but final integration last
-  ├── 19. extconf.rb platform detection
-  ├── 20. Mock backend (C-level)
-  └── 21. MockDevice (Ruby-level)
+  ├── 19. extconf.rb platform detection ⚠️  Stub only
+  ├── 20. Mock backend (C-level)     ✅
+  ├── 21. MockDevice (Ruby-level)
+  ├── 22. CI/CD pipeline             ✅  (added during Phase 1)
+  └── 23. Code coverage              ✅  (added during Phase 1)
 ```
 
 ---
 
-## 🏗️ Phase 1: C Foundation
+## 🏗️ Phase 1: C Foundation ✅
 
 The bedrock C layer — pixel storage, hardware I/O, and driver dispatch.
 
-### 1. Extract pixel-packing core
+### 1. Extract pixel-packing core ✅
 
 Extract `Paint_SetPixel` and `Paint_Clear` (~100 lines) from the vendor's `GUI_Paint.c` into
 a standalone `framebuffer.c`. Parameterize with a `framebuffer_t` struct — no global state.
 
-- [ ] Define `framebuffer_t` struct (buffer ptr, width, height, bits_per_pixel, pixel_format enum)
-- [ ] Extract pixel-packing logic for all 4 formats (1-bit MONO, 2-bit GRAY4, 4-bit COLOR4, 8-bit COLOR7)
-- [ ] Extract `clear` (format-aware memset)
-- [ ] Implement `get_pixel` (reverse of packing)
-- [ ] Wrap with `TypedData_Wrap_Struct` (`dfree` → `xfree`, `dsize` → buffer_size, `RUBY_TYPED_FREE_IMMEDIATELY`)
-- [ ] Separate `alloc_func` from `initialize`
-- [ ] Expose Ruby methods: `set_pixel`, `get_pixel`, `clear`, `width`, `height`, `bytes` (raw buffer)
-- [ ] Unit tests for pack/unpack round-trip on all 4 formats
+- [x] Define `framebuffer_t` struct (buffer ptr, width, height, bits_per_pixel, pixel_format enum)
+- [x] Extract pixel-packing logic for all 4 formats (1-bit MONO, 2-bit GRAY4, 4-bit COLOR4, 8-bit COLOR7)
+- [x] Extract `clear` (format-aware memset)
+- [x] Implement `get_pixel` (reverse of packing)
+- [x] Wrap with `TypedData_Wrap_Struct` (`dfree` → `xfree`, `dsize` → buffer_size, `RUBY_TYPED_FREE_IMMEDIATELY`)
+- [x] Separate `alloc_func` from `initialize`
+- [x] Expose Ruby methods: `set_pixel`, `get_pixel`, `clear`, `width`, `height`, `bytes` (raw buffer)
+- [x] Unit tests for pack/unpack round-trip on all 4 formats
+
+Also implemented beyond spec: `initialize_copy` (deep copy for `dup`/`clone`), `#==` (value equality), `#inspect`, dimension cap validation.
 
 **Files:** `ext/chroma_wave/framebuffer.c`, `ext/chroma_wave/framebuffer.h`
 **Refs:** [EXTENSION_STRATEGY.md §2.2](EXTENSION_STRATEGY.md#22-responsibility-matrix), [API_REFERENCE.md §2](API_REFERENCE.md#2-surface-protocol--implementations)
 **Depends on:** —
-**Acceptance:** All 4 pixel formats pack/unpack correctly. `TypedData` reports accurate `dsize`.
+**Acceptance:** ✅ All 4 pixel formats pack/unpack correctly. `TypedData` reports accurate `dsize`.
 
 ---
 
-### 2. Factor Device I/O primitives
+### 1a. Error hierarchy ✅
+
+Custom exception classes for structured error handling across all phases.
+
+- [x] `ChromaWave::Error` base class
+- [x] `ChromaWave::TimeoutError`, `ChromaWave::DeviceError`, etc.
+- [x] Specs for error hierarchy
+
+**Files:** `lib/chroma_wave/error.rb`
+**Depends on:** —
+
+---
+
+### 2. Factor Device I/O primitives ⚠️ C-level done
 
 Move `Reset()`, `SendCommand()`, `SendData()`, `ReadBusy()` out of the 70 per-driver files
 into shared Device-level functions parameterized by model config. Eliminates ~1,400 lines of
 duplicated C code.
 
-- [ ] Define `epd_reset(device, config)` — parameterized by `reset_ms` timing from config
-- [ ] Define `epd_send_command(device, cmd)` — CS/DC pin toggling + SPI write
-- [ ] Define `epd_send_data(device, data, len)` — single-byte and bulk variants
-- [ ] Define `epd_read_busy(device, config)` — parameterized by busy polarity from config
+- [x] Define `epd_reset(device, config)` — parameterized by `reset_ms` timing from config
+- [x] Define `epd_send_command(device, cmd)` — CS/DC pin toggling + SPI write
+- [x] Define `epd_send_data(device, data, len)` — single-byte and bulk variants
+- [x] Define `epd_read_busy(device, config)` — parameterized by busy polarity from config
 - [ ] Wrap Device SPI/GPIO lifecycle in a `device_t` struct with `TypedData` GC integration
 - [ ] Implement `Device.open { |d| ... }` block form and explicit `#close`
 - [ ] Thread safety via Ruby `Mutex` on all hardware operations
 - [ ] Redirect vendor `Debug()` macro to `rb_warn()`
 
+The C-internal functions (`epd_reset`, `epd_send_command`, `epd_send_data`, `epd_send_data_bulk`, `epd_read_busy`) are fully implemented and used by the driver registry. The Ruby-visible `Device` class wrapping these functions is deferred to Phase 4 when the Display layer is built.
+
 **Files:** `ext/chroma_wave/device.c`, `ext/chroma_wave/device.h`
 **Refs:** [EXTENSION_STRATEGY.md §3.6](EXTENSION_STRATEGY.md#36-device-owns-io-primitives), [WAVESHARE_LIBRARY.md](WAVESHARE_LIBRARY.md)
 **Depends on:** —
-**Acceptance:** Single set of I/O primitives serves all drivers. Block form guarantees cleanup.
+**Acceptance:** ⚠️ C-level I/O primitives serve all drivers. Ruby wrapper and block form deferred.
 
 ---
 
-### 3. Build two-tier driver registry
+### 3. Build two-tier driver registry ⚠️ Tier 1 complete, Tier 2 stubs
 
 Static config data for simple models (Tier 1), optional code overrides for complex ones
 (Tier 2, ~20 models).
 
-- [ ] Define `epd_model_config_t` (resolution, pixel_format, busy_polarity, reset_timing, init_sequence, display_cmd, capability_flags)
-- [ ] Define `epd_driver_t` (optional function pointers: `custom_init`, `custom_display`, `pre_display`, `post_display`)
-- [ ] Implement `epd_generic_init()` that interprets `init_sequence` byte arrays
-- [ ] Implement `epd_generic_display()` that sends buffer via the configured display command
-- [ ] Register all ~70 models as config entries
+- [x] Define `epd_model_config_t` (resolution, pixel_format, busy_polarity, reset_timing, init_sequence, display_cmd, capability_flags)
+- [x] Define `epd_driver_t` (optional function pointers: `custom_init`, `custom_display`, `pre_display`, `post_display`)
+- [x] Implement `epd_generic_init()` that interprets `init_sequence` byte arrays — full bytecode interpreter with 7 opcodes
+- [x] Implement `epd_generic_display()` that sends buffer via the configured display command
+- [x] Register all ~70 models as config entries — auto-generated via `rake generate:driver_configs`
 - [ ] Write Tier 2 overrides for complex models (~20: EPD_4in2 LUT selection, EPD_3in7, EPD_5in65f power cycle, EPD_7in5_V2 buffer inversion, etc.)
 - [ ] Handle EPD_7in5_V2 buffer inversion with a pre-send copy (see [§5.4](EXTENSION_STRATEGY.md#54-epd_7in5_v2-destructive-buffer-inversion))
 - [ ] Handle EPD_5in65f dual busy polarity in its Tier 2 override (see [§5.5](EXTENSION_STRATEGY.md#55-epd_5in65f-dual-busy-polarity))
 
-**Files:** `ext/chroma_wave/driver_registry.c`, `ext/chroma_wave/driver_registry.h`
+The Tier 1 infrastructure is complete: all 70 models have config entries in `driver_configs_generated.h`, the generic init/display/sleep functions work, and the Ruby API exposes `.model_count`, `.model_names`, `.model_config(name)`. The 25 Tier 2 models are identified and wired into the infrastructure, but `tier2_overrides.c` is intentionally empty — they fall through to the generic implementation until real overrides are written.
+
+Also implemented: `epd_generic_sleep()` for power management.
+
+#### 3a. Driver config extraction pipeline ✅
+
+A fully-tested Ruby toolchain that parses all ~70 Waveshare vendor `.c`/`.h` file pairs,
+extracts hardware configuration (dimensions, init sequences, capability flags, busy polarity,
+display/sleep commands, tier classification), encodes init sequences into the bytecode opcode
+format, and generates `driver_configs_generated.h`. This is what produced the 70-model
+config data for Task 3.
+
+- [x] `SourceParser` — parses vendor C source files with modular concerns
+- [x] `HeaderGenerator` — generates the C header with all model config structs
+- [x] `Runner` — orchestrates parsing and generation
+- [x] `DriverConfig` — value object for a single model's extracted config
+- [x] `Opcodes` — bytecode opcode constants shared between Ruby extraction and C interpreter
+- [x] `Patterns` — regex patterns for vendor C source parsing
+- [x] `rake generate:driver_configs` — Rake task to regenerate the header
+- [x] Full RSpec coverage for `SourceParser`, `HeaderGenerator`, and `Runner`
+
+**Files:** `lib/chroma_wave/driver_extraction.rb`, `lib/chroma_wave/driver_extraction/*.rb`, `Rakefile`
+
+**Files (registry):** `ext/chroma_wave/driver_registry.c`, `ext/chroma_wave/driver_registry.h`, `ext/chroma_wave/driver_configs_generated.h`, `ext/chroma_wave/tier2_overrides.c`
 **Refs:** [EXTENSION_STRATEGY.md §3.5](EXTENSION_STRATEGY.md#35-two-tier-driver-registry), [API_REFERENCE.md §5](API_REFERENCE.md#5-two-tier-driver-registry-c)
 **Depends on:** Task 2 (uses Device I/O primitives)
-**Acceptance:** Simple models work from config-only entries. Complex models override correctly. Adding a new simple model is ~10 lines of config data.
+**Acceptance:** ⚠️ Simple models work from config-only entries. Tier 2 overrides deferred. Adding a new simple model is ~10 lines of config data.
 
 ---
 
@@ -335,19 +379,21 @@ run during multi-second refresh cycles.
 
 ---
 
-### 15. Busy-wait timeout
+### 15. Busy-wait timeout ⚠️ C-level done
 
 Add configurable timeout to `ReadBusy` with an interruptible polling loop.
 
-- [ ] Replace spin-wait with 10ms polling interval loop
-- [ ] Add configurable `timeout:` parameter (default: 30s? display-dependent?)
-- [ ] Raise `ChromaWave::TimeoutError` on expiry
+- [x] Replace spin-wait with 1ms polling interval loop
+- [x] Add configurable `timeout_ms` parameter to `epd_read_busy()` — returns `EPD_ERR_TIMEOUT`
+- [ ] Raise `ChromaWave::TimeoutError` on expiry (Ruby integration — needs Display layer)
 - [ ] Integrate with the ubf from Task 14 for clean interrupt
+
+The C-level `epd_read_busy(polarity, timeout_ms)` function is implemented with a 1ms polling loop and returns `EPD_ERR_TIMEOUT` on expiry. Ruby-level error raising and interrupt integration deferred to Phase 4 when the Display class is built.
 
 **Files:** `ext/chroma_wave/device.c`
 **Refs:** [EXTENSION_STRATEGY.md §5.3](EXTENSION_STRATEGY.md#53-busy-wait-blocking-and-gvl-release)
 **Depends on:** Task 2
-**Acceptance:** Busy-wait respects timeout. Timeout raises a clear error. Interrupt during wait is clean.
+**Acceptance:** ⚠️ C-level busy-wait respects timeout. Ruby error raising and interrupt integration deferred.
 
 ---
 
@@ -415,7 +461,7 @@ Load any image format, resize/crop, and bulk-transfer RGBA data into Canvas.
 
 Compilation, platform detection, and development support.
 
-### 19. Platform detection in `extconf.rb`
+### 19. Platform detection in `extconf.rb` ⚠️ Stub only
 
 Auto-detect GPIO/SPI backend and configure compiler flags.
 
@@ -424,30 +470,34 @@ Auto-detect GPIO/SPI backend and configure compiler flags.
 - [ ] Auto-select best available backend (prefer `USE_LGPIO_LIB` for RPi 5)
 - [ ] Allow `--with-epd-backend=` configure option for manual override
 - [ ] Detect and optionally link `libfreetype` (see Task 16)
-- [ ] If no GPIO/SPI library found: auto-select MOCK backend with warning
-- [ ] Set appropriate `-D` compiler flags
+- [x] If no GPIO/SPI library found: auto-select MOCK backend ~~with warning~~
+- [x] Set appropriate `-D` compiler flags (`-DEPD_MOCK_BACKEND` unconditionally for now)
+
+Current state: `extconf.rb` unconditionally sets `-DEPD_MOCK_BACKEND` and compiler warning flags. No header probing, library detection, or `--with-epd-backend=` option yet. Full platform detection deferred until hardware integration begins.
 
 **Files:** `ext/chroma_wave/extconf.rb`
 **Refs:** [EXTENSION_STRATEGY.md §1.2](EXTENSION_STRATEGY.md#12-what-we-must-abstract), [EXTENSION_STRATEGY.md §5.1](EXTENSION_STRATEGY.md#51-platform-detection-in-extconfrb)
 **Depends on:** —
-**Acceptance:** Gem installs on RPi (with real backend) and on dev machines (with MOCK). `--with-epd-backend=` overrides auto-detection.
+**Acceptance:** ⚠️ Gem compiles on dev machines with MOCK. Full platform detection deferred.
 
 ---
 
-### 20. Mock backend (C-level)
+### 20. Mock backend (C-level) ✅
 
 C-level no-op stubs so the extension compiles on any platform without GPIO/SPI hardware.
 
-- [ ] Define `MOCK` backend that stubs all GPIO/SPI calls
-- [ ] `Framebuffer`, `Canvas`, `PixelFormat`, and all drawing operations work normally (pure memory)
-- [ ] `Display#show`, `Display#clear`, `Device.new` raise `ChromaWave::DeviceError` with clear message
-- [ ] CI runs full test suite with MOCK backend
-- [ ] Specs verify that mock mode raises on hardware ops but allows drawing ops
+- [x] Define `MOCK` backend that stubs all GPIO/SPI calls
+- [x] `Framebuffer` and all pixel operations work normally (pure memory)
+- [ ] `Display#show`, `Display#clear`, `Device.new` raise `ChromaWave::DeviceError` with clear message (needs Display/Device Ruby classes)
+- [x] CI runs full test suite with MOCK backend
+- [ ] Specs verify that mock mode raises on hardware ops but allows drawing ops (needs Display/Device Ruby classes)
 
-**Files:** `ext/chroma_wave/vendor/config/` (mock platform backend), `ext/chroma_wave/extconf.rb`
+`mock_hal.c` / `mock_hal.h` provide full no-op GPIO/SPI stubs compiled under `#ifdef EPD_MOCK_BACKEND`. All C-level operations (framebuffer, driver registry, device I/O) work in pure-memory mode. The `DeviceError` raising is deferred until the Ruby Display/Device classes exist.
+
+**Files:** `ext/chroma_wave/mock_hal.c`, `ext/chroma_wave/mock_hal.h`, `ext/chroma_wave/extconf.rb`
 **Refs:** [EXTENSION_STRATEGY.md §5.1](EXTENSION_STRATEGY.md#51-platform-detection-in-extconfrb)
 **Depends on:** Task 19
-**Acceptance:** Full test suite passes on x86_64 Linux/macOS with no GPIO hardware. Hardware operations give helpful errors, not segfaults.
+**Acceptance:** ✅ Full test suite passes on x86_64 Linux with no GPIO hardware. C extension compiles and runs with mock stubs.
 
 ---
 
@@ -475,3 +525,33 @@ primary interface for test suites and development scripts.
 **Refs:** [MOCKING.md §2.2–§4](MOCKING.md#22-ruby-level-mockdevice)
 **Depends on:** Tasks 11, 12, 20 (Renderer, Display capabilities, C mock backend)
 **Acceptance:** `MockDevice.new(model: :epd_2in13_v4).is_a?(Display)` is true. Operation log captures all hardware calls. `save_png` produces a palette-accurate image matching what the physical display would show. Full test suite uses MockDevice for all hardware integration tests.
+
+---
+
+### 22. CI/CD pipeline ✅
+
+GitHub Actions workflow with 5 jobs providing comprehensive quality gates.
+
+- [x] `compile` — compiles the C extension
+- [x] `rspec` — runs specs, uploads coverage artifact
+- [x] `rubocop` — linting enforcement
+- [x] `coverage` — enforces 90% line / 80% branch coverage thresholds
+- [x] `docs` — generates RDoc, deploys to GitHub Pages (main branch only)
+
+**Files:** `.github/workflows/main.yml`
+**Depends on:** —
+**Acceptance:** ✅ All 5 jobs pass on every push. Coverage gates enforce minimum thresholds.
+
+---
+
+### 23. Code coverage ✅
+
+SimpleCov integration with enforced thresholds.
+
+- [x] SimpleCov configured in `spec_helper.rb`
+- [x] 90% line coverage minimum, 80% branch coverage minimum
+- [x] Coverage artifact uploaded by CI for inspection
+
+**Files:** `spec/spec_helper.rb`
+**Depends on:** Task 22
+**Acceptance:** ✅ Coverage reports generated on every test run. CI enforces thresholds.
