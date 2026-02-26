@@ -66,3 +66,9 @@ RSpec/NestedGroups:
 # intermediate values and verify multiple channels/entries.
 RSpec/ExampleLength:
   Max: 8
+
+# LruCache#fetch requires a block (unlike Hash#fetch) — the block form
+# is not redundant, it's the computation that runs on cache miss.
+Style/RedundantFetchBlock:
+  Exclude:
+    - 'spec/chroma_wave/palette_spec.rb'
