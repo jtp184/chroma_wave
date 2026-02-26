@@ -46,11 +46,7 @@ module ChromaWave
     def set_pixel(x, y, color)
       return self unless in_bounds?(x, y)
 
-      offset = pixel_offset(x, y)
-      buffer[offset]     = color.r.chr
-      buffer[offset + 1] = color.g.chr
-      buffer[offset + 2] = color.b.chr
-      buffer[offset + 3] = color.a.chr
+      buffer[pixel_offset(x, y), BYTES_PER_PIXEL] = color.to_rgba_bytes
       self
     end
 

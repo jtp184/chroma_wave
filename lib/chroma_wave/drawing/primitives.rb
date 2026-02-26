@@ -251,7 +251,7 @@ module ChromaWave
       # @param y1 [Integer] end y
       # @param color [Object] line color
       # @param w [Integer] line thickness
-      def draw_thick_line(x0, y0, x1, y1, color, w)
+      def draw_thick_line(x0, y0, x1, y1, color, w) # rubocop:disable Metrics/AbcSize
         half = (w - 1) / 2.0
         dx = x1 - x0
         dy = y1 - y0
@@ -328,7 +328,7 @@ module ChromaWave
       # @param h [Integer] height
       # @param r [Integer] corner radius
       # @param color [Object] fill color
-      def fill_rounded_rect(x, y, w, h, r, color)
+      def fill_rounded_rect(x, y, w, h, r, color) # rubocop:disable Metrics/AbcSize
         # Fill center rectangle
         fill_rect(x + r, y, w - (2 * r), h, color)
         # Fill left and right strips
@@ -391,7 +391,7 @@ module ChromaWave
       # @param r [Integer] corner radius
       # @param color [Object] stroke color
       # @param sw [Integer] stroke width
-      def stroke_rounded_rect(x, y, w, h, r, color, sw)
+      def stroke_rounded_rect(x, y, w, h, r, color, sw) # rubocop:disable Metrics/AbcSize
         x2 = x + w - 1
         y2 = y + h - 1
 
@@ -417,6 +417,7 @@ module ChromaWave
       # @param cy [Integer] center y
       # @param r [Integer] radius
       # @param color [Object] fill color
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def fill_circle(cx, cy, r, color)
         xi = 0
         yi = r
@@ -436,6 +437,7 @@ module ChromaWave
           end
         end
       end
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
       # Strokes a circle outline using midpoint algorithm.
       #
@@ -498,21 +500,32 @@ module ChromaWave
         set_pixel(cx - yi, cy - xi, color)
       end
 
-      # Fills the region between two concentric circles (annulus).
+      # Fills the region between two concentric circles (annulus) using scanlines.
+      #
+      # For each row, computes the outer and inner x-extents and fills only
+      # the annular arcs. O(diameter * stroke_width) instead of O(diameter^2).
       #
       # @param cx [Integer] center x
       # @param cy [Integer] center y
       # @param outer [Integer] outer radius
       # @param inner [Integer] inner radius
       # @param color [Object] fill color
-      def fill_annulus(cx, cy, outer, inner, color)
+      def fill_annulus(cx, cy, outer, inner, color) # rubocop:disable Metrics/AbcSize
         outer_sq = outer * outer
         inner_sq = inner * inner
 
         (-outer..outer).each do |dy|
-          (-outer..outer).each do |dx|
-            dist_sq = (dx * dx) + (dy * dy)
-            set_pixel(cx + dx, cy + dy, color) if dist_sq.between?(inner_sq, outer_sq)
+          dy_sq = dy * dy
+          outer_x = Integer.sqrt(outer_sq - dy_sq)
+
+          if dy_sq >= inner_sq
+            # Row is beyond the inner circle — fill the full span
+            (-outer_x..outer_x).each { |dx| set_pixel(cx + dx, cy + dy, color) }
+          else
+            # Row intersects both circles — fill only the left and right arcs
+            inner_x = Integer.sqrt(inner_sq - dy_sq)
+            (-outer_x..(-inner_x - 1)).each { |dx| set_pixel(cx + dx, cy + dy, color) }
+            ((inner_x + 1)..outer_x).each { |dx| set_pixel(cx + dx, cy + dy, color) }
           end
         end
       end
@@ -562,6 +575,7 @@ module ChromaWave
       # @param rx [Integer] horizontal radius
       # @param ry [Integer] vertical radius
       # @yield [x0, x1, y] horizontal span for each scanline
+      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       def midpoint_ellipse(cx, cy, rx, ry)
         rx2 = rx * rx
         ry2 = ry * ry
@@ -602,6 +616,7 @@ module ChromaWave
           end
         end
       end
+      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
       # Draws an ellipse outline (single pixel) using midpoint algorithm.
       #
@@ -610,6 +625,7 @@ module ChromaWave
       # @param rx [Integer] horizontal radius
       # @param ry [Integer] vertical radius
       # @param color [Object] pixel color
+      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       def midpoint_ellipse_outline(cx, cy, rx, ry, color)
         rx2 = rx * rx
         ry2 = ry * ry
@@ -648,6 +664,7 @@ module ChromaWave
           end
         end
       end
+      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
       # Plots the four symmetric points of an ellipse.
       #
@@ -663,7 +680,10 @@ module ChromaWave
         set_pixel(cx - xi, cy - yi, color)
       end
 
-      # Fills the region between two concentric ellipses.
+      # Fills the region between two concentric ellipses using scanlines.
+      #
+      # For each row, computes the outer and inner x-extents and fills only
+      # the annular arcs. O(ory * stroke_width) instead of O(orx * ory).
       #
       # @param cx [Integer] center x
       # @param cy [Integer] center y
@@ -672,15 +692,29 @@ module ChromaWave
       # @param irx [Integer] inner horizontal radius
       # @param iry [Integer] inner vertical radius
       # @param color [Object] fill color
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def fill_ellipse_annulus(cx, cy, orx, ory, irx, iry, color)
+        return unless orx.positive? && ory.positive?
+
         (-ory..ory).each do |dy|
-          (-orx..orx).each do |dx|
-            outer_check = orx.positive? && ory.positive? ? ((dx.to_f / orx)**2) + ((dy.to_f / ory)**2) : Float::INFINITY
-            inner_check = irx.positive? && iry.positive? ? ((dx.to_f / irx)**2) + ((dy.to_f / iry)**2) : 0.0
-            set_pixel(cx + dx, cy + dy, color) if 1.0.between?(outer_check, inner_check)
+          # Outer ellipse x-extent: dx^2 <= orx^2 * (1 - dy^2/ory^2)
+          outer_val = 1.0 - ((dy.to_f / ory)**2)
+          next if outer_val.negative?
+
+          outer_x = (orx * Math.sqrt(outer_val)).round
+          has_inner_hole = irx.positive? && iry.positive? && dy.abs < iry
+
+          if has_inner_hole
+            inner_val = 1.0 - ((dy.to_f / iry)**2)
+            inner_x = (irx * Math.sqrt(inner_val)).round
+            (-outer_x..(-inner_x - 1)).each { |dx| set_pixel(cx + dx, cy + dy, color) }
+            ((inner_x + 1)..outer_x).each { |dx| set_pixel(cx + dx, cy + dy, color) }
+          else
+            (-outer_x..outer_x).each { |dx| set_pixel(cx + dx, cy + dy, color) }
           end
         end
       end
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
       # ── Arc helper ────────────────────────────────────────────────
 
@@ -693,6 +727,7 @@ module ChromaWave
       # @param end_angle [Float] end angle in radians
       # @param color [Object] pixel color
       # @param sw [Integer] stroke width
+      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       def draw_arc_pixels(cx, cy, r, start_angle, end_angle, color, sw)
         # Normalize angles to [0, 2π)
         two_pi = 2 * Math::PI
@@ -721,6 +756,7 @@ module ChromaWave
           end
         end
       end
+      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
       # Yields all 8 octant reflections for a circle point.
       #
@@ -810,6 +846,7 @@ module ChromaWave
       # @param y [Integer] seed y
       # @param target [Object] the color being replaced
       # @param replacement [Object] the new color
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def scanline_fill(x, y, target, replacement)
         stack = [[x, y]]
 
@@ -832,6 +869,7 @@ module ChromaWave
           scan_push(stack, lx, rx, sy + 1, target) if sy < height - 1
         end
       end
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
       # Pushes seed points for adjacent scanline spans.
       #

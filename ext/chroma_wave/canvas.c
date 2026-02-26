@@ -9,6 +9,7 @@ canvas_clear(VALUE self, VALUE rb_buf, VALUE rb_r, VALUE rb_g, VALUE rb_b, VALUE
 {
     (void)self;
 
+    Check_Type(rb_buf, T_STRING);
     rb_str_modify(rb_buf);
 
     uint8_t *buf = (uint8_t *)RSTRING_PTR(rb_buf);
@@ -42,6 +43,8 @@ canvas_blit_alpha(VALUE self,
 {
     (void)self;
 
+    Check_Type(rb_dst, T_STRING);
+    Check_Type(rb_src, T_STRING);
     rb_str_modify(rb_dst);
 
     uint8_t       *dst = (uint8_t *)RSTRING_PTR(rb_dst);
@@ -103,7 +106,12 @@ canvas_load_rgba(VALUE self,
 {
     (void)self;
 
+    Check_Type(rb_dst, T_STRING);
+    Check_Type(rb_src, T_STRING);
     rb_str_modify(rb_dst);
+
+    int dw = NUM2INT(rb_dw);
+    if (dw <= 0) return Qnil;
 
     uint8_t       *dst = (uint8_t *)RSTRING_PTR(rb_dst);
     const uint8_t *src = (const uint8_t *)RSTRING_PTR(rb_src);
@@ -114,7 +122,6 @@ canvas_load_rgba(VALUE self,
     int y  = NUM2INT(rb_y);
     int w  = NUM2INT(rb_w);
     int h  = NUM2INT(rb_h);
-    int dw = NUM2INT(rb_dw);
     int dh = (int)(dst_len / (dw * 4));
 
     int src_row_bytes = w * 4;
