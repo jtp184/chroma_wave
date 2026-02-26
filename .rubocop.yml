@@ -12,7 +12,57 @@ Style/StringLiterals:
 Style/StringLiteralsInInterpolation:
   EnforcedStyle: single_quotes
 
+# Files that reopen ChromaWave to add require_relative or const_set calls
+# are not missing documentation — the module is documented at its definition.
+Style/Documentation:
+  Exclude:
+    - 'lib/chroma_wave/color.rb'
+    - 'lib/chroma_wave/palette.rb'
+    - 'lib/chroma_wave/pixel_format.rb'
+    - 'lib/chroma_wave/framebuffer.rb'
+
+# Domain-standard short names: r/g/b/a (color channels), x/y (coordinates),
+# c1/c2 (color comparison). These are universally understood in their contexts.
+Naming/MethodParameterName:
+  AllowedNames:
+    - r
+    - g
+    - b
+    - a
+    - x
+    - y
+    - c1
+    - c2
+
+# Alpha compositing and color distance formulas are inherently math-heavy.
+# Splitting them further obscures the algorithm more than it clarifies.
+Metrics/AbcSize:
+  Exclude:
+    - 'lib/chroma_wave/color.rb'
+    - 'lib/chroma_wave/palette.rb'
+
+# Hex parsing has two format branches with 3 captures each — inherently 12 lines.
+# Color distance computation iterates entries with distance math — inherently 11 lines.
+Metrics/MethodLength:
+  Exclude:
+    - 'lib/chroma_wave/color.rb'
+    - 'lib/chroma_wave/palette.rb'
+
 # DriverConfig has 16 fields; tests that construct configs need many lets.
 # The default of 5 is too low for struct-heavy integration tests.
 RSpec/MultipleMemoizedHelpers:
   Max: 15
+
+# Value type specs naturally verify multiple properties of a single object.
+# Splitting each attribute into its own example adds noise without clarity.
+RSpec/MultipleExpectations:
+  Max: 8
+
+# Allow 4-deep nesting for method-within-format-within-bridge specs.
+RSpec/NestedGroups:
+  Max: 4
+
+# Compositing and ordering specs naturally need several lines to set up
+# intermediate values and verify multiple channels/entries.
+RSpec/ExampleLength:
+  Max: 8
