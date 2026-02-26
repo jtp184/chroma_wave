@@ -11,3 +11,8 @@ Style/StringLiterals:
 
 Style/StringLiteralsInInterpolation:
   EnforcedStyle: single_quotes
+
+# DriverConfig has 16 fields; tests that construct configs need many lets.
+# The default of 5 is too low for struct-heavy integration tests.
+RSpec/MultipleMemoizedHelpers:
+  Max: 15
