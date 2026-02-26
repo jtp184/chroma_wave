@@ -1,4 +1,4 @@
-name: Ruby
+name: CI
 
 on:
   push:
@@ -8,9 +8,9 @@ on:
   pull_request:
 
 jobs:
-  build:
+  compile:
     runs-on: ubuntu-latest
-    name: Ruby ${{ matrix.ruby }}
+    name: Compile Extension
     strategy:
       matrix:
         ruby:
@@ -25,5 +25,94 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
-      - name: Run the default task
-        run: bundle exec rake
+      - name: Compile C extension
+        run: bundle exec rake compile
+
+  rspec:
+    runs-on: ubuntu-latest
+    name: RSpec
+    strategy:
+      matrix:
+        ruby:
+          - '4.0.1'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: Compile C extension
+        run: bundle exec rake compile
+      - name: Run RSpec
+        run: bundle exec rspec
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-ruby-${{ matrix.ruby }}
+          path: coverage/
+
+  rubocop:
+    runs-on: ubuntu-latest
+    name: Rubocop
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0.1'
+          bundler-cache: true
+      - name: Run Rubocop
+        run: bundle exec rubocop
+
+  coverage:
+    runs-on: ubuntu-latest
+    name: Coverage Check
+    needs: rspec
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0.1'
+          bundler-cache: true
+      - name: Compile C extension
+        run: bundle exec rake compile
+      - name: Run RSpec with coverage
+        run: bundle exec rspec
+      - name: Check coverage thresholds
+        run: |
+          ruby -e '
+            require "json"
+            result = JSON.parse(File.read("coverage/.last_run.json"))
+            line = result.dig("result", "line")
+            branch = result.dig("result", "branch")
+
+            puts "Line coverage:   #{line}%"
+            puts "Branch coverage: #{branch}%"
+
+            failed = false
+
+            if line && line < 90
+              puts "FAIL: Line coverage #{line}% is below 90% threshold"
+              failed = true
+            end
+
+            if branch && branch < 80
+              puts "FAIL: Branch coverage #{branch}% is below 80% threshold"
+              failed = true
+            end
+
+            exit 1 if failed
+            puts "Coverage thresholds met!"
+          '
