@@ -255,7 +255,7 @@ module ChromaWave
         half = (w - 1) / 2.0
         dx = x1 - x0
         dy = y1 - y0
-        len = Math.sqrt(dx * dx + dy * dy)
+        len = Math.sqrt((dx * dx) + (dy * dy))
 
         if len.zero?
           fill_circle(x0, y0, half.round, color)
@@ -330,10 +330,10 @@ module ChromaWave
       # @param color [Object] fill color
       def fill_rounded_rect(x, y, w, h, r, color)
         # Fill center rectangle
-        fill_rect(x + r, y, w - 2 * r, h, color)
+        fill_rect(x + r, y, w - (2 * r), h, color)
         # Fill left and right strips
-        fill_rect(x, y + r, r, h - 2 * r, color)
-        fill_rect(x + w - r, y + r, r, h - 2 * r, color)
+        fill_rect(x, y + r, r, h - (2 * r), color)
+        fill_rect(x + w - r, y + r, r, h - (2 * r), color)
         # Fill four corner quadrants
         fill_quarter_circle(x + r, y + r, r, color, -1, -1)
         fill_quarter_circle(x + w - r - 1, y + r, r, color, 1, -1)
@@ -355,14 +355,14 @@ module ChromaWave
         d = 1 - r
 
         while xi <= yi
-          draw_horizontal_span(cx, cy + sy * xi, sx, yi, color)
-          draw_horizontal_span(cx, cy + sy * yi, sx, xi, color) if xi != yi
+          draw_horizontal_span(cx, cy + (sy * xi), sx, yi, color)
+          draw_horizontal_span(cx, cy + (sy * yi), sx, xi, color) if xi != yi
           xi += 1
-          if d < 0
-            d += 2 * xi + 1
+          if d.negative?
+            d += (2 * xi) + 1
           else
             yi -= 1
-            d += 2 * (xi - yi) + 1
+            d += (2 * (xi - yi)) + 1
           end
         end
       end
@@ -428,11 +428,11 @@ module ChromaWave
           (-xi..xi).each { |dx| set_pixel(cx + dx, cy + yi, color) } if xi != yi
           (-xi..xi).each { |dx| set_pixel(cx + dx, cy - yi, color) } if xi != yi && yi != 0
           xi += 1
-          if d < 0
-            d += 2 * xi + 1
+          if d.negative?
+            d += (2 * xi) + 1
           else
             yi -= 1
-            d += 2 * (xi - yi) + 1
+            d += (2 * (xi - yi)) + 1
           end
         end
       end
@@ -450,8 +450,8 @@ module ChromaWave
         if sw <= 1
           midpoint_circle(cx, cy, r, color)
         else
-          outer = r + (sw - 1) / 2
-          inner = r - sw / 2
+          outer = r + ((sw - 1) / 2)
+          inner = r - (sw / 2)
           inner = 0 if inner.negative?
           fill_annulus(cx, cy, outer, inner, color)
         end
@@ -471,11 +471,11 @@ module ChromaWave
         while xi <= yi
           plot_circle_octants(cx, cy, xi, yi, color)
           xi += 1
-          if d < 0
-            d += 2 * xi + 1
+          if d.negative?
+            d += (2 * xi) + 1
           else
             yi -= 1
-            d += 2 * (xi - yi) + 1
+            d += (2 * (xi - yi)) + 1
           end
         end
       end
@@ -511,8 +511,8 @@ module ChromaWave
 
         (-outer..outer).each do |dy|
           (-outer..outer).each do |dx|
-            dist_sq = dx * dx + dy * dy
-            set_pixel(cx + dx, cy + dy, color) if dist_sq <= outer_sq && dist_sq >= inner_sq
+            dist_sq = (dx * dx) + (dy * dy)
+            set_pixel(cx + dx, cy + dy, color) if dist_sq.between?(inner_sq, outer_sq)
           end
         end
       end
@@ -577,7 +577,7 @@ module ChromaWave
           yield cx - x, cx + x, cy - y if y != 0
           x += 1
           px += 2 * ry2
-          if d < 0
+          if d.negative?
             d += ry2 + px
           else
             y -= 1
@@ -587,13 +587,13 @@ module ChromaWave
         end
 
         # Region 2
-        d = ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2
+        d = (ry2 * (x + 0.5) * (x + 0.5)) + (rx2 * (y - 1) * (y - 1)) - (rx2 * ry2)
         while y >= 0
           yield cx - x, cx + x, cy + y
           yield cx - x, cx + x, cy - y if y != 0
           y -= 1
           py -= 2 * rx2
-          if d > 0
+          if d.positive?
             d += rx2 - py
           else
             x += 1
@@ -624,7 +624,7 @@ module ChromaWave
           plot_ellipse_quadrants(cx, cy, x, y, color)
           x += 1
           px += 2 * ry2
-          if d < 0
+          if d.negative?
             d += ry2 + px
           else
             y -= 1
@@ -634,12 +634,12 @@ module ChromaWave
         end
 
         # Region 2
-        d = ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2
+        d = (ry2 * (x + 0.5) * (x + 0.5)) + (rx2 * (y - 1) * (y - 1)) - (rx2 * ry2)
         while y >= 0
           plot_ellipse_quadrants(cx, cy, x, y, color)
           y -= 1
           py -= 2 * rx2
-          if d > 0
+          if d.positive?
             d += rx2 - py
           else
             x += 1
@@ -675,9 +675,9 @@ module ChromaWave
       def fill_ellipse_annulus(cx, cy, orx, ory, irx, iry, color)
         (-ory..ory).each do |dy|
           (-orx..orx).each do |dx|
-            outer_check = (orx > 0 && ory > 0) ? (dx.to_f / orx)**2 + (dy.to_f / ory)**2 : Float::INFINITY
-            inner_check = (irx > 0 && iry > 0) ? (dx.to_f / irx)**2 + (dy.to_f / iry)**2 : 0.0
-            set_pixel(cx + dx, cy + dy, color) if outer_check <= 1.0 && inner_check >= 1.0
+            outer_check = orx.positive? && ory.positive? ? ((dx.to_f / orx)**2) + ((dy.to_f / ory)**2) : Float::INFINITY
+            inner_check = irx.positive? && iry.positive? ? ((dx.to_f / irx)**2) + ((dy.to_f / iry)**2) : 0.0
+            set_pixel(cx + dx, cy + dy, color) if 1.0.between?(outer_check, inner_check)
           end
         end
       end
@@ -699,7 +699,7 @@ module ChromaWave
         sa = start_angle % two_pi
         ea = end_angle % two_pi
 
-        radii = sw <= 1 ? [r] : ((r - sw / 2)..[r + (sw - 1) / 2]).to_a.select(&:positive?)
+        radii = sw <= 1 ? [r] : ((r - (sw / 2))..[r + ((sw - 1) / 2)]).to_a.select(&:positive?)
 
         radii.each do |current_r|
           xi = 0
@@ -712,11 +712,11 @@ module ChromaWave
               set_pixel(cx + dx, cy + dy, color) if angle_in_range?(angle, sa, ea)
             end
             xi += 1
-            if d < 0
-              d += 2 * xi + 1
+            if d.negative?
+              d += (2 * xi) + 1
             else
               yi -= 1
-              d += 2 * (xi - yi) + 1
+              d += (2 * (xi - yi)) + 1
             end
           end
         end
@@ -746,7 +746,7 @@ module ChromaWave
       # @return [Boolean]
       def angle_in_range?(angle, sa, ea)
         if sa <= ea
-          angle >= sa && angle <= ea
+          angle.between?(sa, ea)
         else
           # Wrap-around case: e.g. 350° to 10°
           angle >= sa || angle <= ea
@@ -795,7 +795,7 @@ module ChromaWave
 
           next unless scan_y >= y0 && scan_y < y1
 
-          x_intersect = x0 + (scan_y - y0) * (x1 - x0) / (y1 - y0)
+          x_intersect = x0 + ((scan_y - y0) * (x1 - x0) / (y1 - y0))
           intersections << x_intersect
         end
 
@@ -819,7 +819,7 @@ module ChromaWave
 
           # Scan left
           lx = sx
-          lx -= 1 while lx > 0 && get_pixel(lx - 1, sy) == target
+          lx -= 1 while lx.positive? && get_pixel(lx - 1, sy) == target
           # Scan right
           rx = sx
           rx += 1 while rx < width - 1 && get_pixel(rx + 1, sy) == target
@@ -828,7 +828,7 @@ module ChromaWave
           (lx..rx).each { |xi| set_pixel(xi, sy, replacement) }
 
           # Push spans above and below
-          scan_push(stack, lx, rx, sy - 1, target) if sy > 0
+          scan_push(stack, lx, rx, sy - 1, target) if sy.positive?
           scan_push(stack, lx, rx, sy + 1, target) if sy < height - 1
         end
       end

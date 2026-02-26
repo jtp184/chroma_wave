@@ -23,8 +23,9 @@ Style/Documentation:
     - 'lib/chroma_wave/canvas.rb'
     - 'lib/chroma_wave/layer.rb'
 
-# Domain-standard short names: r/g/b/a (color channels), x/y (coordinates),
-# c1/c2 (color comparison). These are universally understood in their contexts.
+# Domain-standard short names used across graphics/geometry code.
+# x0/y0/x1/y1 (line endpoints), xi/yi (midpoint iterators),
+# sa/ea (start/end angles), sw (stroke width), lx/rx (left/right x).
 Naming/MethodParameterName:
   AllowedNames:
     - r
@@ -47,6 +48,22 @@ Naming/MethodParameterName:
     - dy
     - ox
     - oy
+    - x0
+    - y0
+    - x1
+    - y1
+    - xi
+    - yi
+    - sa
+    - ea
+    - sw
+    - lx
+
+# Drawing primitives require coordinate pairs, dimensions, and keyword
+# options (stroke, fill, stroke_width) that cannot be meaningfully reduced.
+Metrics/ParameterLists:
+  Exclude:
+    - 'lib/chroma_wave/drawing/primitives.rb'
 
 # Alpha compositing, color distance, and drawing algorithms are inherently math-heavy.
 # Splitting them further obscures the algorithm more than it clarifies.
@@ -56,6 +73,7 @@ Metrics/AbcSize:
     - 'lib/chroma_wave/palette.rb'
     - 'lib/chroma_wave/drawing/primitives.rb'
     - 'lib/chroma_wave/canvas.rb'
+    - 'lib/chroma_wave/surface.rb'
 
 # Hex parsing, color distance, and drawing algorithms have inherent complexity.
 Metrics/MethodLength:
@@ -64,11 +82,26 @@ Metrics/MethodLength:
     - 'lib/chroma_wave/palette.rb'
     - 'lib/chroma_wave/drawing/primitives.rb'
     - 'lib/chroma_wave/canvas.rb'
+    - 'lib/chroma_wave/surface.rb'
 
 # Drawing primitives module contains many related algorithms that belong together.
+# Canvas wraps a single String buffer and needs all RGBA methods in one class.
 Metrics/ModuleLength:
   Exclude:
     - 'lib/chroma_wave/drawing/primitives.rb'
+Metrics/ClassLength:
+  Exclude:
+    - 'lib/chroma_wave/canvas.rb'
+
+# Scanline flood fill and ellipse algorithms have inherent branching complexity.
+Metrics/CyclomaticComplexity:
+  Exclude:
+    - 'lib/chroma_wave/drawing/primitives.rb'
+    - 'lib/chroma_wave/canvas.rb'
+Metrics/PerceivedComplexity:
+  Exclude:
+    - 'lib/chroma_wave/drawing/primitives.rb'
+    - 'lib/chroma_wave/canvas.rb'
 
 # DriverConfig has 16 fields; tests that construct configs need many lets.
 # The default of 5 is too low for struct-heavy integration tests.

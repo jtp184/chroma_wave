@@ -158,7 +158,7 @@ module ChromaWave
     # @param y [Integer] y coordinate
     # @return [Integer] byte offset into the buffer
     def pixel_offset(x, y)
-      (y * width + x) * BYTES_PER_PIXEL
+      ((y * width) + x) * BYTES_PER_PIXEL
     end
 
     # Ruby fallback for clear.
@@ -214,7 +214,7 @@ module ChromaWave
         dx_end   = [src_w, width - ox].min
         next if dx_start >= dx_end
 
-        src_offset = sy * src_row_bytes + dx_start * BYTES_PER_PIXEL
+        src_offset = (sy * src_row_bytes) + (dx_start * BYTES_PER_PIXEL)
         dst_offset = pixel_offset(ox + dx_start, dy)
         copy_len   = (dx_end - dx_start) * BYTES_PER_PIXEL
 

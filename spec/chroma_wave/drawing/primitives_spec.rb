@@ -315,7 +315,7 @@ RSpec.describe ChromaWave::Drawing::Primitives do
 
       it 'draws the edges' do
         expect(canvas.get_pixel(6, 2)).to eq(black) # top edge
-        expect(canvas.get_pixel(2, 2)).to eq(black)  # first vertex
+        expect(canvas.get_pixel(2, 2)).to eq(black) # first vertex
       end
     end
 
