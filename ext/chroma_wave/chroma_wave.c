@@ -76,4 +76,5 @@ Init_chroma_wave(void)
     /* Initialize sub-modules */
     Init_framebuffer();
     Init_driver_registry();
+    Init_canvas();
 }
