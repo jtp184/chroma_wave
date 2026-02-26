@@ -60,3 +60,5 @@ module ChromaWave
     end
   end
 end
+
+require_relative 'drawing/primitives'

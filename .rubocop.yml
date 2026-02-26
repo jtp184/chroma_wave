@@ -20,6 +20,8 @@ Style/Documentation:
     - 'lib/chroma_wave/palette.rb'
     - 'lib/chroma_wave/pixel_format.rb'
     - 'lib/chroma_wave/framebuffer.rb'
+    - 'lib/chroma_wave/canvas.rb'
+    - 'lib/chroma_wave/layer.rb'
 
 # Domain-standard short names: r/g/b/a (color channels), x/y (coordinates),
 # c1/c2 (color comparison). These are universally understood in their contexts.
@@ -31,22 +33,42 @@ Naming/MethodParameterName:
     - a
     - x
     - y
+    - w
+    - h
     - c1
     - c2
+    - cx
+    - cy
+    - rx
+    - ry
+    - sx
+    - sy
+    - dx
+    - dy
+    - ox
+    - oy
 
-# Alpha compositing and color distance formulas are inherently math-heavy.
+# Alpha compositing, color distance, and drawing algorithms are inherently math-heavy.
 # Splitting them further obscures the algorithm more than it clarifies.
 Metrics/AbcSize:
   Exclude:
     - 'lib/chroma_wave/color.rb'
     - 'lib/chroma_wave/palette.rb'
+    - 'lib/chroma_wave/drawing/primitives.rb'
+    - 'lib/chroma_wave/canvas.rb'
 
-# Hex parsing has two format branches with 3 captures each — inherently 12 lines.
-# Color distance computation iterates entries with distance math — inherently 11 lines.
+# Hex parsing, color distance, and drawing algorithms have inherent complexity.
 Metrics/MethodLength:
   Exclude:
     - 'lib/chroma_wave/color.rb'
     - 'lib/chroma_wave/palette.rb'
+    - 'lib/chroma_wave/drawing/primitives.rb'
+    - 'lib/chroma_wave/canvas.rb'
+
+# Drawing primitives module contains many related algorithms that belong together.
+Metrics/ModuleLength:
+  Exclude:
+    - 'lib/chroma_wave/drawing/primitives.rb'
 
 # DriverConfig has 16 fields; tests that construct configs need many lets.
 # The default of 5 is too low for struct-heavy integration tests.
@@ -58,14 +80,13 @@ RSpec/MultipleMemoizedHelpers:
 RSpec/MultipleExpectations:
   Max: 8
 
-# Allow 4-deep nesting for method-within-format-within-bridge specs.
+# Allow 5-deep nesting for drawing primitive specs with shape/mode/edge contexts.
 RSpec/NestedGroups:
-  Max: 4
+  Max: 5
 
-# Compositing and ordering specs naturally need several lines to set up
-# intermediate values and verify multiple channels/entries.
+# Drawing and compositing specs need extra lines for setup and pixel verification.
 RSpec/ExampleLength:
-  Max: 8
+  Max: 10
 
 # LruCache#fetch requires a block (unlike Hash#fetch) — the block form
 # is not redundant, it's the computation that runs on cache miss.
