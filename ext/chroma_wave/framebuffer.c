@@ -291,6 +291,29 @@ fb_bytes(VALUE self)
     return str;
 }
 
+/* ---- equality ---- */
+static VALUE
+fb_eq(VALUE self, VALUE other)
+{
+    framebuffer_t *fb_a, *fb_b;
+
+    if (!rb_typeddata_is_kind_of(other, &framebuffer_type))
+        return Qfalse;
+
+    TypedData_Get_Struct(self,  framebuffer_t, &framebuffer_type, fb_a);
+    TypedData_Get_Struct(other, framebuffer_t, &framebuffer_type, fb_b);
+
+    if (fb_a->width != fb_b->width ||
+        fb_a->height != fb_b->height ||
+        fb_a->pixel_format != fb_b->pixel_format)
+        return Qfalse;
+
+    if (memcmp(fb_a->buffer, fb_b->buffer, fb_a->buffer_size) != 0)
+        return Qfalse;
+
+    return Qtrue;
+}
+
 /* ---- inspect ---- */
 static const char *
 pixel_format_name(pixel_format_t fmt)
@@ -333,5 +356,6 @@ Init_framebuffer(void)
     rb_define_method(rb_cFramebuffer, "get_pixel",       fb_get_pixel,       2);
     rb_define_method(rb_cFramebuffer, "clear",           fb_clear,           1);
     rb_define_method(rb_cFramebuffer, "bytes",           fb_bytes,           0);
+    rb_define_method(rb_cFramebuffer, "==",              fb_eq,              1);
     rb_define_method(rb_cFramebuffer, "inspect",         fb_inspect,         0);
 }

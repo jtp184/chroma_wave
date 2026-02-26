@@ -448,6 +448,54 @@ RSpec.describe ChromaWave::Framebuffer do
     end
   end
 
+  describe '#==' do
+    it 'is true for identical framebuffers' do
+      a = described_class.new(16, 4, :mono)
+      b = described_class.new(16, 4, :mono)
+      expect(a).to eq(b)
+    end
+
+    it 'is true for a dup' do
+      fb = described_class.new(10, 10, :gray4)
+      expect(fb.dup).to eq(fb)
+    end
+
+    it 'is false when pixel data differs' do
+      a = described_class.new(16, 4, :mono)
+      b = described_class.new(16, 4, :mono)
+      b.set_pixel(0, 0, 0)
+      expect(a).not_to eq(b)
+    end
+
+    it 'is false when widths differ' do
+      a = described_class.new(16, 4, :mono)
+      b = described_class.new(8, 4, :mono)
+      expect(a).not_to eq(b)
+    end
+
+    it 'is false when heights differ' do
+      a = described_class.new(16, 4, :mono)
+      b = described_class.new(16, 8, :mono)
+      expect(a).not_to eq(b)
+    end
+
+    it 'is false when pixel formats differ' do
+      a = described_class.new(16, 4, :color4)
+      b = described_class.new(16, 4, :color7)
+      expect(a).not_to eq(b)
+    end
+
+    it 'returns false for non-Framebuffer objects' do
+      fb = described_class.new(10, 10, :mono)
+      expect(fb == 'not a framebuffer').to be(false)
+    end
+
+    it 'returns false for nil' do
+      fb = described_class.new(10, 10, :mono)
+      expect(fb == nil).to be(false) # rubocop:disable Style/NilComparison
+    end
+  end
+
   describe '#inspect' do
     it 'includes class name' do
       fb = described_class.new(200, 100, :mono)
