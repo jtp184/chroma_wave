@@ -85,13 +85,31 @@ module ChromaWave
     #
     # Uses redmean perceptual distance for better color matching.
     # Results are memoized by the packed 32-bit integer key for
-    # zero-allocation cache hits.
+    # zero-allocation cache hits. The cache is unbounded; for palettes
+    # with few entries (typical for e-ink), the practical key space is
+    # small. Clear the palette and create a new one if memory is a concern.
     #
     # @param rgba [Color] the color to match
     # @return [Symbol] the nearest palette entry name
     def nearest_color(rgba)
       key = pack_key(rgba)
       nearest_cache.fetch(key) { nearest_cache[key] = compute_nearest(rgba) }
+    end
+
+    # Value equality based on the ordered entry list.
+    #
+    # @param other [Object] object to compare
+    # @return [Boolean]
+    def ==(other)
+      other.is_a?(self.class) && entries == other.send(:entries)
+    end
+    alias eql? ==
+
+    # Hash code consistent with {#==}.
+    #
+    # @return [Integer]
+    def hash
+      [self.class, entries].hash
     end
 
     # @return [String] human-readable representation

@@ -115,6 +115,43 @@ RSpec.describe ChromaWave::Palette do
     end
   end
 
+  describe '#== / #eql? / #hash' do
+    it 'is equal for palettes with the same entries' do
+      a = described_class[:black, :white]
+      b = described_class[:black, :white]
+      expect(a).to eq(b)
+    end
+
+    it 'is not equal for palettes with different entries' do
+      a = described_class[:black, :white]
+      b = described_class[:white, :black]
+      expect(a).not_to eq(b)
+    end
+
+    it 'is not equal to non-Palette objects' do
+      expect(described_class[:black, :white]).not_to eq(%i[black white])
+    end
+
+    it 'eql? matches ==' do
+      a = described_class[:black, :white]
+      b = described_class[:black, :white]
+      expect(a).to eql(b)
+    end
+
+    it 'has the same hash for equal palettes' do
+      a = described_class[:black, :white]
+      b = described_class[:black, :white]
+      expect(a.hash).to eq(b.hash)
+    end
+
+    it 'works as a hash key' do
+      a = described_class[:black, :white]
+      b = described_class[:black, :white]
+      h = { a => :found }
+      expect(h[b]).to eq(:found)
+    end
+  end
+
   describe '#inspect' do
     it 'includes class name and entries' do
       palette = described_class[:black, :white]
