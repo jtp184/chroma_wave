@@ -232,7 +232,7 @@ module ChromaWave
     # @param c1 [Color] first color
     # @param c2 [Color] second color
     # @return [Float] perceptual distance (lower = more similar)
-    def redmean_distance(c1, c2)
+    def redmean_distance(c1, c2) # rubocop:disable Metrics/AbcSize
       r_mean = (c1.r + c2.r) / 2.0
       dr = c1.r - c2.r
       dg = c1.g - c2.g

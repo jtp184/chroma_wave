@@ -59,49 +59,35 @@ Naming/MethodParameterName:
     - sw
     - lx
 
-# Drawing primitives require coordinate pairs, dimensions, and keyword
-# options (stroke, fill, stroke_width) that cannot be meaningfully reduced.
+# Graphics algorithms use coordinate pairs, dimensions, radii, and style
+# kwargs (stroke, fill, stroke_width) that cannot be meaningfully reduced.
 Metrics/ParameterLists:
-  Exclude:
-    - 'lib/chroma_wave/drawing/primitives.rb'
+  Max: 8
 
-# Alpha compositing, color distance, and drawing algorithms are inherently math-heavy.
-# Splitting them further obscures the algorithm more than it clarifies.
+# Alpha compositing, drawing algorithms, and color distance formulas are
+# inherently math-heavy. Raised from default 17 to accommodate these.
 Metrics/AbcSize:
-  Exclude:
-    - 'lib/chroma_wave/color.rb'
-    - 'lib/chroma_wave/palette.rb'
-    - 'lib/chroma_wave/drawing/primitives.rb'
-    - 'lib/chroma_wave/canvas.rb'
-    - 'lib/chroma_wave/surface.rb'
+  Max: 25
 
-# Hex parsing, color distance, and drawing algorithms have inherent complexity.
+# Drawing algorithms and hex parsing have inherent line counts.
+# Raised from default 10 to reduce inline disable noise.
 Metrics/MethodLength:
-  Exclude:
-    - 'lib/chroma_wave/color.rb'
-    - 'lib/chroma_wave/palette.rb'
-    - 'lib/chroma_wave/drawing/primitives.rb'
-    - 'lib/chroma_wave/canvas.rb'
-    - 'lib/chroma_wave/surface.rb'
+  Max: 20
 
-# Drawing primitives module contains many related algorithms that belong together.
-# Canvas wraps a single String buffer and needs all RGBA methods in one class.
+# Primitives groups ~20 related rasterization algorithms in one module.
 Metrics/ModuleLength:
-  Exclude:
-    - 'lib/chroma_wave/drawing/primitives.rb'
-Metrics/ClassLength:
-  Exclude:
-    - 'lib/chroma_wave/canvas.rb'
+  Max: 500
 
-# Scanline flood fill and ellipse algorithms have inherent branching complexity.
+# Canvas wraps a single String buffer with RGBA operations.
+Metrics/ClassLength:
+  Max: 120
+
+# Scanline and midpoint algorithms have inherent branching.
 Metrics/CyclomaticComplexity:
-  Exclude:
-    - 'lib/chroma_wave/drawing/primitives.rb'
-    - 'lib/chroma_wave/canvas.rb'
+  Max: 10
+
 Metrics/PerceivedComplexity:
-  Exclude:
-    - 'lib/chroma_wave/drawing/primitives.rb'
-    - 'lib/chroma_wave/canvas.rb'
+  Max: 10
 
 # DriverConfig has 16 fields; tests that construct configs need many lets.
 # The default of 5 is too low for struct-heavy integration tests.
