@@ -42,6 +42,24 @@ RSpec.describe ChromaWave::Framebuffer do
         expect { described_class.new(10, -1, :mono) }
           .to raise_error(ArgumentError, /height/)
       end
+
+      it 'raises ArgumentError for width exceeding 4096' do
+        expect { described_class.new(4097, 10, :mono) }
+          .to raise_error(ArgumentError, /width/)
+      end
+
+      it 'raises ArgumentError for height exceeding 4096' do
+        expect { described_class.new(10, 4097, :mono) }
+          .to raise_error(ArgumentError, /height/)
+      end
+
+      it 'accepts width of exactly 4096' do
+        expect(described_class.new(4096, 1, :mono).width).to eq(4096)
+      end
+
+      it 'accepts height of exactly 4096' do
+        expect(described_class.new(1, 4096, :mono).height).to eq(4096)
+      end
     end
   end
 
@@ -377,6 +395,78 @@ RSpec.describe ChromaWave::Framebuffer do
 
     it 'reflects set_pixel operations' do
       expect(fb.clear(0).set_pixel(0, 0, 1).bytes.getbyte(0)).to eq(0x80)
+    end
+  end
+
+  describe '#dup / #clone (deep copy)' do
+    subject(:fb) { described_class.new(16, 4, :mono) }
+
+    it 'produces a distinct object' do
+      expect(fb.dup).not_to equal(fb)
+    end
+
+    it 'copies width' do
+      expect(fb.dup.width).to eq(fb.width)
+    end
+
+    it 'copies height' do
+      expect(fb.dup.height).to eq(fb.height)
+    end
+
+    it 'copies pixel_format' do
+      expect(fb.dup.pixel_format).to eq(fb.pixel_format)
+    end
+
+    it 'copies buffer_size' do
+      expect(fb.dup.buffer_size).to eq(fb.buffer_size)
+    end
+
+    it 'does not share buffer with original after dup' do
+      fb.clear(0).set_pixel(0, 0, 1)
+      copy = fb.dup
+      copy.set_pixel(0, 0, 0)
+      expect(fb.get_pixel(0, 0)).to eq(1)
+    end
+
+    it 'allows independent writes on the duped copy' do
+      fb.clear(0).set_pixel(0, 0, 1)
+      copy = fb.dup
+      copy.set_pixel(0, 0, 0)
+      expect(copy.get_pixel(0, 0)).to eq(0)
+    end
+
+    it 'clone does not share buffer with original' do
+      fb.clear(0).set_pixel(5, 2, 1)
+      copy = fb.clone
+      copy.clear(0)
+      expect(fb.get_pixel(5, 2)).to eq(1)
+    end
+
+    it 'survives GC after many dups' do
+      100.times { described_class.new(32, 32, :mono).dup }
+      expect { GC.start }.not_to raise_error
+    end
+  end
+
+  describe '#inspect' do
+    it 'includes class name' do
+      fb = described_class.new(200, 100, :mono)
+      expect(fb.inspect).to include('ChromaWave::Framebuffer')
+    end
+
+    it 'includes dimensions' do
+      fb = described_class.new(200, 100, :mono)
+      expect(fb.inspect).to include('200x100')
+    end
+
+    it 'includes pixel format name' do
+      fb = described_class.new(10, 10, :gray4)
+      expect(fb.inspect).to include('gray4')
+    end
+
+    it 'includes buffer size' do
+      fb = described_class.new(200, 100, :mono)
+      expect(fb.inspect).to include("#{fb.buffer_size} bytes")
     end
   end
 
