@@ -166,6 +166,29 @@ RSpec.describe ChromaWave::Color do
     end
   end
 
+  describe '#to_hex' do
+    it 'returns #RRGGBB for an opaque color' do
+      expect(described_class.new(r: 255, g: 128, b: 0).to_hex).to eq('#FF8000')
+    end
+
+    it 'returns #000000 for black' do
+      expect(described_class::BLACK.to_hex).to eq('#000000')
+    end
+
+    it 'returns #FFFFFF for white' do
+      expect(described_class::WHITE.to_hex).to eq('#FFFFFF')
+    end
+
+    it 'zero-pads single-digit channels' do
+      expect(described_class.new(r: 1, g: 2, b: 3).to_hex).to eq('#010203')
+    end
+
+    it 'round-trips through .hex' do
+      color = described_class.new(r: 171, g: 205, b: 239)
+      expect(described_class.hex(color.to_hex)).to eq(color)
+    end
+  end
+
   describe '#over (alpha compositing)' do
     let(:white) { described_class::WHITE }
     let(:black) { described_class::BLACK }

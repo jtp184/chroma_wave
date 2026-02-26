@@ -78,6 +78,15 @@ module ChromaWave
       )
     end
 
+    # Returns the color as a 6-digit hex string.
+    #
+    # Alpha is not included — use {#a} directly when needed.
+    #
+    # @return [String] hex color string in +#RRGGBB+ format
+    def to_hex
+      format('#%<r>02X%<g>02X%<b>02X', r: r, g: g, b: b)
+    end
+
     private
 
     # Validates that a channel value is an Integer in 0..255.
@@ -92,6 +101,9 @@ module ChromaWave
     end
   end
 
+  # Constants are defined outside the Data.define block because
+  # Data.define blocks do not support const_set on the class being defined.
+  #
   # Valid channel range for RGBA values.
   Color.const_set(:CHANNEL_RANGE, 0..255)
 
