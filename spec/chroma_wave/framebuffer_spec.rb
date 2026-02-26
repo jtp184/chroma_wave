@@ -239,10 +239,7 @@ RSpec.describe ChromaWave::Framebuffer do
       end
 
       it 'masks to 4-bit range' do
-        # 0x1F & 0x0F = 15, which is index 15 — out of palette range
-        # The C layer masks to 4 bits, but palette only has 4 entries
-        # We pass raw integer 0x0F, which C masks; color_at will fail
-        # So test masking with a valid-after-mask value
+        # 0x13 = 19; the C layer masks to 4 bits: 19 & 0x0F = 3 = :red
         expect(fb.set_pixel(0, 0, 0x13).get_pixel(0, 0)).to eq(:red)
       end
     end

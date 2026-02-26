@@ -16,6 +16,16 @@ RSpec.describe ChromaWave::Palette do
       expect { described_class[:black, :magenta] }
         .to raise_error(ArgumentError, /unknown color name: :magenta/)
     end
+
+    it 'raises ArgumentError for duplicate entries' do
+      expect { described_class[:black, :white, :black] }
+        .to raise_error(ArgumentError, /duplicate palette entry: :black/)
+    end
+
+    it 'raises ArgumentError for empty entries' do
+      expect { described_class.new([]) }
+        .to raise_error(ArgumentError, /at least one entry/)
+    end
   end
 
   describe 'Enumerable' do

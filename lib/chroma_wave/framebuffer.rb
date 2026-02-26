@@ -45,7 +45,7 @@ module ChromaWave
         value = super
         return nil if value.nil?
 
-        @pixel_format_obj.palette.color_at(value)
+        pixel_format.palette.color_at(value)
       end
 
       # Clears the framebuffer with a color name or integer.
@@ -87,7 +87,7 @@ module ChromaWave
       def resolve_color(color)
         case color
         when Integer then color
-        when Symbol  then @pixel_format_obj.palette.index_of(color)
+        when Symbol  then pixel_format.palette.index_of(color)
         else raise TypeError, "expected Symbol or Integer color, got #{color.class}"
         end
       end

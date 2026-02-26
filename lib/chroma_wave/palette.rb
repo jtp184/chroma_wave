@@ -101,7 +101,7 @@ module ChromaWave
     # @param other [Object] object to compare
     # @return [Boolean]
     def ==(other)
-      other.is_a?(self.class) && entries == other.send(:entries)
+      other.is_a?(self.class) && entries == other.entries
     end
     alias eql? ==
 
@@ -117,29 +117,43 @@ module ChromaWave
       "#<#{self.class} [#{entries.join(', ')}]>"
     end
 
+    protected
+
+    attr_reader :entries
+
     private
 
-    attr_reader :entries, :index, :rgba_by_entry, :nearest_cache
+    attr_reader :index, :rgba_by_entry, :nearest_cache
 
-    # Validates that all entries are registered color names.
+    # Validates that entries are non-empty, unique, and registered color names.
     #
     # @param entries [Array<Symbol>] color names to validate
-    # @raise [ArgumentError] if any entry is unknown
+    # @raise [ArgumentError] if entries is empty, contains duplicates, or has unknown names
     def validate_entries!(entries)
+      raise ArgumentError, 'palette must have at least one entry' if entries.empty?
+
+      seen = {}
       entries.each do |name|
+        raise ArgumentError, "duplicate palette entry: #{name.inspect}" if seen.key?(name)
+
         unless Color::NAME_MAP.key?(name)
           raise ArgumentError,
                 "unknown color name: #{name.inspect} (registered: #{Color::NAME_MAP.keys.join(', ')})"
         end
+        seen[name] = true
       end
     end
 
-    # Packs an RGBA color into a 32-bit integer cache key.
+    # Packs an RGB color into a 24-bit integer cache key.
+    #
+    # Alpha is excluded because the redmean distance calculation
+    # operates on RGB only — colors should be composited to opaque
+    # before palette matching.
     #
     # @param rgba [Color] the color
-    # @return [Integer] packed 32-bit key
+    # @return [Integer] packed 24-bit key
     def pack_key(rgba)
-      (rgba.r << 24) | (rgba.g << 16) | (rgba.b << 8) | rgba.a
+      (rgba.r << 16) | (rgba.g << 8) | rgba.b
     end
 
     # Computes the nearest palette entry using redmean perceptual distance.

@@ -148,23 +148,6 @@ module ChromaWave
       end
     end
 
-    # Registers a named color constant and adds it to the mutable name map.
-    #
-    # @param name [Symbol] the lowercase name (e.g. +:black+)
-    # @param color [Color] the color value
-    # @return [Color] the registered color
-    # @api private
-    def register(name, color)
-      const_set(name.upcase, color)
-      name_map_mutable[name] = color
-      color
-    end
-
-    # @api private
-    def name_map_mutable
-      @name_map_mutable ||= {}
-    end
-
     # Looks up a color by its registered name.
     #
     # @param name [Symbol] the color name (e.g. +:black+)
@@ -175,19 +158,29 @@ module ChromaWave
     end
   end
 
-  # ── Named color registrations ──────────────────────────────────
-  Color.register(:black,      Color.new(r: 0,   g: 0,   b: 0))
-  Color.register(:white,      Color.new(r: 255, g: 255, b: 255))
-  Color.register(:red,        Color.new(r: 255, g: 0,   b: 0))
-  Color.register(:yellow,     Color.new(r: 255, g: 255, b: 0))
-  Color.register(:green,      Color.new(r: 0,   g: 255, b: 0))
-  Color.register(:blue,       Color.new(r: 0,   g: 0,   b: 255))
-  Color.register(:orange,     Color.new(r: 255, g: 128, b: 0))
-  Color.register(:dark_gray,  Color.new(r: 85,  g: 85,  b: 85))
-  Color.register(:light_gray, Color.new(r: 170, g: 170, b: 170))
-  Color.register(:transparent, Color.new(r: 0,  g: 0,   b: 0, a: 0))
+  # ── Named color constants ───────────────────────────────────────
+  Color.const_set(:BLACK,       Color.new(r: 0,   g: 0,   b: 0))
+  Color.const_set(:WHITE,       Color.new(r: 255, g: 255, b: 255))
+  Color.const_set(:RED,         Color.new(r: 255, g: 0,   b: 0))
+  Color.const_set(:YELLOW,      Color.new(r: 255, g: 255, b: 0))
+  Color.const_set(:GREEN,       Color.new(r: 0,   g: 255, b: 0))
+  Color.const_set(:BLUE,        Color.new(r: 0,   g: 0,   b: 255))
+  Color.const_set(:ORANGE,      Color.new(r: 255, g: 128, b: 0))
+  Color.const_set(:DARK_GRAY,   Color.new(r: 85,  g: 85,  b: 85))
+  Color.const_set(:LIGHT_GRAY,  Color.new(r: 170, g: 170, b: 170))
+  Color.const_set(:TRANSPARENT, Color.new(r: 0,   g: 0,   b: 0, a: 0))
 
-  # Frozen map of all registered color names to their Color values.
-  Color.const_set(:NAME_MAP, Color.name_map_mutable.freeze)
-  Color.remove_instance_variable(:@name_map_mutable)
+  # Frozen map of all named colors for lookup by symbol.
+  Color.const_set(:NAME_MAP, {
+    black: Color::BLACK,
+    white: Color::WHITE,
+    red: Color::RED,
+    yellow: Color::YELLOW,
+    green: Color::GREEN,
+    blue: Color::BLUE,
+    orange: Color::ORANGE,
+    dark_gray: Color::DARK_GRAY,
+    light_gray: Color::LIGHT_GRAY,
+    transparent: Color::TRANSPARENT
+  }.freeze)
 end
