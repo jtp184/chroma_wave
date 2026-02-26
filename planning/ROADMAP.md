@@ -17,9 +17,9 @@ Phase 1: C Foundation                ✅ COMPLETE (branch: feature/groundwork-ph
   ├── 3.  Two-tier driver registry   ⚠️  Tier 1 complete; Tier 2 overrides are stubs
   └── 3a. Driver extraction pipeline ✅  (added during Phase 1)
           │
-Phase 2: Core Value Types          ← depends on Phase 1 (PixelFormat used by Framebuffer)
-  ├── 4. PixelFormat & Palette
-  └── 5. Color
+Phase 2: Core Value Types          ✅ COMPLETE (branch: feature/groundwork-phase-2)
+  ├── 4. PixelFormat & Palette     ✅
+  └── 5. Color                     ✅
           │
 Phase 3: Drawing Architecture      ← depends on Phases 1 & 2
   ├── 6. Surface protocol
@@ -158,45 +158,49 @@ config data for Task 3.
 
 ---
 
-## 🧱 Phase 2: Core Value Types
+## 🧱 Phase 2: Core Value Types ✅
 
 Ruby value objects that unify the concept of "how pixels are packed" and "what colors exist."
 
-### 4. PixelFormat and Palette
+### 4. PixelFormat and Palette ✅
 
 `PixelFormat` unifies the vendor's `Scale`, color constants, and buffer-size math into one
 concept. `Palette` is its color lookup table.
 
-- [ ] Implement `PixelFormat` as `Data.define(:name, :bits_per_pixel, :palette)`
-- [ ] Define four format constants: `MONO`, `GRAY4`, `COLOR4`, `COLOR7`
-- [ ] Implement `Palette` as an `Enumerable` with `nearest_color` (memoized), `index_of`, `color_at`
-- [ ] Memoize nearest-color lookups by packed RGBA key (32-bit integer, not String)
+- [x] Implement `PixelFormat` as `Data.define(:name, :bits_per_pixel, :palette)`
+- [x] Define four format constants: `MONO`, `GRAY4`, `COLOR4`, `COLOR7`
+- [x] Implement `Palette` as an `Enumerable` with `nearest_color` (memoized), `index_of`, `color_at`
+- [x] Memoize nearest-color lookups by packed RGBA key (32-bit integer, not String)
 - [ ] Validate that Display and Framebuffer reference the same PixelFormat at `display.show()`
-- [ ] Specs for palette nearest-color accuracy across all 4 formats
+- [x] Specs for palette nearest-color accuracy across all 4 formats
 
-**Files:** `lib/chroma_wave/pixel_format.rb`, `lib/chroma_wave/palette.rb`
+Also implemented beyond spec: `Palette#==`/`#eql?`/`#hash` (value equality), `LruCache` for bounded nearest-color memoization, `PixelFormat::REGISTRY` with `.from_name` lookup, `PixelFormat#buffer_size` cross-validated against C, `PixelFormatBridge` prepended module bridging Ruby symbols to C integers.
+
+**Files:** `lib/chroma_wave/pixel_format.rb`, `lib/chroma_wave/palette.rb`, `lib/chroma_wave/framebuffer.rb`
 **Refs:** [EXTENSION_STRATEGY.md §3.1](EXTENSION_STRATEGY.md#31-the-pixelformat-unifying-concept), [API_REFERENCE.md §1](API_REFERENCE.md#1-core-value-types)
 **Depends on:** —
-**Acceptance:** `PixelFormat` replaces all occurrences of scale/color_type/bpp. Palette correctly maps RGBA to nearest palette entry for all formats.
+**Acceptance:** ✅ `PixelFormat` replaces all occurrences of scale/color_type/bpp. Palette correctly maps RGBA to nearest palette entry for all formats. Display validation deferred to Phase 4 when Display class exists.
 
 ---
 
-### 5. Color
+### 5. Color ✅
 
 RGBA value type with named constants, hex parsing, and alpha compositing.
 
-- [ ] Implement `Color` as `Data.define(:r, :g, :b, :a)` with `a: 255` default
-- [ ] Define named constants (`Color::BLACK`, `Color::WHITE`, `Color::RED`, etc.)
-- [ ] Build `Color::NAME_MAP` (symbol → Color) for palette integration
-- [ ] Implement `#over(background)` — source-over compositing onto opaque background
-- [ ] Implement `#to_rgba_bytes` / `.from_rgba_bytes` for Canvas packed-buffer interop
-- [ ] Hex string parsing (`Color.hex("#FF0000")`, `Color.hex("#F00")`)
-- [ ] Specs for compositing math, named color lookup, hex parsing edge cases
+- [x] Implement `Color` as `Data.define(:r, :g, :b, :a)` with `a: 255` default
+- [x] Define named constants (`Color::BLACK`, `Color::WHITE`, `Color::RED`, etc.)
+- [x] Build `Color::NAME_MAP` (symbol → Color) for palette integration
+- [x] Implement `#over(background)` — source-over compositing onto opaque background
+- [x] Implement `#to_rgba_bytes` / `.from_rgba_bytes` for Canvas packed-buffer interop
+- [x] Hex string parsing (`Color.hex("#FF0000")`, `Color.hex("#F00")`)
+- [x] Specs for compositing math, named color lookup, hex parsing edge cases
+
+Also implemented beyond spec: `#to_hex`, `#opaque?`/`#transparent?` predicates, `DARK_GRAY`/`LIGHT_GRAY`/`TRANSPARENT` additional constants.
 
 **Files:** `lib/chroma_wave/color.rb`
 **Refs:** [CONTENT_PIPELINE.md §1](CONTENT_PIPELINE.md#1-color-model-rgba), [API_REFERENCE.md §1](API_REFERENCE.md#1-core-value-types)
 **Depends on:** —
-**Acceptance:** Color is frozen/immutable. Compositing produces correct opaque results. Named colors match expected RGBA values.
+**Acceptance:** ✅ Color is frozen/immutable. Compositing produces correct opaque results. Named colors match expected RGBA values.
 
 ---
 

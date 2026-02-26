@@ -5,7 +5,7 @@ RSpec.describe ChromaWave::Framebuffer do
     context 'with valid arguments' do
       %i[mono gray4 color4 color7].each do |fmt|
         it "creates a framebuffer with format #{fmt}" do
-          expect(described_class.new(100, 50, fmt).pixel_format).to eq(fmt)
+          expect(described_class.new(100, 50, fmt).pixel_format.name).to eq(fmt)
         end
       end
     end
@@ -75,7 +75,7 @@ RSpec.describe ChromaWave::Framebuffer do
     end
 
     it 'reports correct pixel_format' do
-      expect(fb.pixel_format).to eq(:mono)
+      expect(fb.pixel_format).to equal(ChromaWave::PixelFormat::MONO)
     end
   end
 
@@ -126,142 +126,150 @@ RSpec.describe ChromaWave::Framebuffer do
       subject(:fb) { described_class.new(16, 4, :mono) }
 
       it 'stores and retrieves BLACK (0)' do
-        expect(fb.set_pixel(0, 0, 0).get_pixel(0, 0)).to eq(0)
+        expect(fb.set_pixel(0, 0, 0).get_pixel(0, 0)).to eq(:black)
       end
 
       it 'stores and retrieves WHITE (1)' do
-        expect(fb.clear(0).set_pixel(5, 2, 1).get_pixel(5, 2)).to eq(1)
+        expect(fb.clear(0).set_pixel(5, 2, 1).get_pixel(5, 2)).to eq(:white)
       end
 
       it 'defaults to WHITE (1) at origin' do
-        expect(fb.get_pixel(0, 0)).to eq(1)
+        expect(fb.get_pixel(0, 0)).to eq(:white)
       end
 
       it 'defaults to WHITE (1) at far corner' do
-        expect(fb.get_pixel(15, 3)).to eq(1)
+        expect(fb.get_pixel(15, 3)).to eq(:white)
       end
 
       8.times do |x|
         it "correctly packs bit position #{x} within a byte" do
-          expect(fb.clear(0).set_pixel(x, 0, 1).get_pixel(x, 0)).to eq(1)
+          expect(fb.clear(0).set_pixel(x, 0, 1).get_pixel(x, 0)).to eq(:white)
         end
       end
 
       it 'handles boundary pixel (0,0)' do
         fb.clear(0)
-        expect(fb.set_pixel(0, 0, 1).get_pixel(0, 0)).to eq(1)
+        expect(fb.set_pixel(0, 0, 1).get_pixel(0, 0)).to eq(:white)
       end
 
       it 'handles boundary pixel (width-1,0)' do
-        expect(fb.clear(0).set_pixel(15, 0, 1).get_pixel(15, 0)).to eq(1)
+        expect(fb.clear(0).set_pixel(15, 0, 1).get_pixel(15, 0)).to eq(:white)
       end
 
       it 'handles boundary pixel (0,height-1)' do
-        expect(fb.clear(0).set_pixel(0, 3, 1).get_pixel(0, 3)).to eq(1)
+        expect(fb.clear(0).set_pixel(0, 3, 1).get_pixel(0, 3)).to eq(:white)
       end
 
       it 'handles boundary pixel (width-1,height-1)' do
-        expect(fb.clear(0).set_pixel(15, 3, 1).get_pixel(15, 3)).to eq(1)
+        expect(fb.clear(0).set_pixel(15, 3, 1).get_pixel(15, 3)).to eq(:white)
       end
 
       it 'does not affect the pixel before' do
-        expect(fb.clear(0).set_pixel(3, 0, 1).get_pixel(2, 0)).to eq(0)
+        expect(fb.clear(0).set_pixel(3, 0, 1).get_pixel(2, 0)).to eq(:black)
       end
 
       it 'does not affect the pixel after' do
-        expect(fb.clear(0).set_pixel(3, 0, 1).get_pixel(4, 0)).to eq(0)
+        expect(fb.clear(0).set_pixel(3, 0, 1).get_pixel(4, 0)).to eq(:black)
       end
     end
 
     context 'with GRAY4 format' do
       subject(:fb) { described_class.new(8, 4, :gray4) }
 
+      let(:gray4_entries) { %i[black dark_gray light_gray white] }
+
       (0..3).each do |color|
         it "round-trips color value #{color}" do
-          expect(fb.set_pixel(0, 0, color).get_pixel(0, 0)).to eq(color)
+          expect(fb.set_pixel(0, 0, color).get_pixel(0, 0)).to eq(gray4_entries[color])
         end
       end
 
       4.times do |x|
         it "correctly packs pixel position #{x} within a byte" do
-          expect(fb.clear(0).set_pixel(x, 0, x).get_pixel(x, 0)).to eq(x)
+          expect(fb.clear(0).set_pixel(x, 0, x).get_pixel(x, 0)).to eq(gray4_entries[x])
         end
       end
 
-      it 'defaults to 0 at origin' do
-        expect(fb.get_pixel(0, 0)).to eq(0)
+      it 'defaults to black at origin' do
+        expect(fb.get_pixel(0, 0)).to eq(:black)
       end
 
-      it 'defaults to 0 at far corner' do
-        expect(fb.get_pixel(7, 3)).to eq(0)
+      it 'defaults to black at far corner' do
+        expect(fb.get_pixel(7, 3)).to eq(:black)
       end
 
       it 'handles boundary pixel (7,3)' do
-        expect(fb.set_pixel(7, 3, 3).get_pixel(7, 3)).to eq(3)
+        expect(fb.set_pixel(7, 3, 3).get_pixel(7, 3)).to eq(:white)
       end
 
-      it 'masks to 2-bit range' do
-        expect(fb.set_pixel(0, 0, 7).get_pixel(0, 0)).to eq(3)
+      it 'raises ArgumentError for color index beyond palette size' do
+        expect { fb.set_pixel(0, 0, 4) }
+          .to raise_error(ArgumentError, /out of range/)
       end
     end
 
     context 'with COLOR4 format' do
       subject(:fb) { described_class.new(10, 4, :color4) }
 
-      (0..5).each do |color|
+      let(:color4_entries) { %i[black white yellow red] }
+
+      (0..3).each do |color|
         it "round-trips color value #{color}" do
-          expect(fb.set_pixel(color, 0, color).get_pixel(color, 0)).to eq(color)
+          expect(fb.set_pixel(color, 0, color).get_pixel(color, 0)).to eq(color4_entries[color])
         end
       end
 
       it 'packs even X in high nibble' do
-        expect(fb.set_pixel(0, 0, 5).get_pixel(0, 0)).to eq(5)
+        expect(fb.set_pixel(0, 0, 3).get_pixel(0, 0)).to eq(:red)
       end
 
       it 'packs odd X in low nibble' do
-        expect(fb.set_pixel(1, 0, 3).get_pixel(1, 0)).to eq(3)
+        expect(fb.set_pixel(1, 0, 3).get_pixel(1, 0)).to eq(:red)
       end
 
-      it 'defaults to 0 at origin' do
-        expect(fb.get_pixel(0, 0)).to eq(0)
+      it 'defaults to black at origin' do
+        expect(fb.get_pixel(0, 0)).to eq(:black)
       end
 
-      it 'defaults to 0 at far corner' do
-        expect(fb.get_pixel(9, 3)).to eq(0)
+      it 'defaults to black at far corner' do
+        expect(fb.get_pixel(9, 3)).to eq(:black)
       end
 
       it 'handles boundary pixel (9,3)' do
-        expect(fb.set_pixel(9, 3, 5).get_pixel(9, 3)).to eq(5)
+        expect(fb.set_pixel(9, 3, 3).get_pixel(9, 3)).to eq(:red)
       end
 
-      it 'masks to 4-bit range' do
-        expect(fb.set_pixel(0, 0, 0x1F).get_pixel(0, 0)).to eq(0x0F)
+      it 'raises ArgumentError for color index beyond palette size' do
+        expect { fb.set_pixel(0, 0, 4) }
+          .to raise_error(ArgumentError, /out of range/)
       end
     end
 
     context 'with COLOR7 format' do
       subject(:fb) { described_class.new(10, 4, :color7) }
 
+      let(:color7_entries) { %i[black white green blue red yellow orange] }
+
       (0..6).each do |color|
         it "round-trips color value #{color}" do
-          expect(fb.set_pixel(color, 0, color).get_pixel(color, 0)).to eq(color)
+          expect(fb.set_pixel(color, 0, color).get_pixel(color, 0)).to eq(color7_entries[color])
         end
       end
 
       it 'packs even X correctly' do
-        expect(fb.set_pixel(0, 0, 6).get_pixel(0, 0)).to eq(6)
+        expect(fb.set_pixel(0, 0, 6).get_pixel(0, 0)).to eq(:orange)
       end
 
       it 'packs odd X correctly' do
-        expect(fb.set_pixel(1, 0, 4).get_pixel(1, 0)).to eq(4)
+        expect(fb.set_pixel(1, 0, 4).get_pixel(1, 0)).to eq(:red)
       end
 
-      it 'defaults to 0 at origin' do
-        expect(fb.get_pixel(0, 0)).to eq(0)
+      it 'defaults to black at origin' do
+        expect(fb.get_pixel(0, 0)).to eq(:black)
       end
 
-      it 'defaults to 0 at far corner' do
-        expect(fb.get_pixel(9, 3)).to eq(0)
+      it 'defaults to black at far corner' do
+        expect(fb.get_pixel(9, 3)).to eq(:black)
       end
     end
   end
@@ -275,15 +283,15 @@ RSpec.describe ChromaWave::Framebuffer do
       end
 
       it 'packs pixel at x=120 correctly' do
-        expect(fb.clear(0).set_pixel(120, 0, 1).get_pixel(120, 0)).to eq(1)
+        expect(fb.clear(0).set_pixel(120, 0, 1).get_pixel(120, 0)).to eq(:white)
       end
 
       it 'packs pixel at x=121 correctly' do
-        expect(fb.clear(0).set_pixel(121, 0, 1).get_pixel(121, 0)).to eq(1)
+        expect(fb.clear(0).set_pixel(121, 0, 1).get_pixel(121, 0)).to eq(:white)
       end
 
       it 'does not corrupt adjacent pixel when setting x=121' do
-        expect(fb.clear(0).set_pixel(121, 0, 1).get_pixel(120, 0)).to eq(0)
+        expect(fb.clear(0).set_pixel(121, 0, 1).get_pixel(120, 0)).to eq(:black)
       end
     end
   end
@@ -361,7 +369,7 @@ RSpec.describe ChromaWave::Framebuffer do
       fb = described_class.new(4, 2, :gray4)
       fb.clear(3)
       pixels = (0...4).flat_map { |x| (0...2).map { |y| fb.get_pixel(x, y) } }
-      expect(pixels).to all(eq(3))
+      expect(pixels).to all(eq(:white))
     end
 
     it 'returns self for chaining' do
@@ -425,21 +433,21 @@ RSpec.describe ChromaWave::Framebuffer do
       fb.clear(0).set_pixel(0, 0, 1)
       copy = fb.dup
       copy.set_pixel(0, 0, 0)
-      expect(fb.get_pixel(0, 0)).to eq(1)
+      expect(fb.get_pixel(0, 0)).to eq(:white)
     end
 
     it 'allows independent writes on the duped copy' do
       fb.clear(0).set_pixel(0, 0, 1)
       copy = fb.dup
       copy.set_pixel(0, 0, 0)
-      expect(copy.get_pixel(0, 0)).to eq(0)
+      expect(copy.get_pixel(0, 0)).to eq(:black)
     end
 
     it 'clone does not share buffer with original' do
       fb.clear(0).set_pixel(5, 2, 1)
       copy = fb.clone
       copy.clear(0)
-      expect(fb.get_pixel(5, 2)).to eq(1)
+      expect(fb.get_pixel(5, 2)).to eq(:white)
     end
 
     it 'survives GC after many dups' do
@@ -518,10 +526,232 @@ RSpec.describe ChromaWave::Framebuffer do
     end
   end
 
+  describe 'PixelFormat bridge' do
+    describe 'construction' do
+      it 'accepts a PixelFormat object' do
+        fmt = ChromaWave::PixelFormat::MONO
+        fb = described_class.new(16, 4, fmt)
+        expect(fb.width).to eq(16)
+      end
+
+      it 'accepts a symbol' do
+        fb = described_class.new(16, 4, :mono)
+        expect(fb.width).to eq(16)
+      end
+
+      it 'raises TypeError for non-Symbol, non-PixelFormat' do
+        expect { described_class.new(16, 4, 'mono') }.to raise_error(TypeError)
+      end
+    end
+
+    describe '#pixel_format' do
+      it 'returns a PixelFormat object when constructed with symbol' do
+        fb = described_class.new(16, 4, :mono)
+        expect(fb.pixel_format).to be_a(ChromaWave::PixelFormat)
+      end
+
+      it 'returns a PixelFormat object when constructed with PixelFormat' do
+        fmt = ChromaWave::PixelFormat::GRAY4
+        fb = described_class.new(8, 4, fmt)
+        expect(fb.pixel_format).to equal(fmt)
+      end
+
+      it 'returns MONO for :mono' do
+        fb = described_class.new(16, 4, :mono)
+        expect(fb.pixel_format).to equal(ChromaWave::PixelFormat::MONO)
+      end
+    end
+
+    describe 'symbol-based set_pixel / get_pixel round-trip' do
+      context 'with MONO format' do
+        subject(:fb) { described_class.new(16, 4, :mono) }
+
+        it 'round-trips :black' do
+          fb.set_pixel(0, 0, :black)
+          expect(fb.get_pixel(0, 0)).to eq(:black)
+        end
+
+        it 'round-trips :white' do
+          fb.clear(:black)
+          fb.set_pixel(5, 2, :white)
+          expect(fb.get_pixel(5, 2)).to eq(:white)
+        end
+      end
+
+      context 'with GRAY4 format' do
+        subject(:fb) { described_class.new(8, 4, :gray4) }
+
+        %i[black dark_gray light_gray white].each do |color|
+          it "round-trips #{color}" do
+            fb.set_pixel(0, 0, color)
+            expect(fb.get_pixel(0, 0)).to eq(color)
+          end
+        end
+      end
+
+      context 'with COLOR4 format' do
+        subject(:fb) { described_class.new(10, 4, :color4) }
+
+        %i[black white yellow red].each do |color|
+          it "round-trips #{color}" do
+            fb.set_pixel(0, 0, color)
+            expect(fb.get_pixel(0, 0)).to eq(color)
+          end
+        end
+      end
+
+      context 'with COLOR7 format' do
+        subject(:fb) { described_class.new(10, 4, :color7) }
+
+        %i[black white green blue red yellow orange].each do |color|
+          it "round-trips #{color}" do
+            idx = ChromaWave::PixelFormat::COLOR7.palette.index_of(color)
+            fb.set_pixel(idx, 0, color)
+            expect(fb.get_pixel(idx, 0)).to eq(color)
+          end
+        end
+      end
+    end
+
+    describe 'integer backward compat for set_pixel' do
+      subject(:fb) { described_class.new(16, 4, :mono) }
+
+      it 'still accepts raw integers' do
+        fb.set_pixel(0, 0, 0)
+        expect(fb.get_pixel(0, 0)).to eq(:black)
+      end
+    end
+
+    describe 'integer color index validation' do
+      context 'with MONO format (2 palette entries)' do
+        subject(:fb) { described_class.new(16, 4, :mono) }
+
+        it 'accepts 0' do
+          expect { fb.set_pixel(0, 0, 0) }.not_to raise_error
+        end
+
+        it 'accepts 1' do
+          expect { fb.set_pixel(0, 0, 1) }.not_to raise_error
+        end
+
+        it 'rejects 2' do
+          expect { fb.set_pixel(0, 0, 2) }
+            .to raise_error(ArgumentError, /out of range.*mono/i)
+        end
+
+        it 'rejects negative integers' do
+          expect { fb.set_pixel(0, 0, -1) }
+            .to raise_error(ArgumentError, /out of range/)
+        end
+      end
+
+      context 'with COLOR7 format (7 palette entries)' do
+        subject(:fb) { described_class.new(10, 4, :color7) }
+
+        it 'accepts 6 (last valid index)' do
+          expect { fb.set_pixel(0, 0, 6) }.not_to raise_error
+        end
+
+        it 'rejects 7' do
+          expect { fb.set_pixel(0, 0, 7) }
+            .to raise_error(ArgumentError, /out of range/)
+        end
+
+        it 'rejects 15 (passes 4-bit mask but exceeds palette)' do
+          expect { fb.set_pixel(0, 0, 15) }
+            .to raise_error(ArgumentError, /out of range/)
+        end
+      end
+
+      context 'with #clear' do
+        subject(:fb) { described_class.new(8, 2, :gray4) }
+
+        it 'accepts valid index' do
+          expect { fb.clear(3) }.not_to raise_error
+        end
+
+        it 'rejects out-of-range index' do
+          expect { fb.clear(4) }
+            .to raise_error(ArgumentError, /out of range/)
+        end
+      end
+    end
+
+    describe '#clear with symbols' do
+      it 'clears MONO to :black' do
+        fb = described_class.new(8, 2, :mono)
+        fb.clear(:black)
+        expect(fb.get_pixel(0, 0)).to eq(:black)
+      end
+
+      it 'clears MONO to :white' do
+        fb = described_class.new(8, 2, :mono)
+        fb.clear(:black)
+        fb.clear(:white)
+        expect(fb.get_pixel(0, 0)).to eq(:white)
+      end
+
+      it 'clears GRAY4 to :dark_gray' do
+        fb = described_class.new(4, 2, :gray4)
+        fb.clear(:dark_gray)
+        pixels = (0...4).map { |x| fb.get_pixel(x, 0) }
+        expect(pixels).to all(eq(:dark_gray))
+      end
+    end
+
+    describe '#dup / #clone preserves PixelFormat' do
+      it 'dup preserves PixelFormat identity' do
+        fb = described_class.new(16, 4, :mono)
+        expect(fb.dup.pixel_format).to equal(fb.pixel_format)
+      end
+
+      it 'clone preserves PixelFormat identity' do
+        fb = described_class.new(16, 4, :gray4)
+        expect(fb.clone.pixel_format).to equal(fb.pixel_format)
+      end
+
+      it 'dup returns symbols from get_pixel' do
+        fb = described_class.new(16, 4, :mono)
+        fb.set_pixel(0, 0, :black)
+        copy = fb.dup
+        expect(copy.get_pixel(0, 0)).to eq(:black)
+      end
+    end
+
+    describe '#get_pixel out-of-bounds returns nil' do
+      subject(:fb) { described_class.new(10, 10, :mono) }
+
+      it 'returns nil for negative x' do
+        expect(fb.get_pixel(-1, 0)).to be_nil
+      end
+
+      it 'returns nil for x >= width' do
+        expect(fb.get_pixel(10, 0)).to be_nil
+      end
+    end
+
+    describe 'buffer_size consistency' do
+      %i[mono gray4 color4 color7].each do |fmt|
+        it "matches PixelFormat calculation for #{fmt} at 122x250" do
+          fb = described_class.new(122, 250, fmt)
+          pf = fb.pixel_format
+          expect(fb.buffer_size).to eq(pf.buffer_size(122, 250))
+        end
+      end
+    end
+  end
+
   describe 'GC stress test' do
     it 'handles creating and discarding many framebuffers' do
       expect do
         1000.times { described_class.new(64, 64, :mono) }
+        GC.start
+      end.not_to raise_error
+    end
+
+    it 'handles framebuffers with PixelFormat objects' do
+      expect do
+        1000.times { described_class.new(64, 64, ChromaWave::PixelFormat::MONO) }
         GC.start
       end.not_to raise_error
     end

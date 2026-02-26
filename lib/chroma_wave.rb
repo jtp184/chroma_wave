@@ -9,3 +9,8 @@ require 'chroma_wave/chroma_wave'
 # on E-Paper displays via a C extension wrapping vendor drivers.
 module ChromaWave
 end
+
+require_relative 'chroma_wave/color'        # Color before Palette (NAME_MAP)
+require_relative 'chroma_wave/palette'      # Palette before PixelFormat (constants)
+require_relative 'chroma_wave/pixel_format' # PixelFormat before Framebuffer wrapper
+require_relative 'chroma_wave/framebuffer'  # Reopens C class, prepends bridge
