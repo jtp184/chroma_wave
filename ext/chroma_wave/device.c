@@ -45,7 +45,7 @@ epd_send_data_bulk(const uint8_t *data, size_t len)
 
 /* ---- Busy-wait polling ---- */
 int
-epd_read_busy(const epd_model_config_t *cfg, uint32_t timeout_ms)
+epd_read_busy(busy_polarity_t polarity, uint32_t timeout_ms)
 {
     uint32_t i;
     uint8_t  pin_val;
@@ -53,7 +53,7 @@ epd_read_busy(const epd_model_config_t *cfg, uint32_t timeout_ms)
     for (i = 0; i < timeout_ms; i++) {
         pin_val = DEV_Digital_Read(EPD_BUSY_PIN);
 
-        if (cfg->busy_polarity == BUSY_ACTIVE_HIGH) {
+        if (polarity == BUSY_ACTIVE_HIGH) {
             /* Busy while HIGH, done when LOW */
             if (pin_val == 0) return EPD_OK;
         } else {
@@ -68,19 +68,13 @@ epd_read_busy(const epd_model_config_t *cfg, uint32_t timeout_ms)
 }
 
 int
-epd_wait_busy_high(const epd_model_config_t *cfg, uint32_t timeout_ms)
+epd_wait_busy_high(uint32_t timeout_ms)
 {
-    /* Create a temporary config with HIGH polarity */
-    epd_model_config_t tmp = *cfg;
-    tmp.busy_polarity = BUSY_ACTIVE_HIGH;
-    return epd_read_busy(&tmp, timeout_ms);
+    return epd_read_busy(BUSY_ACTIVE_HIGH, timeout_ms);
 }
 
 int
-epd_wait_busy_low(const epd_model_config_t *cfg, uint32_t timeout_ms)
+epd_wait_busy_low(uint32_t timeout_ms)
 {
-    /* Create a temporary config with LOW polarity */
-    epd_model_config_t tmp = *cfg;
-    tmp.busy_polarity = BUSY_ACTIVE_LOW;
-    return epd_read_busy(&tmp, timeout_ms);
+    return epd_read_busy(BUSY_ACTIVE_LOW, timeout_ms);
 }
