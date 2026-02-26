@@ -202,8 +202,9 @@ RSpec.describe ChromaWave::Framebuffer do
         expect(fb.set_pixel(7, 3, 3).get_pixel(7, 3)).to eq(:white)
       end
 
-      it 'masks to 2-bit range' do
-        expect(fb.set_pixel(0, 0, 7).get_pixel(0, 0)).to eq(:white)
+      it 'raises ArgumentError for color index beyond palette size' do
+        expect { fb.set_pixel(0, 0, 4) }
+          .to raise_error(ArgumentError, /out of range/)
       end
     end
 
@@ -238,9 +239,9 @@ RSpec.describe ChromaWave::Framebuffer do
         expect(fb.set_pixel(9, 3, 3).get_pixel(9, 3)).to eq(:red)
       end
 
-      it 'masks to 4-bit range' do
-        # 0x13 = 19; the C layer masks to 4 bits: 19 & 0x0F = 3 = :red
-        expect(fb.set_pixel(0, 0, 0x13).get_pixel(0, 0)).to eq(:red)
+      it 'raises ArgumentError for color index beyond palette size' do
+        expect { fb.set_pixel(0, 0, 4) }
+          .to raise_error(ArgumentError, /out of range/)
       end
     end
 
@@ -618,6 +619,61 @@ RSpec.describe ChromaWave::Framebuffer do
       it 'still accepts raw integers' do
         fb.set_pixel(0, 0, 0)
         expect(fb.get_pixel(0, 0)).to eq(:black)
+      end
+    end
+
+    describe 'integer color index validation' do
+      context 'with MONO format (2 palette entries)' do
+        subject(:fb) { described_class.new(16, 4, :mono) }
+
+        it 'accepts 0' do
+          expect { fb.set_pixel(0, 0, 0) }.not_to raise_error
+        end
+
+        it 'accepts 1' do
+          expect { fb.set_pixel(0, 0, 1) }.not_to raise_error
+        end
+
+        it 'rejects 2' do
+          expect { fb.set_pixel(0, 0, 2) }
+            .to raise_error(ArgumentError, /out of range.*mono/i)
+        end
+
+        it 'rejects negative integers' do
+          expect { fb.set_pixel(0, 0, -1) }
+            .to raise_error(ArgumentError, /out of range/)
+        end
+      end
+
+      context 'with COLOR7 format (7 palette entries)' do
+        subject(:fb) { described_class.new(10, 4, :color7) }
+
+        it 'accepts 6 (last valid index)' do
+          expect { fb.set_pixel(0, 0, 6) }.not_to raise_error
+        end
+
+        it 'rejects 7' do
+          expect { fb.set_pixel(0, 0, 7) }
+            .to raise_error(ArgumentError, /out of range/)
+        end
+
+        it 'rejects 15 (passes 4-bit mask but exceeds palette)' do
+          expect { fb.set_pixel(0, 0, 15) }
+            .to raise_error(ArgumentError, /out of range/)
+        end
+      end
+
+      context 'with #clear' do
+        subject(:fb) { described_class.new(8, 2, :gray4) }
+
+        it 'accepts valid index' do
+          expect { fb.clear(3) }.not_to raise_error
+        end
+
+        it 'rejects out-of-range index' do
+          expect { fb.clear(4) }
+            .to raise_error(ArgumentError, /out of range/)
+        end
       end
     end
 

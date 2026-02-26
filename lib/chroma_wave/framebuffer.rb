@@ -82,14 +82,32 @@ module ChromaWave
 
       # Resolves a color argument into an integer for the C layer.
       #
+      # Integers are range-checked against the palette size so that
+      # out-of-range values fail fast at input rather than producing
+      # a silent write that later raises +IndexError+ on read.
+      #
       # @param color [Symbol, Integer] palette color name or raw integer
       # @return [Integer]
+      # @raise [ArgumentError] if an integer is outside the palette range
       def resolve_color(color)
         case color
-        when Integer then color
+        when Integer then validate_color_index(color)
         when Symbol  then pixel_format.palette.index_of(color)
         else raise TypeError, "expected Symbol or Integer color, got #{color.class}"
         end
+      end
+
+      # Validates that an integer color index is within palette bounds.
+      #
+      # @param index [Integer] the color index to validate
+      # @return [Integer] the index, if valid
+      # @raise [ArgumentError] if index is negative or >= palette size
+      def validate_color_index(index)
+        max = pixel_format.palette.size
+        return index if index >= 0 && index < max
+
+        raise ArgumentError,
+              "color index #{index} out of range for #{pixel_format.name} palette (0...#{max})"
       end
     end
 
