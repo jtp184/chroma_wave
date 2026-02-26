@@ -13,4 +13,5 @@ end
 require_relative 'chroma_wave/color'        # Color before Palette (NAME_MAP)
 require_relative 'chroma_wave/palette'      # Palette before PixelFormat (constants)
 require_relative 'chroma_wave/pixel_format' # PixelFormat before Framebuffer wrapper
-require_relative 'chroma_wave/framebuffer'  # Reopens C class, prepends bridge
+require_relative 'chroma_wave/surface'      # Surface before Framebuffer (included by FB)
+require_relative 'chroma_wave/framebuffer'  # Reopens C class, prepends bridge, includes Surface
