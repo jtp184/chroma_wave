@@ -15,3 +15,5 @@ require_relative 'chroma_wave/palette'      # Palette before PixelFormat (consta
 require_relative 'chroma_wave/pixel_format' # PixelFormat before Framebuffer wrapper
 require_relative 'chroma_wave/surface'      # Surface before Framebuffer (included by FB)
 require_relative 'chroma_wave/framebuffer'  # Reopens C class, prepends bridge, includes Surface
+require_relative 'chroma_wave/canvas'       # RGBA pixel buffer, includes Surface
+require_relative 'chroma_wave/layer'        # Clipped sub-region, includes Surface
