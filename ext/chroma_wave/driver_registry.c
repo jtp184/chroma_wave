@@ -126,7 +126,7 @@ epd_generic_init(const epd_model_config_t *cfg, uint8_t mode)
                 return EPD_OK;
 
             case SEQ_WAIT_BUSY:
-                rc = epd_read_busy(cfg, EPD_BUSY_TIMEOUT_MS);
+                rc = epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
                 if (rc != EPD_OK) return rc;
                 break;
 
@@ -142,7 +142,7 @@ epd_generic_init(const epd_model_config_t *cfg, uint8_t mode)
 
             case SEQ_SW_RESET:
                 epd_send_command(0x12);
-                rc = epd_read_busy(cfg, EPD_BUSY_TIMEOUT_MS);
+                rc = epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
                 if (rc != EPD_OK) return rc;
                 break;
 
@@ -194,7 +194,12 @@ epd_generic_init(const epd_model_config_t *cfg, uint8_t mode)
 }
 
 /* ------------------------------------------------------------------ */
-/* Generic display: send framebuffer to display RAM                    */
+/* Generic display: send framebuffer to display RAM.                   */
+/* NOTE: This only writes pixel data to the controller's RAM.          */
+/* It does NOT trigger a display refresh (TurnOnDisplay).  The caller  */
+/* is responsible for issuing the appropriate refresh command sequence, */
+/* which varies by model.  Tier 2 overrides and the high-level Ruby    */
+/* API will handle refresh in a future phase.                          */
 /* ------------------------------------------------------------------ */
 
 int
@@ -279,18 +284,7 @@ epd_model_at(size_t index)
 /* Ruby API                                                            */
 /* ------------------------------------------------------------------ */
 
-/* Helper: convert pixel_format_t to Ruby symbol */
-static VALUE
-pixel_format_sym(pixel_format_t fmt)
-{
-    switch (fmt) {
-    case PIXEL_FORMAT_MONO:   return ID2SYM(rb_intern("mono"));
-    case PIXEL_FORMAT_GRAY4:  return ID2SYM(rb_intern("gray4"));
-    case PIXEL_FORMAT_COLOR4: return ID2SYM(rb_intern("color4"));
-    case PIXEL_FORMAT_COLOR7: return ID2SYM(rb_intern("color7"));
-    default:                  return ID2SYM(rb_intern("unknown"));
-    }
-}
+/* pixel_format_t -> Ruby Symbol: uses shared cw_pixel_format_to_sym() */
 
 /* Helper: convert busy_polarity_t to Ruby symbol */
 static VALUE
@@ -349,7 +343,7 @@ rb_model_config(VALUE self, VALUE rb_name)
     rb_hash_aset(hash, ID2SYM(rb_intern("height")),
                  UINT2NUM(cfg->height));
     rb_hash_aset(hash, ID2SYM(rb_intern("pixel_format")),
-                 pixel_format_sym(cfg->pixel_format));
+                 cw_pixel_format_to_sym(cfg->pixel_format));
     rb_hash_aset(hash, ID2SYM(rb_intern("busy_polarity")),
                  busy_polarity_sym(cfg->busy_polarity));
     rb_hash_aset(hash, ID2SYM(rb_intern("capabilities")),

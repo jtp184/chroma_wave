@@ -1,39 +1,6 @@
 #include "framebuffer.h"
 #include "ruby/encoding.h"
 
-/* ---- Symbol cache ---- */
-static ID id_mono, id_gray4, id_color4, id_color7;
-
-/* ---- Helper: pixel_format_t from Ruby Symbol ---- */
-static pixel_format_t
-sym_to_pixel_format(VALUE sym)
-{
-    ID id = SYM2ID(sym);
-
-    if (id == id_mono)   return PIXEL_FORMAT_MONO;
-    if (id == id_gray4)  return PIXEL_FORMAT_GRAY4;
-    if (id == id_color4) return PIXEL_FORMAT_COLOR4;
-    if (id == id_color7) return PIXEL_FORMAT_COLOR7;
-
-    rb_raise(rb_eArgError,
-             "unknown pixel format: %"PRIsVALUE" (expected :mono, :gray4, :color4, or :color7)",
-             sym);
-    return 0; /* unreachable */
-}
-
-/* ---- Helper: pixel_format_t to Ruby Symbol ---- */
-static VALUE
-pixel_format_to_sym(pixel_format_t fmt)
-{
-    switch (fmt) {
-    case PIXEL_FORMAT_MONO:   return ID2SYM(id_mono);
-    case PIXEL_FORMAT_GRAY4:  return ID2SYM(id_gray4);
-    case PIXEL_FORMAT_COLOR4: return ID2SYM(id_color4);
-    case PIXEL_FORMAT_COLOR7: return ID2SYM(id_color7);
-    }
-    return Qnil; /* unreachable */
-}
-
 /* ---- Helper: calculate bytes per row ---- */
 static uint16_t
 calc_width_byte(uint16_t width, pixel_format_t fmt)
@@ -101,14 +68,14 @@ fb_initialize(VALUE self, VALUE rb_width, VALUE rb_height, VALUE rb_format)
     int w = NUM2INT(rb_width);
     int h = NUM2INT(rb_height);
 
-    if (w <= 0 || w > UINT16_MAX)
-        rb_raise(rb_eArgError, "width must be between 1 and %d", UINT16_MAX);
-    if (h <= 0 || h > UINT16_MAX)
-        rb_raise(rb_eArgError, "height must be between 1 and %d", UINT16_MAX);
+    if (w <= 0 || w > EPD_MAX_DIMENSION)
+        rb_raise(rb_eArgError, "width must be between 1 and %d", EPD_MAX_DIMENSION);
+    if (h <= 0 || h > EPD_MAX_DIMENSION)
+        rb_raise(rb_eArgError, "height must be between 1 and %d", EPD_MAX_DIMENSION);
 
     fb->width       = (uint16_t)w;
     fb->height      = (uint16_t)h;
-    fb->pixel_format = sym_to_pixel_format(rb_format);
+    fb->pixel_format = cw_sym_to_pixel_format(rb_format);
     fb->width_byte  = calc_width_byte(fb->width, fb->pixel_format);
     fb->buffer_size = (size_t)fb->width_byte * fb->height;
 
@@ -121,6 +88,39 @@ fb_initialize(VALUE self, VALUE rb_width, VALUE rb_height, VALUE rb_format)
         memset(fb->buffer, 0x00, fb->buffer_size);
 
     return self;
+}
+
+/* ---- initialize_copy (deep-copy for dup/clone) ---- */
+static VALUE
+fb_initialize_copy(VALUE copy, VALUE orig)
+{
+    framebuffer_t *fb_copy, *fb_orig;
+
+    if (copy == orig) return copy;
+
+    TypedData_Get_Struct(copy, framebuffer_t, &framebuffer_type, fb_copy);
+    TypedData_Get_Struct(orig, framebuffer_t, &framebuffer_type, fb_orig);
+
+    /* Free any existing buffer in the copy */
+    if (fb_copy->buffer) {
+        xfree(fb_copy->buffer);
+        fb_copy->buffer = NULL;
+    }
+
+    /* Copy metadata */
+    fb_copy->width        = fb_orig->width;
+    fb_copy->height       = fb_orig->height;
+    fb_copy->pixel_format = fb_orig->pixel_format;
+    fb_copy->width_byte   = fb_orig->width_byte;
+    fb_copy->buffer_size  = fb_orig->buffer_size;
+
+    /* Deep-copy buffer data */
+    if (fb_orig->buffer && fb_orig->buffer_size > 0) {
+        fb_copy->buffer = (uint8_t *)xmalloc(fb_orig->buffer_size);
+        memcpy(fb_copy->buffer, fb_orig->buffer, fb_orig->buffer_size);
+    }
+
+    return copy;
 }
 
 /* ---- Accessors ---- */
@@ -153,7 +153,7 @@ fb_pixel_format(VALUE self)
 {
     framebuffer_t *fb;
     TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
-    return pixel_format_to_sym(fb->pixel_format);
+    return cw_pixel_format_to_sym(fb->pixel_format);
 }
 
 /* ---- set_pixel(x, y, color) ---- */
@@ -291,26 +291,47 @@ fb_bytes(VALUE self)
     return str;
 }
 
+/* ---- inspect ---- */
+static const char *
+pixel_format_name(pixel_format_t fmt)
+{
+    switch (fmt) {
+    case PIXEL_FORMAT_MONO:   return "mono";
+    case PIXEL_FORMAT_GRAY4:  return "gray4";
+    case PIXEL_FORMAT_COLOR4: return "color4";
+    case PIXEL_FORMAT_COLOR7: return "color7";
+    }
+    return "unknown";
+}
+
+static VALUE
+fb_inspect(VALUE self)
+{
+    framebuffer_t *fb;
+    TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
+
+    return rb_sprintf("#<ChromaWave::Framebuffer %dx%d %s (%"PRIuSIZE" bytes)>",
+                      fb->width, fb->height,
+                      pixel_format_name(fb->pixel_format),
+                      fb->buffer_size);
+}
+
 /* ---- Module init ---- */
 void
 Init_framebuffer(void)
 {
-    /* Cache symbol IDs */
-    id_mono   = rb_intern("mono");
-    id_gray4  = rb_intern("gray4");
-    id_color4 = rb_intern("color4");
-    id_color7 = rb_intern("color7");
-
     rb_cFramebuffer = rb_define_class_under(rb_mChromaWave, "Framebuffer", rb_cObject);
 
     rb_define_alloc_func(rb_cFramebuffer, fb_alloc);
-    rb_define_method(rb_cFramebuffer, "initialize", fb_initialize, 3);
-    rb_define_method(rb_cFramebuffer, "width",        fb_width,        0);
-    rb_define_method(rb_cFramebuffer, "height",       fb_height,       0);
-    rb_define_method(rb_cFramebuffer, "buffer_size",  fb_buffer_size,  0);
-    rb_define_method(rb_cFramebuffer, "pixel_format", fb_pixel_format, 0);
-    rb_define_method(rb_cFramebuffer, "set_pixel",    fb_set_pixel,    3);
-    rb_define_method(rb_cFramebuffer, "get_pixel",    fb_get_pixel,    2);
-    rb_define_method(rb_cFramebuffer, "clear",        fb_clear,        1);
-    rb_define_method(rb_cFramebuffer, "bytes",        fb_bytes,        0);
+    rb_define_method(rb_cFramebuffer, "initialize",      fb_initialize,      3);
+    rb_define_method(rb_cFramebuffer, "initialize_copy", fb_initialize_copy, 1);
+    rb_define_method(rb_cFramebuffer, "width",           fb_width,           0);
+    rb_define_method(rb_cFramebuffer, "height",          fb_height,          0);
+    rb_define_method(rb_cFramebuffer, "buffer_size",     fb_buffer_size,     0);
+    rb_define_method(rb_cFramebuffer, "pixel_format",    fb_pixel_format,    0);
+    rb_define_method(rb_cFramebuffer, "set_pixel",       fb_set_pixel,       3);
+    rb_define_method(rb_cFramebuffer, "get_pixel",       fb_get_pixel,       2);
+    rb_define_method(rb_cFramebuffer, "clear",           fb_clear,           1);
+    rb_define_method(rb_cFramebuffer, "bytes",           fb_bytes,           0);
+    rb_define_method(rb_cFramebuffer, "inspect",         fb_inspect,         0);
 }

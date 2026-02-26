@@ -32,13 +32,18 @@ typedef enum {
 #define EPD_MODE_PARTIAL   2
 #define EPD_MODE_GRAYSCALE 3
 
+/* Maximum framebuffer dimension (width or height) */
+#define EPD_MAX_DIMENSION 4096
+
 /* Error codes for C-level functions */
 #define EPD_OK            0
 #define EPD_ERR_TIMEOUT  -1
 #define EPD_ERR_INIT     -2
 #define EPD_ERR_PARAM    -3
 
-/* Init sequence sentinel opcodes (0xF0-0xFF range) */
+/* Init sequence sentinel opcodes (0xF0-0xFF range).
+ * SEQ_DELAY_MS takes a single uint8_t argument (max 255ms per opcode).
+ * Delays >255ms require multiple consecutive SEQ_DELAY_MS opcodes. */
 #define SEQ_SET_CURSOR   0xF9
 #define SEQ_SET_WINDOW   0xFA
 #define SEQ_SW_RESET     0xFB
@@ -59,6 +64,10 @@ extern VALUE rb_eSPIError;
 extern VALUE rb_eDependencyError;
 extern VALUE rb_eFormatMismatchError;
 extern VALUE rb_eModelNotFoundError;
+
+/* Shared pixel format helpers */
+pixel_format_t cw_sym_to_pixel_format(VALUE sym);
+VALUE          cw_pixel_format_to_sym(pixel_format_t fmt);
 
 /* Init functions for sub-modules */
 void Init_framebuffer(void);
