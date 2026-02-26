@@ -48,4 +48,4 @@ task :docs do
   sh "rdoc --output=docs --format=hanna --all --main=README.md #{RDOC_EXCLUDE}"
 end
 
-task default: %i[clobber compile spec rubocop docs]
+task default: %i[clobber compile spec rubocop]

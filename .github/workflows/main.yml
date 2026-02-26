@@ -116,3 +116,36 @@ jobs:
             exit 1 if failed
             puts "Coverage thresholds met!"
           '
+
+  docs:
+    runs-on: ubuntu-latest
+    name: Deploy Docs
+    needs: [rspec, rubocop, compile]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0.1'
+          bundler-cache: true
+      - name: Compile C extension
+        run: bundle exec rake compile
+      - name: Generate docs
+        run: bundle exec rake docs
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
