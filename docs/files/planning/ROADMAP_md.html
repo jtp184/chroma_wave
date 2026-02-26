@@ -1,0 +1,599 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html lang='en'>
+<head>
+<title>ROADMAP.md</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+<link href='../../css/style.css' media='screen' rel='stylesheet' type='text/css'>
+<script type='text/javascript'>
+  function popupCode(url) {
+    window.open(url, "Code", "resizable=yes,scrollbars=yes,toolbar=no,status=no,height=150,width=400")
+  }
+  
+  function toggleCode(id) {
+    var code = document.getElementById(id)
+  
+    code.style.display = code.style.display != 'block' ? 'block' : 'none'
+    return true
+  }
+  
+  // Make codeblocks hidden by default
+  document.writeln('<' + 'style type="text/css">.method .source pre { display: none }<\/style>')
+</script>
+</head>
+<body class='page'>
+<div class='file' id='wrapper'>
+<div class='header'>
+<h1 class='name'>ROADMAP.md
+</h1>
+<div class='paths'>
+planning/ROADMAP.md
+</div>
+</div>
+<div id='content'>
+<div id='text'>
+<div id='description'>
+<span id="label-ChromaWave+Implementation+Roadmap" class="legacy-anchor"></span>
+<h1 id="chromawave-implementation-roadmap"><a href="#chromawave-implementation-roadmap"><a href="../../classes/ChromaWave.html"><code>ChromaWave</code></a> Implementation Roadmap</a></h1>
+
+<p>Task breakdown for the C extension and Ruby library. Derived from the architecture in <a href="EXTENSION_STRATEGY_md.html">EXTENSION_STRATEGY.md</a>, with code contracts in <a href="API_REFERENCE_md.html">API_REFERENCE.md</a> and content details in <a href="CONTENT_PIPELINE_md.html">CONTENT_PIPELINE.md</a>.</p>
+<hr>
+
+<span id="label-Phase+Overview" class="legacy-anchor"></span>
+<h2 id="phase-overview"><a href="#phase-overview">Phase Overview</a></h2>
+
+<pre>Phase 1: C Foundation
+  ├── 1. Framebuffer pixel packing
+  ├── 2. Device I/O primitives
+  └── 3. Two-tier driver registry
+          │
+Phase 2: Core Value Types          ← depends on Phase 1 (PixelFormat used by Framebuffer)
+  ├── 4. PixelFormat &amp; Palette
+  └── 5. Color
+          │
+Phase 3: Drawing Architecture      ← depends on Phases 1 &amp; 2
+  ├── 6. Surface protocol
+  ├── 7. Canvas (packed String)
+  ├── 8. Canvas C accelerators
+  ├── 9. Drawing primitives
+  └── 10. Layer
+          │
+Phase 4: Rendering &amp; Display       ← depends on Phases 1-3
+  ├── 11. Renderer (Canvas → Framebuffer)
+  ├── 12. Display capability modules
+  ├── 13. Compile all drivers
+  ├── 14. GVL release for refresh
+  └── 15. Busy-wait timeout
+          │
+Phase 5: Content Pipeline          ← depends on Phase 3 (draws onto Surfaces)
+  ├── 16. FreeType bindings
+  ├── 17. IconFont + Lucide
+  └── 18. Image (ruby-vips)
+          │
+Phase 6: Build &amp; Platform          ← can start early, but final integration last
+  ├── 19. extconf.rb platform detection
+  ├── 20. Mock backend (C-level)
+  └── 21. MockDevice (Ruby-level)</pre>
+<hr>
+
+<span id="label-F0-9F-8F-97-EF-B8-8F+Phase+1-3A+C+Foundation" class="legacy-anchor"></span>
+<h2 id="-phase-1-c-foundation"><a href="#-phase-1-c-foundation">🏗️ Phase 1: C Foundation</a></h2>
+
+<p>The bedrock C layer — pixel storage, hardware I/O, and driver dispatch.</p>
+
+<span id="label-1.+Extract+pixel-packing+core" class="legacy-anchor"></span>
+<h3 id="1-extract-pixel-packing-core"><a href="#1-extract-pixel-packing-core">1. Extract pixel-packing core</a></h3>
+
+<p>Extract <code>Paint_SetPixel</code> and <code>Paint_Clear</code> (~100 lines) from the vendor’s <code>GUI_Paint.c</code> into a standalone <a href="../ext/chroma_wave/framebuffer_c.html">framebuffer.c</a>. Parameterize with a <code>framebuffer_t</code> struct — no global state.</p>
+<ul><li>
+<p>[ ] Define <code>framebuffer_t</code> struct (buffer ptr, width, height, bits_per_pixel, pixel_format enum)</p>
+</li><li>
+<p>[ ] Extract pixel-packing logic for all 4 formats (1-bit MONO, 2-bit GRAY4, 4-bit COLOR4, 8-bit COLOR7)</p>
+</li><li>
+<p>[ ] Extract <code>clear</code> (format-aware memset)</p>
+</li><li>
+<p>[ ] Implement <code>get_pixel</code> (reverse of packing)</p>
+</li><li>
+<p>[ ] Wrap with <code>TypedData_Wrap_Struct</code> (<code>dfree</code> → <code>xfree</code>, <code>dsize</code> → buffer_size, <code>RUBY_TYPED_FREE_IMMEDIATELY</code>)</p>
+</li><li>
+<p>[ ] Separate <code>alloc_func</code> from <code>initialize</code></p>
+</li><li>
+<p>[ ] Expose Ruby methods: <code>set_pixel</code>, <code>get_pixel</code>, <code>clear</code>, <code>width</code>, <code>height</code>, <code>bytes</code> (raw buffer)</p>
+</li><li>
+<p>[ ] Unit tests for pack/unpack round-trip on all 4 formats</p>
+</li></ul>
+
+<p><strong>Files:</strong> <a href="../ext/chroma_wave/framebuffer_c.html">ext/chroma_wave/framebuffer.c</a>, <a href="../ext/chroma_wave/framebuffer_h.html">ext/chroma_wave/framebuffer.h</a> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#22-responsibility-matrix">EXTENSION_STRATEGY.md §2.2</a>, <a href="API_REFERENCE_md.html#2-surface-protocol--implementations">API_REFERENCE.md §2</a> <strong>Depends on:</strong> —<strong>Acceptance:</strong> All 4 pixel formats pack/unpack correctly. <code>TypedData</code> reports accurate <code>dsize</code>.</p>
+<hr>
+
+<span id="label-2.+Factor+Device+I-2FO+primitives" class="legacy-anchor"></span>
+<h3 id="2-factor-device-io-primitives"><a href="#2-factor-device-io-primitives">2. Factor Device I/O primitives</a></h3>
+
+<p>Move <code>Reset()</code>, <code>SendCommand()</code>, <code>SendData()</code>, <code>ReadBusy()</code> out of the 70 per-driver files into shared Device-level functions parameterized by model config. Eliminates ~1,400 lines of duplicated C code.</p>
+<ul><li>
+<p>[ ] Define <code>epd_reset(device, config)</code> — parameterized by <code>reset_ms</code> timing from config</p>
+</li><li>
+<p>[ ] Define <code>epd_send_command(device, cmd)</code> — CS/DC pin toggling + SPI write</p>
+</li><li>
+<p>[ ] Define <code>epd_send_data(device, data, len)</code> — single-byte and bulk variants</p>
+</li><li>
+<p>[ ] Define <code>epd_read_busy(device, config)</code> — parameterized by busy polarity from config</p>
+</li><li>
+<p>[ ] Wrap Device SPI/GPIO lifecycle in a <code>device_t</code> struct with <code>TypedData</code> GC integration</p>
+</li><li>
+<p>[ ] Implement <code>Device.open { |d| ... }</code> block form and explicit close</p>
+</li><li>
+<p>[ ] Thread safety via Ruby <code>Mutex</code> on all hardware operations</p>
+</li><li>
+<p>[ ] Redirect vendor <code>Debug()</code> macro to <code>rb_warn()</code></p>
+</li></ul>
+
+<p><strong>Files:</strong> <a href="../ext/chroma_wave/device_c.html">ext/chroma_wave/device.c</a>, <a href="../ext/chroma_wave/device_h.html">ext/chroma_wave/device.h</a> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#36-device-owns-io-primitives">EXTENSION_STRATEGY.md §3.6</a>, <a href="WAVESHARE_LIBRARY_md.html">WAVESHARE_LIBRARY.md</a> <strong>Depends on:</strong> —<strong>Acceptance:</strong> Single set of I/O primitives serves all drivers. Block form guarantees cleanup.</p>
+<hr>
+
+<span id="label-3.+Build+two-tier+driver+registry" class="legacy-anchor"></span>
+<h3 id="3-build-two-tier-driver-registry"><a href="#3-build-two-tier-driver-registry">3. Build two-tier driver registry</a></h3>
+
+<p>Static config data for simple models (Tier 1), optional code overrides for complex ones (Tier 2, ~20 models).</p>
+<ul><li>
+<p>[ ] Define <code>epd_model_config_t</code> (resolution, pixel_format, busy_polarity, reset_timing, init_sequence, display_cmd, capability_flags)</p>
+</li><li>
+<p>[ ] Define <code>epd_driver_t</code> (optional function pointers: <code>custom_init</code>, <code>custom_display</code>, <code>pre_display</code>, <code>post_display</code>)</p>
+</li><li>
+<p>[ ] Implement <code>epd_generic_init()</code> that interprets <code>init_sequence</code> byte arrays</p>
+</li><li>
+<p>[ ] Implement <code>epd_generic_display()</code> that sends buffer via the configured display command</p>
+</li><li>
+<p>[ ] Register all ~70 models as config entries</p>
+</li><li>
+<p>[ ] Write Tier 2 overrides for complex models (~20: EPD_4in2 LUT selection, EPD_3in7, EPD_5in65f power cycle, EPD_7in5_V2 buffer inversion, etc.)</p>
+</li><li>
+<p>[ ] Handle EPD_7in5_V2 buffer inversion with a pre-send copy (see <a href="EXTENSION_STRATEGY_md.html#54-epd_7in5_v2-destructive-buffer-inversion">§5.4</a>)</p>
+</li><li>
+<p>[ ] Handle EPD_5in65f dual busy polarity in its Tier 2 override (see <a href="EXTENSION_STRATEGY_md.html#55-epd_5in65f-dual-busy-polarity">§5.5</a>)</p>
+</li></ul>
+
+<p><strong>Files:</strong> <a href="../ext/chroma_wave/driver_registry_c.html">ext/chroma_wave/driver_registry.c</a>, <a href="../ext/chroma_wave/driver_registry_h.html">ext/chroma_wave/driver_registry.h</a> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#35-two-tier-driver-registry">EXTENSION_STRATEGY.md §3.5</a>, <a href="API_REFERENCE_md.html#5-two-tier-driver-registry-c">API_REFERENCE.md §5</a> <strong>Depends on:</strong> Task 2 (uses Device I/O primitives) <strong>Acceptance:</strong> Simple models work from config-only entries. Complex models override correctly. Adding a new simple model is ~10 lines of config data.</p>
+<hr>
+
+<span id="label-F0-9F-A7-B1+Phase+2-3A+Core+Value+Types" class="legacy-anchor"></span>
+<h2 id="-phase-2-core-value-types"><a href="#-phase-2-core-value-types">🧱 Phase 2: Core Value Types</a></h2>
+
+<p>Ruby value objects that unify the concept of “how pixels are packed” and “what colors exist.”</p>
+
+<span id="label-4.+PixelFormat+and+Palette" class="legacy-anchor"></span>
+<h3 id="4-pixelformat-and-palette"><a href="#4-pixelformat-and-palette">4. PixelFormat and Palette</a></h3>
+
+<p><code>PixelFormat</code> unifies the vendor’s <code>Scale</code>, color constants, and buffer-size math into one concept. <code>Palette</code> is its color lookup table.</p>
+<ul><li>
+<p>[ ] Implement <code>PixelFormat</code> as <code>Data.define(:name, :bits_per_pixel, :palette)</code></p>
+</li><li>
+<p>[ ] Define four format constants: <code>MONO</code>, <code>GRAY4</code>, <code>COLOR4</code>, <code>COLOR7</code></p>
+</li><li>
+<p>[ ] Implement <code>Palette</code> as an <code>Enumerable</code> with <code>nearest_color</code> (memoized), <code>index_of</code>, <code>color_at</code></p>
+</li><li>
+<p>[ ] Memoize nearest-color lookups by packed RGBA key (32-bit integer, not String)</p>
+</li><li>
+<p>[ ] Validate that Display and Framebuffer reference the same PixelFormat at <code>display.show()</code></p>
+</li><li>
+<p>[ ] Specs for palette nearest-color accuracy across all 4 formats</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/pixel_format.rb</code>, <code>lib/chroma_wave/palette.rb</code> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#31-the-pixelformat-unifying-concept">EXTENSION_STRATEGY.md §3.1</a>, <a href="API_REFERENCE_md.html#1-core-value-types">API_REFERENCE.md §1</a> <strong>Depends on:</strong> —<strong>Acceptance:</strong> <code>PixelFormat</code> replaces all occurrences of scale/color_type/bpp. Palette correctly maps RGBA to nearest palette entry for all formats.</p>
+<hr>
+
+<span id="label-5.+Color" class="legacy-anchor"></span>
+<h3 id="5-color"><a href="#5-color">5. Color</a></h3>
+
+<p>RGBA value type with named constants, hex parsing, and alpha compositing.</p>
+<ul><li>
+<p>[ ] Implement <code>Color</code> as <code>Data.define(:r, :g, :b, :a)</code> with <code>a: 255</code> default</p>
+</li><li>
+<p>[ ] Define named constants (<code>Color::BLACK</code>, <code>Color::WHITE</code>, <code>Color::RED</code>, etc.)</p>
+</li><li>
+<p>[ ] Build <code>Color::NAME_MAP</code> (symbol → Color) for palette integration</p>
+</li><li>
+<p>[ ] Implement over(background) — source-over compositing onto opaque background</p>
+</li><li>
+<p>[ ] Implement to_rgba_bytes / <code>.from_rgba_bytes</code> for Canvas packed-buffer interop</p>
+</li><li>
+<p>[ ] Hex string parsing (<code>Color.hex(&quot;#FF0000&quot;)</code>, <code>Color.hex(&quot;#F00&quot;)</code>)</p>
+</li><li>
+<p>[ ] Specs for compositing math, named color lookup, hex parsing edge cases</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/color.rb</code> <strong>Refs:</strong> <a href="CONTENT_PIPELINE_md.html#1-color-model-rgba">CONTENT_PIPELINE.md §1</a>, <a href="API_REFERENCE_md.html#1-core-value-types">API_REFERENCE.md §1</a> <strong>Depends on:</strong> —<strong>Acceptance:</strong> Color is frozen/immutable. Compositing produces correct opaque results. Named colors match expected RGBA values.</p>
+<hr>
+
+<span id="label-F0-9F-8E-A8+Phase+3-3A+Drawing+Architecture" class="legacy-anchor"></span>
+<h2 id="-phase-3-drawing-architecture"><a href="#-phase-3-drawing-architecture">🎨 Phase 3: Drawing Architecture</a></h2>
+
+<p>The Surface protocol and its three implementations: Canvas, Framebuffer (Ruby wrapper), and Layer.</p>
+
+<span id="label-6.+Define+the+Surface+protocol" class="legacy-anchor"></span>
+<h3 id="6-define-the-surface-protocol"><a href="#6-define-the-surface-protocol">6. Define the Surface protocol</a></h3>
+
+<p>A Ruby module that defines the duck-type drawing target. Includers provide <code>set_pixel</code>, <code>get_pixel</code>, <code>width</code>, <code>height</code>; the module mixes in drawing primitives.</p>
+<ul><li>
+<p>[ ] Define <code>Surface</code> module with required method contract (<code>set_pixel</code>, <code>get_pixel</code>, <code>width</code>, <code>height</code>)</p>
+</li><li>
+<p>[ ] Silent clipping on <code>set_pixel</code> out-of-bounds writes</p>
+</li><li>
+<p>[ ] Return <code>nil</code> on <code>get_pixel</code> out-of-bounds reads</p>
+</li><li>
+<p>[ ] Include hooks for drawing primitive mixins (Phase 3, Task 9)</p>
+</li><li>
+<p>[ ] Add <code>Surface</code> to Framebuffer’s Ruby wrapper (<code>include Surface</code>)</p>
+</li><li>
+<p>[ ] Specs for clipping behavior and protocol enforcement</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/surface.rb</code>, <code>lib/chroma_wave/framebuffer.rb</code> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#37-three-layer-drawing-architecture">EXTENSION_STRATEGY.md §3.7</a>, <a href="API_REFERENCE_md.html#2-surface-protocol--implementations">API_REFERENCE.md §2</a> <strong>Depends on:</strong> Task 1 (Framebuffer C backing) <strong>Acceptance:</strong> Any object including <code>Surface</code> and providing the 4 required methods is a valid drawing target.</p>
+<hr>
+
+<span id="label-7.+Implement+Canvas" class="legacy-anchor"></span>
+<h3 id="7-implement-canvas"><a href="#7-implement-canvas">7. Implement Canvas</a></h3>
+
+<p>RGBA pixel buffer stored as a packed binary String (4 bytes/pixel). Includes <code>Surface</code>.</p>
+<ul><li>
+<p>[ ] Storage: single <code>String.new(&quot;\0&quot; * w * h * 4, encoding: Encoding::BINARY)</code></p>
+</li><li>
+<p>[ ] <code>set_pixel(x, y, color)</code> — decompose Color into 4 bytes at offset</p>
+</li><li>
+<p>[ ] <code>get_pixel(x, y)</code> — lazily materialize Color from 4 bytes (avoid allocation in bulk paths)</p>
+</li><li>
+<p>[ ] <code>clear(color)</code> — fill entire buffer (Ruby fallback; C accelerator in Task 8)</p>
+</li><li>
+<p>[ ] Expose <code>rgba_bytes</code> for direct byte access by Renderer</p>
+</li><li>
+<p>[ ] <code>include Surface</code> for drawing primitive support</p>
+</li><li>
+<p>[ ] Specs for pixel round-trip, bounds clipping, memory footprint (2 GC objects regardless of resolution)</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/canvas.rb</code> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#37-three-layer-drawing-architecture">EXTENSION_STRATEGY.md §3.7 “Canvas”</a>, <a href="API_REFERENCE_md.html#2-surface-protocol--implementations">API_REFERENCE.md §2</a> <strong>Depends on:</strong> Tasks 5, 6 <strong>Acceptance:</strong> 800x480 Canvas uses ~1.5MB. <code>get_pixel</code>/<code>set_pixel</code> round-trips correctly. Only 2 GC objects (Canvas + String).</p>
+<hr>
+
+<span id="label-8.+Canvas+C+accelerators" class="legacy-anchor"></span>
+<h3 id="8-canvas-c-accelerators"><a href="#8-canvas-c-accelerators">8. Canvas C accelerators</a></h3>
+
+<p>~80 lines of C that accelerate three Canvas hot paths. All three have Ruby fallbacks.</p>
+<ul><li>
+<p>[ ] <code>_canvas_clear(rgba_string, r, g, b, a)</code> — bulk memset of packed RGBA</p>
+</li><li>
+<p>[ ] <code>_canvas_blit_alpha(dst_string, src_string, dx, dy, sw, sh, dw, dh)</code> — alpha-composited blit</p>
+</li><li>
+<p>[ ] <code>_canvas_load_rgba(dst_string, src_bytes, x, y, w, h, dw)</code> — bulk load from external RGBA data</p>
+</li><li>
+<p>[ ] All operate on <code>RSTRING_PTR</code> of Canvas’s String buffer (Canvas owns data, C processes it)</p>
+</li><li>
+<p>[ ] Graceful fallback: if C extension unavailable, Ruby methods work (just slower)</p>
+</li><li>
+<p>[ ] Specs comparing C-accelerated vs Ruby fallback output for correctness</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>ext/chroma_wave/canvas.c</code> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#22-responsibility-matrix">EXTENSION_STRATEGY.md §2.2</a> <strong>Depends on:</strong> Task 7 (Canvas Ruby implementation) <strong>Acceptance:</strong> C accelerators produce byte-identical output to Ruby fallbacks. Canvas detects and prefers C when available.</p>
+<hr>
+
+<span id="label-9.+Drawing+primitives" class="legacy-anchor"></span>
+<h3 id="9-drawing-primitives"><a href="#9-drawing-primitives">9. Drawing primitives</a></h3>
+
+<p>Bresenham/midpoint algorithms as <code>Surface</code> mixin methods. All work on any Surface (Canvas, Framebuffer, Layer).</p>
+<ul><li>
+<p>[ ] <code>draw_line(x0, y0, x1, y1, color:, stroke_width: 1)</code></p>
+</li><li>
+<p>[ ] <code>draw_polyline(points, color:, stroke_width: 1)</code></p>
+</li><li>
+<p>[ ] <code>draw_rect(x, y, w, h, color:, stroke_width: 1, fill: nil)</code></p>
+</li><li>
+<p>[ ] <code>draw_rounded_rect(x, y, w, h, radius:, color:, stroke_width: 1, fill: nil)</code></p>
+</li><li>
+<p>[ ] <code>draw_circle(cx, cy, r, color:, stroke_width: 1, fill: nil)</code></p>
+</li><li>
+<p>[ ] <code>draw_ellipse(cx, cy, rx, ry, color:, stroke_width: 1, fill: nil)</code></p>
+</li><li>
+<p>[ ] <code>draw_arc(cx, cy, r, start_angle, end_angle, color:, stroke_width: 1)</code></p>
+</li><li>
+<p>[ ] <code>draw_polygon(points, color:, stroke_width: 1, fill: nil)</code></p>
+</li><li>
+<p>[ ] <code>flood_fill(x, y, color:)</code></p>
+</li><li>
+<p>[ ] Specs for each primitive on a test Canvas, including edge cases (zero-size, single pixel, clipping)</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/drawing/primitives.rb</code> <strong>Refs:</strong> <a href="CONTENT_PIPELINE_md.html">CONTENT_PIPELINE.md</a>, <a href="API_REFERENCE_md.html#2-surface-protocol--implementations">API_REFERENCE.md §2</a> <strong>Depends on:</strong> Task 6 (Surface protocol) <strong>Acceptance:</strong> All primitives render correctly. <code>stroke_width</code> and <code>fill</code> work. Clipping is silent.</p>
+<hr>
+
+<span id="label-10.+Layer" class="legacy-anchor"></span>
+<h3 id="10-layer"><a href="#10-layer">10. Layer</a></h3>
+
+<p>Clipped, offset sub-region of a parent Surface. Foundation for widget-based UI composition.</p>
+<ul><li>
+<p>[ ] <code>Layer.new(parent:, x:, y:, width:, height:)</code> — wraps any Surface</p>
+</li><li>
+<p>[ ] <code>set_pixel</code> translates local coords → parent coords, delegates to parent</p>
+</li><li>
+<p>[ ] <code>get_pixel</code> translates and delegates; returns <code>nil</code> for out-of-bounds</p>
+</li><li>
+<p>[ ] Layers compose: Layer of a Layer works correctly (additive offset)</p>
+</li><li>
+<p>[ ] No bounds validation against parent (intentional — see <a href="EXTENSION_STRATEGY_md.html#37-three-layer-drawing-architecture">§3.7</a>)</p>
+</li><li>
+<p>[ ] <code>include Surface</code> for drawing primitive support</p>
+</li><li>
+<p>[ ] Specs for nested layers, coordinate translation, out-of-bounds behavior</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/layer.rb</code> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#37-three-layer-drawing-architecture">EXTENSION_STRATEGY.md §3.7 “Layer”</a>, <a href="API_REFERENCE_md.html#2-surface-protocol--implementations">API_REFERENCE.md §2</a> <strong>Depends on:</strong> Task 6 (Surface protocol) <strong>Acceptance:</strong> Nested layers translate coordinates correctly. Drawing on a Layer clips to its bounds while delegating to the parent’s pixel storage.</p>
+<hr>
+
+<span id="label-E2-9A-A1+Phase+4-3A+Rendering+-26+Display" class="legacy-anchor"></span>
+<h2 id="-phase-4-rendering--display"><a href="#-phase-4-rendering--display">⚡ Phase 4: Rendering &amp; Display</a></h2>
+
+<p>The bridge from drawing to hardware: quantization, display dispatch, and refresh lifecycle.</p>
+
+<span id="label-11.+Renderer+-28Canvas+-E2-86-92+Framebuffer-29" class="legacy-anchor"></span>
+<h3 id="11-renderer-canvas--framebuffer"><a href="#11-renderer-canvas--framebuffer">11. Renderer (Canvas → Framebuffer)</a></h3>
+
+<p>Converts RGBA Canvas pixels to palette entries in a device-format Framebuffer. The only place quantization and dithering occur.</p>
+<ul><li>
+<p>[ ] <code>Renderer.new(pixel_format:)</code> or <code>Renderer.render(canvas, framebuffer:, dither:)</code></p>
+</li><li>
+<p>[ ] Palette mapping: RGBA → nearest palette entry (delegates to <code>Palette#nearest_color</code>)</p>
+</li><li>
+<p>[ ] Dithering strategies: Floyd-Steinberg (default), ordered, threshold</p>
+</li><li>
+<p>[ ] Dual-buffer channel splitting: one Canvas → two MONO Framebuffers (for <code>DualBuffer</code> displays)</p>
+</li><li>
+<p>[ ] Linear scan over <code>canvas.rgba_bytes</code> (no per-pixel Color materialization)</p>
+</li><li>
+<p>[ ] Specs for quantization accuracy, dithering output, dual-buffer split correctness</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/renderer.rb</code> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#37-three-layer-drawing-architecture">EXTENSION_STRATEGY.md §3.7 “Renderer”</a>, <a href="API_REFERENCE_md.html#4-renderer">API_REFERENCE.md §4</a> <strong>Depends on:</strong> Tasks 1, 4, 7 <strong>Acceptance:</strong> Renderer produces correct Framebuffer output for all 4 pixel formats. Dithering is visually reasonable. Dual-buffer split routes colors correctly to black/red layers.</p>
+<hr>
+
+<span id="label-12.+Display+capability+modules" class="legacy-anchor"></span>
+<h3 id="12-display-capability-modules"><a href="#12-display-capability-modules">12. Display capability modules</a></h3>
+
+<p>Composable Ruby modules that wrap private C methods for optional display features.</p>
+<ul><li>
+<p>[ ] <code>Capabilities::PartialRefresh</code> — <code>display_partial</code>, <code>display_base</code></p>
+</li><li>
+<p>[ ] <code>Capabilities::FastRefresh</code> — <code>init_fast</code>, <code>display_fast</code></p>
+</li><li>
+<p>[ ] <code>Capabilities::GrayscaleMode</code> — <code>init_grayscale</code>, <code>display_grayscale</code></p>
+</li><li>
+<p>[ ] <code>Capabilities::DualBuffer</code> — overrides <code>show</code> to split Canvas into 2 mono FBs via Renderer</p>
+</li><li>
+<p>[ ] <code>Capabilities::RegionalRefresh</code> — <code>display_region(fb, x, y, w, h)</code></p>
+</li><li>
+<p>[ ] Base <code>Display#show</code> accepts Canvas (auto-rendered) or Framebuffer (power-user)</p>
+</li><li>
+<p>[ ] Model registry: auto-build subclasses from C config capability bitfields at gem load time</p>
+</li><li>
+<p>[ ] <code>Display.new(model: :symbol)</code> factory with did-you-mean on typos</p>
+</li><li>
+<p>[ ] <code>respond_to?(:display_partial)</code> and <code>is_a?(Capabilities::PartialRefresh)</code> work naturally</p>
+</li><li>
+<p>[ ] Specs for capability inclusion, method dispatch, format validation</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/capabilities/partial_refresh.rb</code>, <code>fast_refresh.rb</code>, <code>grayscale_mode.rb</code>, <code>dual_buffer.rb</code>, <code>regional_refresh.rb</code>, <code>lib/chroma_wave/display.rb</code>, <code>lib/chroma_wave/registry.rb</code> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#33-model-instantiation-and-the-registry">EXTENSION_STRATEGY.md §3.3-3.4</a>, <a href="API_REFERENCE_md.html#3-display--capabilities">API_REFERENCE.md §3</a> <strong>Depends on:</strong> Tasks 3, 11 <strong>Acceptance:</strong> <code>Display.new(model: :epd_2in13_v4).respond_to?(:display_partial)</code> returns true. Typos raise <code>ModelNotFoundError</code> with suggestions.</p>
+<hr>
+
+<span id="label-13.+Compile+all+drivers+unconditionally" class="legacy-anchor"></span>
+<h3 id="13-compile-all-drivers-unconditionally"><a href="#13-compile-all-drivers-unconditionally">13. Compile all drivers unconditionally</a></h3>
+
+<p>All ~70 driver files are compiled into the extension. Runtime model selection via the registry.</p>
+<ul><li>
+<p>[ ] Add all <code>EPD_*.c</code> files to <a href="../ext/chroma_wave/extconf_rb.html">extconf.rb</a> source list</p>
+</li><li>
+<p>[ ] Verify total binary size is acceptable (~500KB)</p>
+</li><li>
+<p>[ ] Ensure no compile-time ifdef guards exclude any driver</p>
+</li></ul>
+
+<p><strong>Files:</strong> <a href="../ext/chroma_wave/extconf_rb.html">ext/chroma_wave/extconf.rb</a>, <code>ext/chroma_wave/vendor/drivers/</code> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#12-what-we-must-abstract">EXTENSION_STRATEGY.md §1.2</a> <strong>Depends on:</strong> Tasks 2, 3 <strong>Acceptance:</strong> All 70 models are accessible at runtime. Binary size is reasonable.</p>
+<hr>
+
+<span id="label-14.+Release+the+GVL+during+refresh" class="legacy-anchor"></span>
+<h3 id="14-release-the-gvl-during-refresh"><a href="#14-release-the-gvl-during-refresh">14. Release the GVL during refresh</a></h3>
+
+<p>Wrap display refresh operations with <code>rb_thread_call_without_gvl()</code> so other Ruby threads can run during multi-second refresh cycles.</p>
+<ul><li>
+<p>[ ] Identify all C functions that block on <code>ReadBusy</code> or SPI transfer</p>
+</li><li>
+<p>[ ] Wrap with <code>rb_thread_call_without_gvl(refresh_func, arg, ubf, ubf_arg)</code></p>
+</li><li>
+<p>[ ] Implement unblocking function (<code>ubf</code>) for clean interrupt of long refreshes</p>
+</li><li>
+<p>[ ] Verify Mutex composes correctly: acquired before entering C, GVL released inside C, Mutex released after C returns</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>ext/chroma_wave/display.c</code> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#53-busy-wait-blocking-and-gvl-release">EXTENSION_STRATEGY.md §5.3</a>, <a href="EXTENSION_STRATEGY_md.html#57-thread-safety">EXTENSION_STRATEGY.md §5.7</a> <strong>Depends on:</strong> Task 2 <strong>Acceptance:</strong> Other Ruby threads continue running during display refresh. <code>Thread.new { display.refresh }.kill</code> interrupts cleanly.</p>
+<hr>
+
+<span id="label-15.+Busy-wait+timeout" class="legacy-anchor"></span>
+<h3 id="15-busy-wait-timeout"><a href="#15-busy-wait-timeout">15. Busy-wait timeout</a></h3>
+
+<p>Add configurable timeout to <code>ReadBusy</code> with an interruptible polling loop.</p>
+<ul><li>
+<p>[ ] Replace spin-wait with 10ms polling interval loop</p>
+</li><li>
+<p>[ ] Add configurable <code>timeout:</code> parameter (default: 30s? display-dependent?)</p>
+</li><li>
+<p>[ ] Raise <code>ChromaWave::TimeoutError</code> on expiry</p>
+</li><li>
+<p>[ ] Integrate with the ubf from Task 14 for clean interrupt</p>
+</li></ul>
+
+<p><strong>Files:</strong> <a href="../ext/chroma_wave/device_c.html">ext/chroma_wave/device.c</a> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#53-busy-wait-blocking-and-gvl-release">EXTENSION_STRATEGY.md §5.3</a> <strong>Depends on:</strong> Task 2 <strong>Acceptance:</strong> Busy-wait respects timeout. Timeout raises a clear error. Interrupt during wait is clean.</p>
+<hr>
+
+<span id="label-F0-9F-93-90+Phase+5-3A+Content+Pipeline" class="legacy-anchor"></span>
+<h2 id="-phase-5-content-pipeline"><a href="#-phase-5-content-pipeline">📐 Phase 5: Content Pipeline</a></h2>
+
+<p>Text, icons, and images — the high-level content types that draw onto Surfaces.</p>
+
+<span id="label-16.+FreeType+bindings" class="legacy-anchor"></span>
+<h3 id="16-freetype-bindings"><a href="#16-freetype-bindings">16. FreeType bindings</a></h3>
+
+<p>C extension bindings for FreeType glyph rasterization. Ruby-side <code>Font</code> class handles layout.</p>
+<ul><li>
+<p>[ ] Link <code>libfreetype</code> in <a href="../ext/chroma_wave/extconf_rb.html">extconf.rb</a> (optional — compile without if not found, set <code>-DNO_FREETYPE</code>)</p>
+</li><li>
+<p>[ ] <code>freetype.c</code>: manage <code>FT_Library</code> lifecycle (singleton, initialized on first use)</p>
+</li><li>
+<p>[ ] Wrap <code>FT_Face</code> in a <code>TypedData</code> struct with proper <code>dfree</code></p>
+</li><li>
+<p>[ ] Expose private C methods: <code>_ft_load_face</code>, <code>_ft_render_glyph</code>, <code>_ft_glyph_metrics</code></p>
+</li><li>
+<p>[ ] Ruby <code>Font</code> class: font discovery, size setting, measurement (<code>text_width</code>, <code>text_height</code>)</p>
+</li><li>
+<p>[ ] Ruby <code>Surface#draw_text</code>: layout engine (alignment, word wrapping), calls <code>Font</code> for glyphs</p>
+</li><li>
+<p>[ ] When <code>NO_FREETYPE</code>: <code>Font.new</code> / <code>draw_text</code> raise <a href="../../classes/ChromaWave/DependencyError.html"><code>ChromaWave::DependencyError</code></a> with install hint</p>
+</li><li>
+<p>[ ] Specs for glyph rendering, metrics accuracy, missing-freetype fallback error</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>ext/chroma_wave/freetype.c</code>, <code>ext/chroma_wave/freetype.h</code>, <code>lib/chroma_wave/font.rb</code>, <code>lib/chroma_wave/drawing/text.rb</code> <strong>Refs:</strong> <a href="CONTENT_PIPELINE_md.html">CONTENT_PIPELINE.md</a>, <a href="EXTENSION_STRATEGY_md.html#51-platform-detection-in-extconfrb">EXTENSION_STRATEGY.md §5.1</a> <strong>Depends on:</strong> Task 6 (Surface protocol) <strong>Acceptance:</strong> Text renders correctly with system TTF fonts. Missing FreeType gives a helpful error.</p>
+<hr>
+
+<span id="label-17.+IconFont+-2B+Lucide" class="legacy-anchor"></span>
+<h3 id="17-iconfont--lucide"><a href="#17-iconfont--lucide">17. IconFont + Lucide</a></h3>
+
+<p><code>IconFont</code> subclass of <code>Font</code> with symbol → codepoint registry. Bundles Lucide icons.</p>
+<ul><li>
+<p>[ ] <code>IconFont</code> extends <code>Font</code> with symbol-based glyph lookup (<code>icon_font.glyph(:arrow_right)</code>)</p>
+</li><li>
+<p>[ ] Bundle <code>lucide.ttf</code> (~120KB, ISC license) in <code>data/fonts/</code></p>
+</li><li>
+<p>[ ] Include <code>LICENSE-lucide.txt</code></p>
+</li><li>
+<p>[ ] <code>rake icons:generate</code> task: parse Lucide metadata → <code>lib/chroma_wave/icon_font/lucide_glyphs.rb</code></p>
+</li><li>
+<p>[ ] Generated glyph map: <code>{ arrow_right: 0xE001, ... }</code></p>
+</li><li>
+<p>[ ] Specs for icon rendering, symbol lookup, missing-icon error</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/icon_font.rb</code>, <code>lib/chroma_wave/icon_font/lucide_glyphs.rb</code>, <code>data/fonts/lucide.ttf</code>, <code>data/fonts/LICENSE-lucide.txt</code> <strong>Refs:</strong> <a href="CONTENT_PIPELINE_md.html">CONTENT_PIPELINE.md</a> <strong>Depends on:</strong> Task 16 (Font / FreeType) <strong>Acceptance:</strong> <code>icon_font.glyph(:home)</code> renders the Lucide home icon. Rake task regenerates the glyph map from upstream metadata.</p>
+<hr>
+
+<span id="label-18.+Image+loading+-28ruby-vips-29" class="legacy-anchor"></span>
+<h3 id="18-image-loading-ruby-vips"><a href="#18-image-loading-ruby-vips">18. Image loading (ruby-vips)</a></h3>
+
+<p>Load any image format, resize/crop, and bulk-transfer RGBA data into Canvas.</p>
+<ul><li>
+<p>[ ] <code>Image.load(path)</code> — load via ruby-vips, convert to RGBA</p>
+</li><li>
+<p>[ ] <code>Image#resize(width:, height:, fit:)</code> — resize with various fit modes</p>
+</li><li>
+<p>[ ] <code>Image#crop(x:, y:, width:, height:)</code></p>
+</li><li>
+<p>[ ] <code>Image#draw_onto(canvas, x:, y:)</code> — bulk RGBA transfer via <code>Canvas#load_rgba_bytes</code> / C accelerator</p>
+</li><li>
+<p>[ ] vips packed RGBA output maps directly to Canvas’s packed String buffer</p>
+</li><li>
+<p>[ ] Specs for load, resize, crop, and draw_onto correctness</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/image.rb</code> <strong>Refs:</strong> <a href="CONTENT_PIPELINE_md.html">CONTENT_PIPELINE.md</a> <strong>Depends on:</strong> Tasks 7, 8 (Canvas + C accelerators) <strong>Acceptance:</strong> JPEG/PNG/WebP images load, resize, and blit onto Canvas correctly. Bulk transfer uses C accelerator when available.</p>
+<hr>
+
+<span id="label-F0-9F-94-A7+Phase+6-3A+Build+-26+Platform" class="legacy-anchor"></span>
+<h2 id="-phase-6-build--platform"><a href="#-phase-6-build--platform">🔧 Phase 6: Build &amp; Platform</a></h2>
+
+<p>Compilation, platform detection, and development support.</p>
+
+<span id="label-19.+Platform+detection+in+extconf.rb" class="legacy-anchor"></span>
+<h3 id="19-platform-detection-in-extconfrb"><a href="#19-platform-detection-in-extconfrb">19. Platform detection in <a href="../ext/chroma_wave/extconf_rb.html">extconf.rb</a></a></h3>
+
+<p>Auto-detect GPIO/SPI backend and configure compiler flags.</p>
+<ul><li>
+<p>[ ] Check for headers: <code>lgpio.h</code>, <code>bcm2835.h</code>, <code>wiringPi.h</code>, <code>gpiod.h</code></p>
+</li><li>
+<p>[ ] Check for corresponding <code>-l</code> libraries</p>
+</li><li>
+<p>[ ] Auto-select best available backend (prefer <code>USE_LGPIO_LIB</code> for RPi 5)</p>
+</li><li>
+<p>[ ] Allow <code>--with-epd-backend=</code> configure option for manual override</p>
+</li><li>
+<p>[ ] Detect and optionally link <code>libfreetype</code> (see Task 16)</p>
+</li><li>
+<p>[ ] If no GPIO/SPI library found: auto-select MOCK backend with warning</p>
+</li><li>
+<p>[ ] Set appropriate <code>-D</code> compiler flags</p>
+</li></ul>
+
+<p><strong>Files:</strong> <a href="../ext/chroma_wave/extconf_rb.html">ext/chroma_wave/extconf.rb</a> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#12-what-we-must-abstract">EXTENSION_STRATEGY.md §1.2</a>, <a href="EXTENSION_STRATEGY_md.html#51-platform-detection-in-extconfrb">EXTENSION_STRATEGY.md §5.1</a> <strong>Depends on:</strong> —<strong>Acceptance:</strong> Gem installs on RPi (with real backend) and on dev machines (with MOCK). <code>--with-epd-backend=</code> overrides auto-detection.</p>
+<hr>
+
+<span id="label-20.+Mock+backend+-28C-level-29" class="legacy-anchor"></span>
+<h3 id="20-mock-backend-c-level"><a href="#20-mock-backend-c-level">20. Mock backend (C-level)</a></h3>
+
+<p>C-level no-op stubs so the extension compiles on any platform without GPIO/SPI hardware.</p>
+<ul><li>
+<p>[ ] Define <code>MOCK</code> backend that stubs all GPIO/SPI calls</p>
+</li><li>
+<p>[ ] <code>Framebuffer</code>, <code>Canvas</code>, <code>PixelFormat</code>, and all drawing operations work normally (pure memory)</p>
+</li><li>
+<p>[ ] <code>Display#show</code>, <code>Display#clear</code>, <code>Device.new</code> raise <a href="../../classes/ChromaWave/DeviceError.html"><code>ChromaWave::DeviceError</code></a> with clear message</p>
+</li><li>
+<p>[ ] CI runs full test suite with MOCK backend</p>
+</li><li>
+<p>[ ] Specs verify that mock mode raises on hardware ops but allows drawing ops</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>ext/chroma_wave/vendor/config/</code> (mock platform backend), <a href="../ext/chroma_wave/extconf_rb.html">ext/chroma_wave/extconf.rb</a> <strong>Refs:</strong> <a href="EXTENSION_STRATEGY_md.html#51-platform-detection-in-extconfrb">EXTENSION_STRATEGY.md §5.1</a> <strong>Depends on:</strong> Task 19 <strong>Acceptance:</strong> Full test suite passes on x86_64 Linux/macOS with no GPIO hardware. Hardware operations give helpful errors, not segfaults.</p>
+<hr>
+
+<span id="label-21.+MockDevice+-28Ruby-level-29" class="legacy-anchor"></span>
+<h3 id="21-mockdevice-ruby-level"><a href="#21-mockdevice-ruby-level">21. MockDevice (Ruby-level)</a></h3>
+
+<p>Ruby <code>Display</code> subclass that replaces C hardware calls with no-op stubs, records every operation as an inspectable log, and supports palette-accurate PNG export. This is the primary interface for test suites and development scripts.</p>
+<ul><li>
+<p>[ ] <code>MockDevice</code> subclass of <code>Display</code> — loads same model config, includes same capability modules</p>
+</li><li>
+<p>[ ] Constructor: <code>MockDevice.new(model:, busy_duration: 0)</code> — <code>model:</code> required, <code>busy_duration:</code> controls simulated refresh delay</p>
+</li><li>
+<p>[ ] Override private C hardware methods (<code>_epd_display</code>, <code>_epd_clear</code>, etc.) with Ruby stubs</p>
+</li><li>
+<p>[ ] Operation log: append <code>{ op:, timestamp:, **metadata }</code> for each hardware operation (<code>:init</code>, <code>:show</code>, <code>:clear</code>, <code>:sleep</code>, <code>:close</code>)</p>
+</li><li>
+<p>[ ] Thread-safe operation log protected by Mutex</p>
+</li><li>
+<p>[ ] Convenience queries: <code>operations(type = nil)</code>, <code>last_operation</code>, <code>operation_count(type)</code>, <code>clear_operations!</code></p>
+</li><li>
+<p>[ ] <code>last_framebuffer</code> — stores the most recently rendered Framebuffer for inspection</p>
+</li><li>
+<p>[ ] <code>save_png(path)</code> — palette-accurate PNG export of <code>last_framebuffer</code> via ruby-vips (native resolution, no scaling)</p>
+</li><li>
+<p>[ ] Busy-wait simulation: when <code>busy_duration &gt; 0</code>, <code>show</code> blocks for the configured duration (exercises timeout/interrupt paths)</p>
+</li><li>
+<p>[ ] <code>BusyTimeoutError</code> raised when display timeout &lt; <code>busy_duration</code></p>
+</li><li>
+<p>[ ] All capability methods work: <code>display_partial</code>, <code>init_fast</code>, <code>init_grayscale</code>, <code>display_region</code>, <code>DualBuffer#show</code></p>
+</li><li>
+<p>[ ] RSpec helper: <code>:hardware</code> metadata tag with <code>mock_device</code> injection (see <a href="MOCKING_md.html#41-rspec-helper">MOCKING.md §4.1</a>)</p>
+</li><li>
+<p>[ ] Specs for operation logging, PNG export accuracy, busy-wait timeout, capability dispatch, thread safety</p>
+</li></ul>
+
+<p><strong>Files:</strong> <code>lib/chroma_wave/mock_device.rb</code>, <code>spec/support/mock_device.rb</code> <strong>Refs:</strong> <a href="MOCKING_md.html#22-ruby-level-mockdevice">MOCKING.md §2.2–§4</a> <strong>Depends on:</strong> Tasks 11, 12, 20 (Renderer, Display capabilities, C mock backend) <strong>Acceptance:</strong> <code>MockDevice.new(model: :epd_2in13_v4).is_a?(Display)</code> is true. Operation log captures all hardware calls. <code>save_png</code> produces a palette-accurate image matching what the physical display would show. Full test suite uses MockDevice for all hardware integration tests.</p>
+</div>
+<div id='context'>
+</div>
+
+</div>
+</div>
+
+<div id='footer-push'></div>
+</div>
+<div id='footer'>
+<a href="https://github.com/jeremyevans/hanna"><strong>Hanna</strong> RDoc template</a>
+</div>
+</body>
+</html>

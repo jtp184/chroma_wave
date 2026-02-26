@@ -1,0 +1,429 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html lang='en'>
+<head>
+<title>README.md</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+<link href='../css/style.css' media='screen' rel='stylesheet' type='text/css'>
+<script type='text/javascript'>
+  function popupCode(url) {
+    window.open(url, "Code", "resizable=yes,scrollbars=yes,toolbar=no,status=no,height=150,width=400")
+  }
+  
+  function toggleCode(id) {
+    var code = document.getElementById(id)
+  
+    code.style.display = code.style.display != 'block' ? 'block' : 'none'
+    return true
+  }
+  
+  // Make codeblocks hidden by default
+  document.writeln('<' + 'style type="text/css">.method .source pre { display: none }<\/style>')
+</script>
+</head>
+<body class='page'>
+<div class='file' id='wrapper'>
+<div class='header'>
+<h1 class='name'>README.md
+</h1>
+<div class='paths'>
+README.md
+</div>
+</div>
+<div id='content'>
+<div id='text'>
+<div id='description'>
+<span id="label-ChromaWave" class="legacy-anchor"></span>
+<h1 id="chromawave"><a href="#chromawave"><a href="../classes/ChromaWave.html"><code>ChromaWave</code></a></a></h1>
+
+<p>Ruby C bindings for Waveshare e-paper displays. Draw with a clean, idiomatic API. Render text, icons, and images. Drive 70+ display models from a single gem.</p>
+
+<pre class="ruby"><span class="ruby-identifier">display</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">open</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_2in13_v4</span>) <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">display</span><span class="ruby-operator">|</span>
+  <span class="ruby-identifier">canvas</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Canvas</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">width</span>, <span class="ruby-value">height:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">height</span>)
+
+  <span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_rect</span>(<span class="ruby-value">10</span>, <span class="ruby-value">10</span>, <span class="ruby-value">100</span>, <span class="ruby-value">50</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">true</span>)
+  <span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_text</span>(<span class="ruby-string">&quot;Hello, e-paper!&quot;</span>, <span class="ruby-value">x:</span> <span class="ruby-value">20</span>, <span class="ruby-value">y:</span> <span class="ruby-value">20</span>, <span class="ruby-value">font:</span> <span class="ruby-constant">Font</span>.<span class="ruby-identifier">new</span>(<span class="ruby-string">&quot;DejaVuSans&quot;</span>, <span class="ruby-value">size:</span> <span class="ruby-value">16</span>), <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">WHITE</span>)
+
+  <span class="ruby-identifier">display</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)
+<span class="ruby-keyword">end</span>
+</pre>
+<hr>
+
+<span id="label-F0-9F-93-A6+Installation" class="legacy-anchor"></span>
+<h2 id="-installation"><a href="#-installation">📦 Installation</a></h2>
+
+<span id="label-On+Raspberry+Pi+-28with+hardware-29" class="legacy-anchor"></span>
+<h3 id="on-raspberry-pi-with-hardware"><a href="#on-raspberry-pi-with-hardware">On Raspberry Pi (with hardware)</a></h3>
+
+<pre class="bash"># Install system dependencies
+sudo apt install libvips-dev libfreetype-dev
+
+# Add to your Gemfile
+gem &quot;chroma_wave&quot;</pre>
+
+<p><a href="../classes/ChromaWave.html"><code>ChromaWave</code></a> auto-detects your GPIO/SPI backend. It prefers <code>lgpio</code> (Raspberry Pi 5 and modern Raspberry Pi OS), falls back to <code>gpiod</code>, and supports <code>bcm2835</code> and <code>wiringPi</code> for older setups. Override with:</p>
+
+<pre class="bash">gem install chroma_wave -- --with-epd-backend=lgpio</pre>
+
+<span id="label-On+a+development+machine+-28no+hardware-29" class="legacy-anchor"></span>
+<h3 id="on-a-development-machine-no-hardware"><a href="#on-a-development-machine-no-hardware">On a development machine (no hardware)</a></h3>
+
+<pre class="bash">gem &quot;chroma_wave&quot;</pre>
+
+<p><strong>The gem always installs.</strong> When no GPIO/SPI library is found, <a href="../classes/ChromaWave.html"><code>ChromaWave</code></a> compiles with a mock backend automatically. Drawing, rendering, and image processing all work normally — only hardware operations (<code>Display#show</code>, <code>Device.new</code>) raise <a href="../classes/ChromaWave/DeviceError.html"><code>ChromaWave::DeviceError</code></a> with a clear message. Develop and test anywhere, deploy to the Pi.</p>
+
+<span id="label-Optional+dependencies" class="legacy-anchor"></span>
+<h3 id="optional-dependencies"><a href="#optional-dependencies">Optional dependencies</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Dependency</th>
+<th>Required for</th>
+<th>Install</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>libvips</td>
+<td><code>Image</code> loading (JPEG, PNG, WebP, etc.)</td>
+<td><code>apt install libvips-dev</code></td>
+</tr>
+<tr>
+<td>libfreetype</td>
+<td><code>Font</code> and <code>draw_text</code></td>
+<td><code>apt install libfreetype-dev</code></td>
+</tr>
+</tbody>
+</table>
+
+<p>Both are optional. Canvas, drawing primitives, and the full rendering pipeline work without them.</p>
+<hr>
+
+<span id="label-F0-9F-96-A5-EF-B8-8F+Supported+Displays" class="legacy-anchor"></span>
+<h2 id="-supported-displays"><a href="#-supported-displays">🖥️ Supported Displays</a></h2>
+
+<p><a href="../classes/ChromaWave.html"><code>ChromaWave</code></a> supports <strong>70+ Waveshare e-paper display models</strong> across all color capabilities and sizes — from 1.02“ to 13.3”.</p>
+
+<table role="table">
+<thead>
+<tr>
+<th>Category</th>
+<th>Pixel Format</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Monochrome (B/W)</td>
+<td>1-bit</td>
+<td>EPD 2.13“ V4, 7.5” V2, 13.3“</td>
+</tr>
+<tr>
+<td>Grayscale (4-level)</td>
+<td>2-bit</td>
+<td>EPD 3.7“, 7.5” V2 (4-gray mode)</td>
+</tr>
+<tr>
+<td>Tri-color (B/W/R or B/W/Y)</td>
+<td>Dual 1-bit buffers</td>
+<td>EPD 2.13b V4, 4.2bc</td>
+</tr>
+<tr>
+<td>7-color (ACeP)</td>
+<td>4-bit</td>
+<td>EPD 5.65f, 4.01f</td>
+</tr>
+</tbody>
+</table>
+
+<p>Capabilities are discovered automatically from the model registry:</p>
+
+<pre class="ruby"><span class="ruby-identifier">display</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_2in13_v4</span>)
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">respond_to?</span>(<span class="ruby-value">:display_partial</span>)  <span class="ruby-comment"># =&gt; true  — supports partial refresh</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">respond_to?</span>(<span class="ruby-value">:init_fast</span>)        <span class="ruby-comment"># =&gt; true  — supports fast mode</span>
+
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">models</span>  <span class="ruby-comment"># =&gt; [:epd_2in13_v4, :epd_7in5_v2, ...]</span>
+</pre>
+
+<p>Typos raise <code>ModelNotFoundError</code> with did-you-mean suggestions.</p>
+<hr>
+
+<span id="label-F0-9F-8E-A8+Usage" class="legacy-anchor"></span>
+<h2 id="-usage"><a href="#-usage">🎨 Usage</a></h2>
+
+<span id="label-Drawing" class="legacy-anchor"></span>
+<h3 id="drawing"><a href="#drawing">Drawing</a></h3>
+
+<p>Every surface — Canvas, Framebuffer, Layer — shares the same drawing API through the <code>Surface</code> protocol:</p>
+
+<pre class="ruby"><span class="ruby-identifier">canvas</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Canvas</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-value">800</span>, <span class="ruby-value">height:</span> <span class="ruby-value">480</span>)
+
+<span class="ruby-comment"># Shapes</span>
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_line</span>(<span class="ruby-value">0</span>, <span class="ruby-value">0</span>, <span class="ruby-value">200</span>, <span class="ruby-value">100</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_rect</span>(<span class="ruby-value">10</span>, <span class="ruby-value">10</span>, <span class="ruby-value">200</span>, <span class="ruby-value">100</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>, <span class="ruby-value">stroke_width:</span> <span class="ruby-value">2</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_rounded_rect</span>(<span class="ruby-value">10</span>, <span class="ruby-value">120</span>, <span class="ruby-value">200</span>, <span class="ruby-value">80</span>, <span class="ruby-value">radius:</span> <span class="ruby-value">12</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">RED</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">true</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_circle</span>(<span class="ruby-value">400</span>, <span class="ruby-value">240</span>, <span class="ruby-value">60</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLUE</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">true</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_ellipse</span>(<span class="ruby-value">600</span>, <span class="ruby-value">240</span>, <span class="ruby-value">80</span>, <span class="ruby-value">40</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_polygon</span>([[<span class="ruby-value">10</span>, <span class="ruby-value">400</span>], [<span class="ruby-value">100</span>, <span class="ruby-value">350</span>], [<span class="ruby-value">190</span>, <span class="ruby-value">400</span>]], <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">true</span>)
+
+<span class="ruby-comment"># Text with TrueType fonts</span>
+<span class="ruby-identifier">font</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Font</span>.<span class="ruby-identifier">new</span>(<span class="ruby-string">&quot;DejaVuSans&quot;</span>, <span class="ruby-value">size:</span> <span class="ruby-value">24</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_text</span>(<span class="ruby-string">&quot;Temperature: 72°F&quot;</span>, <span class="ruby-value">x:</span> <span class="ruby-value">50</span>, <span class="ruby-value">y:</span> <span class="ruby-value">20</span>, <span class="ruby-value">font:</span> <span class="ruby-identifier">font</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_text</span>(<span class="ruby-string">&quot;A longer paragraph that wraps cleanly within bounds.&quot;</span>,
+                 <span class="ruby-value">x:</span> <span class="ruby-value">50</span>, <span class="ruby-value">y:</span> <span class="ruby-value">60</span>, <span class="ruby-value">font:</span> <span class="ruby-identifier">font</span>, <span class="ruby-value">max_width:</span> <span class="ruby-value">300</span>, <span class="ruby-value">align:</span> <span class="ruby-value">:center</span>)
+
+<span class="ruby-comment"># Icons (bundled Lucide set — 1,500+ icons, zero config)</span>
+<span class="ruby-identifier">icons</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">IconFont</span>.<span class="ruby-identifier">lucide</span>(<span class="ruby-value">size:</span> <span class="ruby-value">32</span>)
+<span class="ruby-identifier">icons</span>.<span class="ruby-identifier">draw</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">:wifi</span>, <span class="ruby-value">x:</span> <span class="ruby-value">10</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>)
+<span class="ruby-identifier">icons</span>.<span class="ruby-identifier">draw</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">:battery_full</span>, <span class="ruby-value">x:</span> <span class="ruby-value">50</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>)
+<span class="ruby-identifier">icons</span>.<span class="ruby-identifier">draw</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">:thermometer</span>, <span class="ruby-value">x:</span> <span class="ruby-value">90</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>)
+
+<span class="ruby-comment"># Images (JPEG, PNG, WebP — any format libvips handles)</span>
+<span class="ruby-identifier">photo</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Image</span>.<span class="ruby-identifier">load</span>(<span class="ruby-string">&quot;photo.jpg&quot;</span>).<span class="ruby-identifier">resize</span>(<span class="ruby-value">width:</span> <span class="ruby-value">400</span>)
+<span class="ruby-identifier">photo</span>.<span class="ruby-identifier">draw_onto</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">x:</span> <span class="ruby-value">200</span>, <span class="ruby-value">y:</span> <span class="ruby-value">40</span>)
+</pre>
+
+<span id="label-Layers" class="legacy-anchor"></span>
+<h3 id="layers"><a href="#layers">Layers</a></h3>
+
+<p>Layers are clipped, offset sub-regions of any surface. They’re the foundation for widget-based composition:</p>
+
+<pre class="ruby"><span class="ruby-identifier">canvas</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Canvas</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-value">800</span>, <span class="ruby-value">height:</span> <span class="ruby-value">480</span>)
+
+<span class="ruby-comment"># Each layer has its own local coordinate space</span>
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">layer</span>(<span class="ruby-value">x:</span> <span class="ruby-value">0</span>, <span class="ruby-value">y:</span> <span class="ruby-value">0</span>, <span class="ruby-value">width:</span> <span class="ruby-value">800</span>, <span class="ruby-value">height:</span> <span class="ruby-value">60</span>) <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">header</span><span class="ruby-operator">|</span>
+  <span class="ruby-identifier">header</span>.<span class="ruby-identifier">clear</span>(<span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+  <span class="ruby-identifier">header</span>.<span class="ruby-identifier">draw_text</span>(<span class="ruby-string">&quot;Dashboard&quot;</span>, <span class="ruby-value">x:</span> <span class="ruby-value">10</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>, <span class="ruby-value">font:</span> <span class="ruby-identifier">title_font</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">WHITE</span>)
+<span class="ruby-keyword">end</span>
+
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">layer</span>(<span class="ruby-value">x:</span> <span class="ruby-value">10</span>, <span class="ruby-value">y:</span> <span class="ruby-value">70</span>, <span class="ruby-value">width:</span> <span class="ruby-value">380</span>, <span class="ruby-value">height:</span> <span class="ruby-value">200</span>) <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">chart_area</span><span class="ruby-operator">|</span>
+  <span class="ruby-identifier">chart_area</span>.<span class="ruby-identifier">draw_rect</span>(<span class="ruby-value">0</span>, <span class="ruby-value">0</span>, <span class="ruby-identifier">chart_area</span>.<span class="ruby-identifier">width</span>, <span class="ruby-identifier">chart_area</span>.<span class="ruby-identifier">height</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+  <span class="ruby-comment"># Draw chart contents in local coordinates...</span>
+<span class="ruby-keyword">end</span>
+
+<span class="ruby-comment"># Layers compose — a Layer of a Layer works correctly</span>
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">layer</span>(<span class="ruby-value">x:</span> <span class="ruby-value">410</span>, <span class="ruby-value">y:</span> <span class="ruby-value">70</span>, <span class="ruby-value">width:</span> <span class="ruby-value">380</span>, <span class="ruby-value">height:</span> <span class="ruby-value">400</span>) <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">sidebar</span><span class="ruby-operator">|</span>
+  <span class="ruby-identifier">sidebar</span>.<span class="ruby-identifier">layer</span>(<span class="ruby-value">x:</span> <span class="ruby-value">10</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>, <span class="ruby-value">width:</span> <span class="ruby-value">360</span>, <span class="ruby-value">height:</span> <span class="ruby-value">50</span>) <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">status_bar</span><span class="ruby-operator">|</span>
+    <span class="ruby-identifier">status_bar</span>.<span class="ruby-identifier">draw_text</span>(<span class="ruby-string">&quot;Status: OK&quot;</span>, <span class="ruby-value">x:</span> <span class="ruby-value">0</span>, <span class="ruby-value">y:</span> <span class="ruby-value">0</span>, <span class="ruby-value">font:</span> <span class="ruby-identifier">body_font</span>)
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-Colors" class="legacy-anchor"></span>
+<h3 id="colors"><a href="#colors">Colors</a></h3>
+
+<p>Colors are immutable RGBA value objects with alpha compositing:</p>
+
+<pre class="ruby"><span class="ruby-comment"># Named constants</span>
+<span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>, <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">WHITE</span>, <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">RED</span>, <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">YELLOW</span>, <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">GREEN</span>,
+<span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLUE</span>, <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">ORANGE</span>, <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">DARK_GRAY</span>, <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">LIGHT_GRAY</span>
+
+<span class="ruby-comment"># Custom colors</span>
+<span class="ruby-identifier">teal</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Color</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">0</span>, <span class="ruby-value">g:</span> <span class="ruby-value">128</span>, <span class="ruby-value">b:</span> <span class="ruby-value">128</span>)
+<span class="ruby-identifier">translucent_red</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Color</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">255</span>, <span class="ruby-value">g:</span> <span class="ruby-value">0</span>, <span class="ruby-value">b:</span> <span class="ruby-value">0</span>, <span class="ruby-value">a:</span> <span class="ruby-value">128</span>)
+
+<span class="ruby-comment"># Alpha compositing (source-over)</span>
+<span class="ruby-identifier">result</span> = <span class="ruby-identifier">translucent_red</span>.<span class="ruby-identifier">over</span>(<span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">WHITE</span>)  <span class="ruby-comment"># blended, always opaque</span>
+</pre>
+
+<p>Alpha is fully supported in the Canvas layer. The Renderer flattens it during quantization — the display always receives opaque palette entries.</p>
+
+<span id="label-Display+Workflows" class="legacy-anchor"></span>
+<h3 id="display-workflows"><a href="#display-workflows">Display Workflows</a></h3>
+
+<pre class="ruby"><span class="ruby-comment"># Common path: draw on Canvas, let Display handle rendering</span>
+<span class="ruby-identifier">display</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_7in5_v2</span>)
+<span class="ruby-identifier">canvas</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Canvas</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">width</span>, <span class="ruby-value">height:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">height</span>)
+<span class="ruby-comment"># ... draw on canvas ...</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)   <span class="ruby-comment"># auto-renders with Floyd-Steinberg dithering</span>
+
+<span class="ruby-comment"># Power-user path: control rendering directly</span>
+<span class="ruby-identifier">renderer</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Renderer</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">pixel_format:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">pixel_format</span>, <span class="ruby-value">dither:</span> <span class="ruby-value">:ordered</span>)
+<span class="ruby-identifier">fb</span> = <span class="ruby-identifier">renderer</span>.<span class="ruby-identifier">render</span>(<span class="ruby-identifier">canvas</span>)
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">fb</span>)
+
+<span class="ruby-comment"># Partial refresh (on supported models)</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">display_base</span>(<span class="ruby-identifier">fb</span>)        <span class="ruby-comment"># write base image</span>
+<span class="ruby-comment"># ... update canvas ...</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">display_partial</span>(<span class="ruby-identifier">fb</span>)     <span class="ruby-comment"># fast partial update</span>
+
+<span class="ruby-comment"># Block-style lifecycle</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">open</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_2in13_v4</span>) <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">d</span><span class="ruby-operator">|</span>
+  <span class="ruby-identifier">d</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)
+<span class="ruby-keyword">end</span>  <span class="ruby-comment"># auto-closes, releases GPIO/SPI</span>
+</pre>
+<hr>
+
+<span id="label-F0-9F-8F-97-EF-B8-8F+Architecture" class="legacy-anchor"></span>
+<h2 id="-architecture"><a href="#-architecture">🏗️ Architecture</a></h2>
+
+<p><a href="../classes/ChromaWave.html"><code>ChromaWave</code></a> separates drawing, rendering, and hardware into three distinct layers:</p>
+
+<pre>┌────────────────────────────────────────────────────────┐
+│                  🎨 Drawing Layer                      │
+│                                                        │
+│  Surface ← duck-type protocol (set_pixel, dimensions)  │
+│    ├── Canvas       RGBA packed String, C-accelerated  │
+│    ├── Layer        clipped sub-region of any Surface  │
+│    └── Framebuffer  device-format, C-backed            │
+│                                                        │
+│  Drawing primitives work on any Surface:               │
+│    line, rect, circle, text, blit, flood_fill          │
+│                                                        │
+├────────────────────────────────────────────────────────┤
+│                  🔄 Rendering Layer                    │
+│                                                        │
+│  Renderer: Canvas → Framebuffer                        │
+│    • Palette mapping (RGBA → nearest palette entry)    │
+│    • Dithering (Floyd-Steinberg, ordered, threshold)   │
+│    • Dual-buffer splitting (Canvas → two mono FBs)     │
+│                                                        │
+├────────────────────────────────────────────────────────┤
+│                  ⚡ Hardware Layer                     │
+│                                                        │
+│  Framebuffer → Display → Device                        │
+│    • Pixel packing, SPI transfer, GPIO lifecycle       │
+│    • GVL released during refresh (other threads run)   │
+│    • Thread-safe via Mutex on all hardware ops         │
+│                                                        │
+└─────────────────────────────────────────────────────── ┘</pre>
+
+<p><strong>Canvas</strong> stores pixels as packed RGBA bytes in a single Ruby String — two GC objects regardless of resolution. Three C-accelerated hot paths (clear, alpha blit, bulk RGBA load) have Ruby fallbacks for portability.</p>
+
+<p><strong>Renderer</strong> is the only place quantization and dithering occur. It converts full-color Canvas pixels to palette entries, keeping composition in RGBA until the last possible moment.</p>
+
+<p><strong>Display</strong> models are auto-built from a two-tier driver registry at gem load time. Simple displays are pure config data (~10 lines each). Complex models override with custom C functions for LUT selection, power cycling, or buffer transformations. Capabilities (partial refresh, fast mode, grayscale, dual-buffer, regional refresh) are composable Ruby modules — <code>respond_to?</code> and <code>is_a?</code> work naturally.</p>
+<hr>
+
+<span id="label-F0-9F-A7-AA+Develop+Without+Hardware" class="legacy-anchor"></span>
+<h2 id="-develop-without-hardware"><a href="#-develop-without-hardware">🧪 Develop Without Hardware</a></h2>
+
+<p><a href="../classes/ChromaWave.html"><code>ChromaWave</code></a> is designed to be developed, tested, and previewed without a physical display.</p>
+
+<span id="label-MockDevice" class="legacy-anchor"></span>
+<h3 id="mockdevice"><a href="#mockdevice">MockDevice</a></h3>
+
+<p><code>MockDevice</code> is a full <code>Display</code> subclass that replaces hardware calls with inspectable no-op stubs. Same model config, same capabilities, same API — just no SPI:</p>
+
+<pre class="ruby"><span class="ruby-identifier">mock</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">MockDevice</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_7in5_v2</span>)
+
+<span class="ruby-identifier">canvas</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Canvas</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-identifier">mock</span>.<span class="ruby-identifier">width</span>, <span class="ruby-value">height:</span> <span class="ruby-identifier">mock</span>.<span class="ruby-identifier">height</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_rect</span>(<span class="ruby-value">10</span>, <span class="ruby-value">10</span>, <span class="ruby-value">100</span>, <span class="ruby-value">50</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">true</span>)
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)
+
+<span class="ruby-comment"># Inspect what happened</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">operations</span>           <span class="ruby-comment"># =&gt; [{ op: :init, ... }, { op: :show, buffer_bytes: 48000, ... }]</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">operation_count</span>(<span class="ruby-value">:show</span>)  <span class="ruby-comment"># =&gt; 1</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">last_framebuffer</span>     <span class="ruby-comment"># =&gt; the rendered Framebuffer</span>
+
+<span class="ruby-comment"># Palette-accurate PNG export — see what the display would show</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">save_png</span>(<span class="ruby-string">&quot;preview.png&quot;</span>)
+</pre>
+
+<p>The PNG export reflects the actual display output: mono displays produce black and white, tri-color shows black/white/red, and dithering artifacts are visible because the Renderer has already quantized.</p>
+
+<span id="label-Testing+with+RSpec" class="legacy-anchor"></span>
+<h3 id="testing-with-rspec"><a href="#testing-with-rspec">Testing with RSpec</a></h3>
+
+<pre class="ruby"><span class="ruby-identifier">describe</span> <span class="ruby-string">&quot;weather widget&quot;</span>, <span class="ruby-value">:hardware</span>, <span class="ruby-value">model:</span> <span class="ruby-value">:epd_7in5_v2</span> <span class="ruby-keyword">do</span>
+  <span class="ruby-identifier">subject</span>(<span class="ruby-value">:device</span>) { <span class="ruby-operator">|</span><span class="ruby-identifier">example</span><span class="ruby-operator">|</span> <span class="ruby-identifier">example</span>.<span class="ruby-identifier">metadata</span>[<span class="ruby-value">:mock_device</span>] }
+
+  <span class="ruby-identifier">it</span> <span class="ruby-string">&quot;renders the temperature&quot;</span> <span class="ruby-keyword">do</span>
+    <span class="ruby-identifier">canvas</span> = <span class="ruby-identifier">build_weather_canvas</span>(<span class="ruby-value">temp:</span> <span class="ruby-value">72</span>)
+    <span class="ruby-identifier">device</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)
+
+    <span class="ruby-identifier">expect</span>(<span class="ruby-identifier">device</span>.<span class="ruby-identifier">operations</span>(<span class="ruby-value">:show</span>).<span class="ruby-identifier">size</span>).<span class="ruby-identifier">to</span> <span class="ruby-identifier">eq</span>(<span class="ruby-value">1</span>)
+    <span class="ruby-identifier">expect</span>(<span class="ruby-identifier">device</span>.<span class="ruby-identifier">last_framebuffer</span>).<span class="ruby-identifier">not_to</span> <span class="ruby-identifier">be_nil</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<p>MockDevice also supports busy-wait simulation for testing timeout and interrupt paths:</p>
+
+<pre class="ruby"><span class="ruby-identifier">mock</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">MockDevice</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_2in13_v4</span>, <span class="ruby-value">busy_duration:</span> <span class="ruby-value">5.0</span>)
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)  <span class="ruby-comment"># blocks for ~5 seconds, exercises timeout logic</span>
+</pre>
+<hr>
+
+<span id="label-E2-9A-A1+Performance" class="legacy-anchor"></span>
+<h2 id="-performance"><a href="#-performance">⚡ Performance</a></h2>
+
+<p>Canvas uses a packed binary String buffer (4 bytes/pixel), not an Array of Color objects. Bulk operations bypass Ruby object creation entirely:</p>
+
+<table role="table">
+<thead>
+<tr>
+<th>Operation</th>
+<th>Packed String (<a href="../classes/ChromaWave.html"><code>ChromaWave</code></a>)</th>
+<th>Array&lt;Color&gt; (naive)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>800x480 Canvas memory</td>
+<td>~1.5 MB</td>
+<td>~15 MB</td>
+</tr>
+<tr>
+<td>GC objects per Canvas</td>
+<td>2</td>
+<td>~384,001</td>
+</tr>
+<tr>
+<td>Image blit (800x480)</td>
+<td>~5 ms (C accelerator)</td>
+<td>~800 ms</td>
+</tr>
+<tr>
+<td>Alpha composite (400x300)</td>
+<td>~2 ms (C accelerator)</td>
+<td>~50 ms</td>
+</tr>
+</tbody>
+</table>
+
+<p>Display refresh takes 2–15 seconds depending on the model. <a href="../classes/ChromaWave.html"><code>ChromaWave</code></a> releases the GVL during refresh so other Ruby threads continue running. Hardware operations are thread-safe via Mutex — concurrent display access is serialized cleanly.</p>
+<hr>
+
+<span id="label-F0-9F-94-A7+Development" class="legacy-anchor"></span>
+<h2 id="-development"><a href="#-development">🔧 Development</a></h2>
+
+<p>After checking out the repo, run <code>bin/setup</code> to install dependencies. Then, run <code>rake spec</code> to run the tests. You can also run <code>bin/console</code> for an interactive prompt.</p>
+
+<pre class="bash">bundle install
+rake compile    # build the C extension
+rake spec       # run the test suite (uses MockDevice, no hardware needed)</pre>
+
+<span id="label-Regenerating+the+Lucide+icon+map" class="legacy-anchor"></span>
+<h3 id="regenerating-the-lucide-icon-map"><a href="#regenerating-the-lucide-icon-map">Regenerating the Lucide icon map</a></h3>
+
+<pre class="bash">rake icons:generate   # parses Lucide metadata → lucide_glyphs.rb</pre>
+<hr>
+
+<span id="label-F0-9F-A4-9D+Contributing" class="legacy-anchor"></span>
+<h2 id="-contributing"><a href="#-contributing">🤝 Contributing</a></h2>
+
+<p><a href="lib/chroma_wave_rb.html">chroma_wave</a> is open source, but not open contribution. If you have a bug fix or feature you’d like to see, please open an issue first to discuss. This helps ensure a high signal-to-noise ratio and maintain project vision. Cold pull requests without prior discussion will likely be closed, regardless of quality or origin.</p>
+<hr>
+
+<span id="label-F0-9F-93-84+License" class="legacy-anchor"></span>
+<h2 id="-license"><a href="#-license">📄 License</a></h2>
+
+<p>The gem is available as open source under the terms of the <a target="_top" href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+
+<p><a href="../classes/ChromaWave.html"><code>ChromaWave</code></a> vendors <a target="_top" href="https://github.com/waveshareteam/e-Paper">Waveshare’s e-paper driver library</a> (MIT) and bundles the <a target="_top" href="https://lucide.dev/">Lucide</a> icon font (ISC).</p>
+</div>
+<div id='context'>
+</div>
+
+</div>
+</div>
+
+<div id='footer-push'></div>
+</div>
+<div id='footer'>
+<a href="https://github.com/jeremyevans/hanna"><strong>Hanna</strong> RDoc template</a>
+</div>
+</body>
+</html>

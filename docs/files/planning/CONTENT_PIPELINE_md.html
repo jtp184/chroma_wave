@@ -1,0 +1,668 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html lang='en'>
+<head>
+<title>CONTENT_PIPELINE.md</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+<link href='../../css/style.css' media='screen' rel='stylesheet' type='text/css'>
+<script type='text/javascript'>
+  function popupCode(url) {
+    window.open(url, "Code", "resizable=yes,scrollbars=yes,toolbar=no,status=no,height=150,width=400")
+  }
+  
+  function toggleCode(id) {
+    var code = document.getElementById(id)
+  
+    code.style.display = code.style.display != 'block' ? 'block' : 'none'
+    return true
+  }
+  
+  // Make codeblocks hidden by default
+  document.writeln('<' + 'style type="text/css">.method .source pre { display: none }<\/style>')
+</script>
+</head>
+<body class='page'>
+<div class='file' id='wrapper'>
+<div class='header'>
+<h1 class='name'>CONTENT_PIPELINE.md
+</h1>
+<div class='paths'>
+planning/CONTENT_PIPELINE.md
+</div>
+</div>
+<div id='content'>
+<div id='text'>
+<div id='description'>
+<span id="label-ChromaWave+Content+Pipeline" class="legacy-anchor"></span>
+<h1 id="chromawave-content-pipeline"><a href="#chromawave-content-pipeline"><a href="../../classes/ChromaWave.html"><code>ChromaWave</code></a> Content Pipeline</a></h1>
+
+<p>The content that flows through the drawing architecture: colors, shapes, text, and images. This document specifies the Ruby-side content layer — everything users interact with when composing visuals for the display.</p>
+
+<p>For the structural layers these content types flow through (Surface, Canvas, Renderer, Framebuffer), see <a href="EXTENSION_STRATEGY_md.html">EXTENSION_STRATEGY.md</a>. For full code contracts of all classes, see <a href="API_REFERENCE_md.html">API_REFERENCE.md</a>.</p>
+<hr>
+
+<span id="label-1.+Color+Model+-28RGBA-29" class="legacy-anchor"></span>
+<h2 id="1-color-model-rgba"><a href="#1-color-model-rgba">1. Color Model (RGBA)</a></h2>
+
+<p>Canvas compositing requires a richer color representation than the display’s final palette. Colors are modeled as <strong>frozen RGBA value objects</strong> using <code>Data.define</code> (Ruby 3.2+), with a bridge to <strong>palette entries</strong> — the lowercase symbols (<code>:black</code>, <code>:red</code>, <code>:dark_gray</code>) that Palettes, Framebuffers, and the Renderer use to identify colors in the display’s native format:</p>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-constant">Color</span> = <span class="ruby-constant">Data</span>.<span class="ruby-identifier">define</span>(<span class="ruby-value">:r</span>, <span class="ruby-value">:g</span>, <span class="ruby-value">:b</span>, <span class="ruby-value">:a</span>) <span class="ruby-keyword">do</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">initialize</span>(<span class="ruby-value">r:</span>, <span class="ruby-value">g:</span>, <span class="ruby-value">b:</span>, <span class="ruby-value">a:</span> <span class="ruby-value">255</span>)
+      <span class="ruby-keyword">super</span>(<span class="ruby-value">r:</span>, <span class="ruby-value">g:</span>, <span class="ruby-value">b:</span>, <span class="ruby-value">a:</span>)
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">opaque?</span>  = <span class="ruby-identifier">a</span> <span class="ruby-operator">==</span> <span class="ruby-value">255</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">transparent?</span> = <span class="ruby-identifier">a</span> <span class="ruby-operator">==</span> <span class="ruby-value">0</span>
+
+    <span class="ruby-comment"># Pack into 4-byte binary string (for Canvas packed buffer storage).</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">to_rgba_bytes</span> = [<span class="ruby-identifier">r</span>, <span class="ruby-identifier">g</span>, <span class="ruby-identifier">b</span>, <span class="ruby-identifier">a</span>].<span class="ruby-identifier">pack</span>(<span class="ruby-string">&quot;C4&quot;</span>)
+
+    <span class="ruby-comment"># Unpack from 4-byte binary string (lazy materialization from Canvas).</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier ruby-title">from_rgba_bytes</span>(<span class="ruby-identifier">bytes</span>)
+      <span class="ruby-identifier">r</span>, <span class="ruby-identifier">g</span>, <span class="ruby-identifier">b</span>, <span class="ruby-identifier">a</span> = <span class="ruby-identifier">bytes</span>.<span class="ruby-identifier">unpack</span>(<span class="ruby-string">&quot;C4&quot;</span>)
+      <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span>, <span class="ruby-value">g:</span>, <span class="ruby-value">b:</span>, <span class="ruby-value">a:</span>)
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Alpha compositing: source over onto opaque background.</span>
+    <span class="ruby-comment"># Always produces an opaque result (a=255). This is intentionally</span>
+    <span class="ruby-comment"># simplified from full Porter-Duff — background is assumed opaque.</span>
+    <span class="ruby-comment"># Alpha is only meaningful in the Canvas layer and is flattened by</span>
+    <span class="ruby-comment"># the Renderer during quantization.</span>
+    <span class="ruby-comment">#</span>
+    <span class="ruby-comment"># NOTE: If background has a &lt; 255, the background&#39;s alpha is silently</span>
+    <span class="ruby-comment"># ignored (the result is still opaque). Full Porter-Duff compositing</span>
+    <span class="ruby-comment"># with output alpha (for stacked semi-transparency) is deferred as a</span>
+    <span class="ruby-comment"># future enhancement if real-world use cases require it.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">over</span>(<span class="ruby-identifier">background</span>)
+      <span class="ruby-keyword">return</span> <span class="ruby-keyword">self</span> <span class="ruby-keyword">if</span> <span class="ruby-identifier">opaque?</span>
+      <span class="ruby-keyword">return</span> <span class="ruby-identifier">background</span> <span class="ruby-keyword">if</span> <span class="ruby-identifier">transparent?</span>
+      <span class="ruby-identifier">alpha</span> = <span class="ruby-identifier">a</span> <span class="ruby-operator">/</span> <span class="ruby-value">255.0</span>
+      <span class="ruby-constant">Color</span>.<span class="ruby-identifier">new</span>(
+        <span class="ruby-value">r:</span> (<span class="ruby-identifier">r</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">alpha</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">background</span>.<span class="ruby-identifier">r</span> <span class="ruby-operator">*</span> (<span class="ruby-value">1</span> <span class="ruby-operator">-</span> <span class="ruby-identifier">alpha</span>)).<span class="ruby-identifier">round</span>,
+        <span class="ruby-value">g:</span> (<span class="ruby-identifier">g</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">alpha</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">background</span>.<span class="ruby-identifier">g</span> <span class="ruby-operator">*</span> (<span class="ruby-value">1</span> <span class="ruby-operator">-</span> <span class="ruby-identifier">alpha</span>)).<span class="ruby-identifier">round</span>,
+        <span class="ruby-value">b:</span> (<span class="ruby-identifier">b</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">alpha</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">background</span>.<span class="ruby-identifier">b</span> <span class="ruby-operator">*</span> (<span class="ruby-value">1</span> <span class="ruby-operator">-</span> <span class="ruby-identifier">alpha</span>)).<span class="ruby-identifier">round</span>
+      )
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Reverse lookup: palette entry → Color. Used by Palette#nearest_color.</span>
+    <span class="ruby-comment"># Keys are always lowercase symbols (:black, :red, etc.).</span>
+    <span class="ruby-constant">NAME_MAP</span> = {}
+    <span class="ruby-keyword">def</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier ruby-title">from_name</span>(<span class="ruby-identifier">name</span>) = <span class="ruby-constant">NAME_MAP</span>.<span class="ruby-identifier">fetch</span>(<span class="ruby-identifier">name</span>)
+
+    <span class="ruby-comment"># Register a named color. `name` is always a lowercase symbol (:black,</span>
+    <span class="ruby-comment"># :dark_gray, etc.). This creates an uppercase constant (Color::BLACK)</span>
+    <span class="ruby-comment"># and a NAME_MAP entry keyed by the original symbol.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier ruby-title">register</span>(<span class="ruby-identifier">name</span>, <span class="ruby-identifier">color</span>)
+      <span class="ruby-identifier">const_set</span>(<span class="ruby-identifier">name</span>.<span class="ruby-identifier">upcase</span>, <span class="ruby-identifier">color</span>)
+      <span class="ruby-constant">NAME_MAP</span>[<span class="ruby-identifier">name</span>] = <span class="ruby-identifier">color</span>
+      <span class="ruby-identifier">color</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Named color constants — RGB values that map to common display palettes.</span>
+    <span class="ruby-comment"># Registration names are lowercase symbols; constants are uppercase.</span>
+    <span class="ruby-identifier">register</span>(<span class="ruby-value">:black</span>,      <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">0</span>,   <span class="ruby-value">g:</span> <span class="ruby-value">0</span>,   <span class="ruby-value">b:</span> <span class="ruby-value">0</span>))
+    <span class="ruby-identifier">register</span>(<span class="ruby-value">:white</span>,      <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">255</span>, <span class="ruby-value">g:</span> <span class="ruby-value">255</span>, <span class="ruby-value">b:</span> <span class="ruby-value">255</span>))
+    <span class="ruby-identifier">register</span>(<span class="ruby-value">:red</span>,        <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">255</span>, <span class="ruby-value">g:</span> <span class="ruby-value">0</span>,   <span class="ruby-value">b:</span> <span class="ruby-value">0</span>))
+    <span class="ruby-identifier">register</span>(<span class="ruby-value">:yellow</span>,     <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">255</span>, <span class="ruby-value">g:</span> <span class="ruby-value">255</span>, <span class="ruby-value">b:</span> <span class="ruby-value">0</span>))
+    <span class="ruby-identifier">register</span>(<span class="ruby-value">:green</span>,      <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">0</span>,   <span class="ruby-value">g:</span> <span class="ruby-value">128</span>, <span class="ruby-value">b:</span> <span class="ruby-value">0</span>))
+    <span class="ruby-identifier">register</span>(<span class="ruby-value">:blue</span>,       <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">0</span>,   <span class="ruby-value">g:</span> <span class="ruby-value">0</span>,   <span class="ruby-value">b:</span> <span class="ruby-value">255</span>))
+    <span class="ruby-identifier">register</span>(<span class="ruby-value">:orange</span>,     <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">255</span>, <span class="ruby-value">g:</span> <span class="ruby-value">165</span>, <span class="ruby-value">b:</span> <span class="ruby-value">0</span>))
+    <span class="ruby-identifier">register</span>(<span class="ruby-value">:dark_gray</span>,  <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">85</span>,  <span class="ruby-value">g:</span> <span class="ruby-value">85</span>,  <span class="ruby-value">b:</span> <span class="ruby-value">85</span>))
+    <span class="ruby-identifier">register</span>(<span class="ruby-value">:light_gray</span>, <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">170</span>, <span class="ruby-value">g:</span> <span class="ruby-value">170</span>, <span class="ruby-value">b:</span> <span class="ruby-value">170</span>))
+    <span class="ruby-constant">TRANSPARENT</span> = <span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-value">0</span>, <span class="ruby-value">g:</span> <span class="ruby-value">0</span>, <span class="ruby-value">b:</span> <span class="ruby-value">0</span>, <span class="ruby-value">a:</span> <span class="ruby-value">0</span>)
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-How+RGBA+Flows+Through+the+Pipeline" class="legacy-anchor"></span>
+<h3 id="how-rgba-flows-through-the-pipeline"><a href="#how-rgba-flows-through-the-pipeline">How RGBA Flows Through the Pipeline</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Stage</th>
+<th>Color representation</th>
+<th>Alpha behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>set_pixel</code></td>
+<td><code>Color</code> → 4 packed bytes</td>
+<td>Direct replacement (no compositing)</td>
+</tr>
+<tr>
+<td><code>get_pixel</code></td>
+<td>4 packed bytes → <code>Color</code></td>
+<td>Lazy materialization on demand</td>
+</tr>
+<tr>
+<td><code>blit</code> (C accel)</td>
+<td>Packed bytes directly</td>
+<td>Per-pixel alpha composite, no Color objects</td>
+</tr>
+<tr>
+<td><code>blit</code> (Ruby fallback)</td>
+<td><code>Color</code> (RGBA)</td>
+<td>Per-pixel alpha compositing (source over)</td>
+</tr>
+<tr>
+<td><code>load_rgba_bytes</code></td>
+<td>Raw RGBA bytes → buffer</td>
+<td>Bulk memcpy, no Color objects</td>
+</tr>
+<tr>
+<td><code>render_glyph</code></td>
+<td><code>Color</code> (RGBA)</td>
+<td>Per-pixel alpha compositing (source over)</td>
+</tr>
+<tr>
+<td>Renderer quantize</td>
+<td><code>rgba_bytes</code> → palette</td>
+<td>Iterates packed bytes directly, no Color</td>
+</tr>
+<tr>
+<td>Framebuffer</td>
+<td>Palette name (symbol)</td>
+<td>No alpha — device format is opaque</td>
+</tr>
+</tbody>
+</table>
+
+<p>Alpha exists only in the Canvas layer. The Renderer flattens it during quantization (compositing against a configurable background, typically white for e-paper). The Framebuffer and Display never see alpha — they work with opaque palette indices.</p>
+
+<blockquote>
+<p><strong>Minimal Color object creation:</strong> In the common pipeline (load image → compose → render→ display), Color objects are created only for drawing primitive calls (<code>set_pixel</code>, <code>draw_line</code>, etc.) and glyph rendering. Bulk operations (image loading, blit, clear, quantization) operate directly on packed bytes, bypassing Color entirely. A typical dashboard render creates dozens of Color objects (one per drawing call), not hundreds of thousands (one per pixel).</p>
+
+<p><strong>Color vs palette entry:</strong> The two color representations serve different layers. <code>Color</code> objects (<code>Color::RED</code>, <code>Color.new(r: 255, g: 0, b: 0)</code>) are RGBA values used on Canvas for compositing. <strong>Palette entries</strong> (<code>:red</code>, <code>:black</code>, <code>:dark_gray</code>) are the lowercase symbols used on Framebuffer for direct pixel access. The <code>Renderer</code> bridges the two: it maps each Canvas <code>Color</code> to the nearest palette entry during quantization. Users drawing on a Canvas use <code>Color</code> objects; users drawing directly on a Framebuffer use palette entries. The <code>Surface</code> protocol is agnostic — <code>set_pixel</code> accepts whatever the concrete surface expects.</p>
+</blockquote>
+<hr>
+
+<span id="label-2.+Shape+Primitives" class="legacy-anchor"></span>
+<h2 id="2-shape-primitives"><a href="#2-shape-primitives">2. Shape Primitives</a></h2>
+
+<p>The <code>Surface</code> module provides a practical set of drawing primitives. All shapes support <code>stroke_width:</code> for thick outlines and <code>fill:</code> for solid fills:</p>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">module</span> <span class="ruby-constant">Surface</span>
+    <span class="ruby-comment"># --- Lines ---</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_line</span>(<span class="ruby-identifier">x0</span>, <span class="ruby-identifier">y0</span>, <span class="ruby-identifier">x1</span>, <span class="ruby-identifier">y1</span>, <span class="ruby-value">color:</span>, <span class="ruby-value">stroke_width:</span> <span class="ruby-value">1</span>)
+      <span class="ruby-comment"># Bresenham for 1px, offset parallel lines for thick strokes</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_polyline</span>(<span class="ruby-identifier">points</span>, <span class="ruby-value">color:</span>, <span class="ruby-value">stroke_width:</span> <span class="ruby-value">1</span>, <span class="ruby-value">closed:</span> <span class="ruby-keyword">false</span>)
+      <span class="ruby-comment"># Connected line segments. points = [[x0,y0], [x1,y1], ...]</span>
+      <span class="ruby-comment"># closed: true connects last point back to first</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># --- Rectangles ---</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_rect</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-identifier">width</span>, <span class="ruby-identifier">height</span>, <span class="ruby-value">color:</span>, <span class="ruby-value">stroke_width:</span> <span class="ruby-value">1</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">false</span>)
+      <span class="ruby-comment"># Outline or filled rectangle</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_rounded_rect</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-identifier">width</span>, <span class="ruby-identifier">height</span>, <span class="ruby-value">radius:</span>, <span class="ruby-value">color:</span>,
+                          <span class="ruby-value">stroke_width:</span> <span class="ruby-value">1</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">false</span>)
+      <span class="ruby-comment"># Rectangle with rounded corners (quarter-circle arcs)</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># --- Curves ---</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_circle</span>(<span class="ruby-identifier">cx</span>, <span class="ruby-identifier">cy</span>, <span class="ruby-identifier">r</span>, <span class="ruby-value">color:</span>, <span class="ruby-value">stroke_width:</span> <span class="ruby-value">1</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">false</span>)
+      <span class="ruby-comment"># Midpoint circle algorithm</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_ellipse</span>(<span class="ruby-identifier">cx</span>, <span class="ruby-identifier">cy</span>, <span class="ruby-identifier">rx</span>, <span class="ruby-identifier">ry</span>, <span class="ruby-value">color:</span>, <span class="ruby-value">stroke_width:</span> <span class="ruby-value">1</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">false</span>)
+      <span class="ruby-comment"># Midpoint ellipse algorithm</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_arc</span>(<span class="ruby-identifier">cx</span>, <span class="ruby-identifier">cy</span>, <span class="ruby-identifier">r</span>, <span class="ruby-identifier">start_angle</span>, <span class="ruby-identifier">end_angle</span>, <span class="ruby-value">color:</span>, <span class="ruby-value">stroke_width:</span> <span class="ruby-value">1</span>)
+      <span class="ruby-comment"># Circular arc segment (angles in radians)</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># --- Polygons ---</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_polygon</span>(<span class="ruby-identifier">points</span>, <span class="ruby-value">color:</span>, <span class="ruby-value">stroke_width:</span> <span class="ruby-value">1</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">false</span>)
+      <span class="ruby-comment"># Closed polygon. Outline via draw_polyline(closed: true).</span>
+      <span class="ruby-comment"># Fill via scanline fill algorithm.</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># --- Bulk operations ---</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">blit</span>(<span class="ruby-identifier">source</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>)
+      <span class="ruby-comment"># Copy pixels from another Surface with alpha compositing</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">flood_fill</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-value">color:</span>)
+      <span class="ruby-comment"># Seed fill from (x, y), replacing contiguous same-colored region</span>
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<blockquote>
+<p><strong>Stroke width implementation:</strong> For <code>stroke_width: 1</code> (the default), standard Bresenham and midpoint algorithms are used. For thicker strokes, lines use offset parallel lines, and curves use the inner/outer radius technique (draw two concentric curves and fill between them). This is simpler and faster than general stroke expansion.</p>
+
+<p><strong>Coordinate convention:</strong> All coordinates are integer pixels, origin at top-left, x increases right, y increases down. This matches the display’s physical pixel grid and avoids sub-pixel complexity that isn’t meaningful on e-paper.</p>
+</blockquote>
+<hr>
+
+<span id="label-3.+Text+Rendering" class="legacy-anchor"></span>
+<h2 id="3-text-rendering"><a href="#3-text-rendering">3. Text Rendering</a></h2>
+
+<p>Text rendering uses <strong>FreeType</strong> linked directly in the C extension. The C layer handles glyph rasterization (the performance-sensitive part). The Ruby layer handles font management, measurement, and layout:</p>
+
+<pre>┌──────────────────────────────────────────────────┐
+│                  Ruby (layout)                    │
+│                                                   │
+│  Font          loads TTF/OTF, holds FT_Face ref  │
+│  Font#measure  glyph metrics → bounding box      │
+│  Font#each_glyph  yields positioned glyph bitmaps│
+│  draw_text     layout + render onto Surface      │
+│                                                   │
+├──────────────────────────────────────────────────┤
+│                  C (rasterization)                │
+│                                                   │
+│  ft_render_glyph   FT_Load_Char + FT_Render      │
+│  ft_glyph_metrics  advance width, bearing, bbox  │
+│  Linked: libfreetype via extconf.rb              │
+│                                                   │
+└──────────────────────────────────────────────────┘</pre>
+
+<span id="label-3.1+Font+Loading" class="legacy-anchor"></span>
+<h3 id="31-font-loading"><a href="#31-font-loading">3.1 Font Loading</a></h3>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">class</span> <span class="ruby-constant">Font</span>
+    <span class="ruby-identifier">attr_reader</span> <span class="ruby-value">:size</span>, <span class="ruby-value">:path</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">initialize</span>(<span class="ruby-identifier">path_or_name</span>, <span class="ruby-value">size:</span>)
+      <span class="ruby-comment"># Accepts a TTF/OTF file path or a system font name</span>
+      <span class="ruby-comment"># System font lookup: searches standard font directories</span>
+      <span class="ruby-comment">#   /usr/share/fonts, ~/.fonts, etc.</span>
+      <span class="ruby-ivar">@path</span> = <span class="ruby-identifier">resolve_font_path</span>(<span class="ruby-identifier">path_or_name</span>)
+      <span class="ruby-ivar">@size</span> = <span class="ruby-identifier">size</span>
+      <span class="ruby-ivar">@ft_face</span> = <span class="ruby-identifier">_ft_load_face</span>(<span class="ruby-ivar">@path</span>, <span class="ruby-ivar">@size</span>)  <span class="ruby-comment"># private C method</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Measure text without rendering — essential for layout</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">measure</span>(<span class="ruby-identifier">text</span>)
+      <span class="ruby-constant">TextMetrics</span>.<span class="ruby-identifier">new</span>(
+        <span class="ruby-value">width:</span>    <span class="ruby-identifier">_ft_measure_width</span>(<span class="ruby-identifier">text</span>),
+        <span class="ruby-value">height:</span>   <span class="ruby-identifier">_ft_line_height</span>,
+        <span class="ruby-value">ascent:</span>   <span class="ruby-identifier">_ft_ascent</span>,
+        <span class="ruby-value">descent:</span>  <span class="ruby-identifier">_ft_descent</span>
+      )
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Iterate glyphs with position info — used by draw_text</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">each_glyph</span>(<span class="ruby-identifier">text</span>, <span class="ruby-operator">&amp;</span><span class="ruby-identifier">block</span>)
+      <span class="ruby-comment"># Yields: { char:, bitmap:, x:, y:, width:, height: }</span>
+      <span class="ruby-comment"># bitmap is a packed binary String (1 byte per pixel, alpha values 0-255).</span>
+      <span class="ruby-comment"># Row-major layout: width * height bytes. Matches Canvas&#39;s packed-buffer</span>
+      <span class="ruby-comment"># philosophy and avoids allocating nested Arrays per glyph.</span>
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+
+  <span class="ruby-constant">TextMetrics</span> = <span class="ruby-constant">Data</span>.<span class="ruby-identifier">define</span>(<span class="ruby-value">:width</span>, <span class="ruby-value">:height</span>, <span class="ruby-value">:ascent</span>, <span class="ruby-value">:descent</span>)
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-3.2+Drawing+Text+on+a+Surface" class="legacy-anchor"></span>
+<h3 id="32-drawing-text-on-a-surface"><a href="#32-drawing-text-on-a-surface">3.2 Drawing Text on a Surface</a></h3>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">module</span> <span class="ruby-constant">Surface</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_text</span>(<span class="ruby-identifier">text</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>, <span class="ruby-value">font:</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>,
+                  <span class="ruby-value">align:</span> <span class="ruby-value">:left</span>, <span class="ruby-value">max_width:</span> <span class="ruby-keyword">nil</span>)
+      <span class="ruby-identifier">lines</span> = <span class="ruby-identifier">max_width</span> <span class="ruby-operator">?</span> <span class="ruby-identifier">word_wrap</span>(<span class="ruby-identifier">text</span>, <span class="ruby-value">font:</span>, <span class="ruby-value">max_width:</span>) <span class="ruby-operator">:</span> [<span class="ruby-identifier">text</span>]
+
+      <span class="ruby-identifier">lines</span>.<span class="ruby-identifier">each_with_index</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">line</span>, <span class="ruby-identifier">i</span><span class="ruby-operator">|</span>
+        <span class="ruby-identifier">line_y</span> = <span class="ruby-identifier">y</span> <span class="ruby-operator">+</span> (<span class="ruby-identifier">i</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">font</span>.<span class="ruby-identifier">measure</span>(<span class="ruby-identifier">line</span>).<span class="ruby-identifier">height</span>)
+        <span class="ruby-identifier">line_x</span> = <span class="ruby-keyword">case</span> <span class="ruby-identifier">align</span>
+                 <span class="ruby-keyword">when</span> <span class="ruby-value">:left</span>   <span class="ruby-keyword">then</span> <span class="ruby-identifier">x</span>
+                 <span class="ruby-keyword">when</span> <span class="ruby-value">:center</span> <span class="ruby-keyword">then</span> <span class="ruby-identifier">x</span> <span class="ruby-operator">+</span> (<span class="ruby-identifier">max_width</span> <span class="ruby-operator">-</span> <span class="ruby-identifier">font</span>.<span class="ruby-identifier">measure</span>(<span class="ruby-identifier">line</span>).<span class="ruby-identifier">width</span>) <span class="ruby-operator">/</span> <span class="ruby-value">2</span>
+                 <span class="ruby-keyword">when</span> <span class="ruby-value">:right</span>  <span class="ruby-keyword">then</span> <span class="ruby-identifier">x</span> <span class="ruby-operator">+</span> (<span class="ruby-identifier">max_width</span> <span class="ruby-operator">-</span> <span class="ruby-identifier">font</span>.<span class="ruby-identifier">measure</span>(<span class="ruby-identifier">line</span>).<span class="ruby-identifier">width</span>)
+                 <span class="ruby-keyword">end</span>
+
+        <span class="ruby-identifier">font</span>.<span class="ruby-identifier">each_glyph</span>(<span class="ruby-identifier">line</span>) <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">glyph</span><span class="ruby-operator">|</span>
+          <span class="ruby-identifier">render_glyph</span>(<span class="ruby-identifier">glyph</span>, <span class="ruby-identifier">line_x</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">glyph</span>[<span class="ruby-value">:x</span>], <span class="ruby-identifier">line_y</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">glyph</span>[<span class="ruby-value">:y</span>], <span class="ruby-identifier">color</span>)
+        <span class="ruby-keyword">end</span>
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-identifier">private</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">render_glyph</span>(<span class="ruby-identifier">glyph</span>, <span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-identifier">color</span>)
+      <span class="ruby-identifier">bitmap</span> = <span class="ruby-identifier">glyph</span>[<span class="ruby-value">:bitmap</span>]
+      <span class="ruby-identifier">w</span>, <span class="ruby-identifier">h</span> = <span class="ruby-identifier">glyph</span>[<span class="ruby-value">:width</span>], <span class="ruby-identifier">glyph</span>[<span class="ruby-value">:height</span>]
+      <span class="ruby-identifier">h</span>.<span class="ruby-identifier">times</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">gy</span><span class="ruby-operator">|</span>
+        <span class="ruby-identifier">w</span>.<span class="ruby-identifier">times</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">gx</span><span class="ruby-operator">|</span>
+          <span class="ruby-identifier">alpha</span> = <span class="ruby-identifier">bitmap</span>.<span class="ruby-identifier">getbyte</span>(<span class="ruby-identifier">gy</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">w</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">gx</span>)
+          <span class="ruby-keyword">next</span> <span class="ruby-keyword">if</span> <span class="ruby-identifier">alpha</span> <span class="ruby-operator">==</span> <span class="ruby-value">0</span>
+          <span class="ruby-identifier">set_pixel</span>(<span class="ruby-identifier">x</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">gx</span>, <span class="ruby-identifier">y</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">gy</span>, <span class="ruby-constant">Color</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">r:</span> <span class="ruby-identifier">color</span>.<span class="ruby-identifier">r</span>, <span class="ruby-value">g:</span> <span class="ruby-identifier">color</span>.<span class="ruby-identifier">g</span>, <span class="ruby-value">b:</span> <span class="ruby-identifier">color</span>.<span class="ruby-identifier">b</span>, <span class="ruby-value">a:</span> <span class="ruby-identifier">alpha</span>))
+        <span class="ruby-keyword">end</span>
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">word_wrap</span>(<span class="ruby-identifier">text</span>, <span class="ruby-value">font:</span>, <span class="ruby-value">max_width:</span>)
+      <span class="ruby-comment"># Split text into lines that fit within max_width</span>
+      <span class="ruby-comment"># Break on whitespace boundaries</span>
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<blockquote>
+<p><strong>Anti-aliasing and e-paper:</strong> FreeType produces grayscale glyph bitmaps (256 levels of alpha). On Canvas, these alpha values composite smoothly against any background. When the Renderer quantizes to a limited palette, the dithering algorithm handles the grayscale edges — Floyd-Steinberg dithering on text produces clean, readable results even on mono displays. This is significantly better than binary (on/off) glyph rendering.</p>
+
+<p><strong>C extension surface:</strong> FreeType is linked in <a href="../ext/chroma_wave/extconf_rb.html">extconf.rb</a> via <code>have_library(&#39;freetype&#39;)</code> and <code>find_header(&#39;ft2build.h&#39;)</code>. The C methods <code>_ft_load_face</code>, <code>_ft_render_glyph</code>, and <code>_ft_measure_width</code> are defined as private methods on a <code>ChromaWave::Font</code> class registered in <code>Init_chroma_wave</code>. The <code>FT_Library</code> is initialized once at gem load time and cleaned up via an <code>at_exit</code> hook.</p>
+</blockquote>
+
+<span id="label-3.3+Font+Discovery" class="legacy-anchor"></span>
+<h3 id="33-font-discovery"><a href="#33-font-discovery">3.3 Font Discovery</a></h3>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">class</span> <span class="ruby-constant">Font</span>
+    <span class="ruby-constant">SYSTEM_FONT_DIRS</span> = [
+      <span class="ruby-string">&quot;/usr/share/fonts&quot;</span>,
+      <span class="ruby-string">&quot;/usr/local/share/fonts&quot;</span>,
+      <span class="ruby-constant">File</span>.<span class="ruby-identifier">expand_path</span>(<span class="ruby-string">&quot;~/.fonts&quot;</span>),
+      <span class="ruby-constant">File</span>.<span class="ruby-identifier">expand_path</span>(<span class="ruby-string">&quot;~/.local/share/fonts&quot;</span>),
+    ].<span class="ruby-identifier">freeze</span>
+
+    <span class="ruby-identifier">private</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">resolve_font_path</span>(<span class="ruby-identifier">path_or_name</span>)
+      <span class="ruby-keyword">return</span> <span class="ruby-identifier">path_or_name</span> <span class="ruby-keyword">if</span> <span class="ruby-constant">File</span>.<span class="ruby-identifier">exist?</span>(<span class="ruby-identifier">path_or_name</span>)
+
+      <span class="ruby-comment"># Search system font directories — try exact stem first, then fuzzy</span>
+      <span class="ruby-identifier">exact_pattern</span> = <span class="ruby-node">&quot;**/#{path_or_name}.{ttf,otf}&quot;</span>
+      <span class="ruby-identifier">fuzzy_pattern</span> = <span class="ruby-node">&quot;**/*#{path_or_name}*.{ttf,otf}&quot;</span>
+
+      [<span class="ruby-identifier">exact_pattern</span>, <span class="ruby-identifier">fuzzy_pattern</span>].<span class="ruby-identifier">each</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">pattern</span><span class="ruby-operator">|</span>
+        <span class="ruby-constant">SYSTEM_FONT_DIRS</span>.<span class="ruby-identifier">each</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">dir</span><span class="ruby-operator">|</span>
+          <span class="ruby-identifier">match</span> = <span class="ruby-constant">Dir</span>.<span class="ruby-identifier">glob</span>(<span class="ruby-constant">File</span>.<span class="ruby-identifier">join</span>(<span class="ruby-identifier">dir</span>, <span class="ruby-identifier">pattern</span>), <span class="ruby-constant">File</span><span class="ruby-operator">::</span><span class="ruby-constant">FNM_CASEFOLD</span>).<span class="ruby-identifier">first</span>
+          <span class="ruby-keyword">return</span> <span class="ruby-identifier">match</span> <span class="ruby-keyword">if</span> <span class="ruby-identifier">match</span>
+        <span class="ruby-keyword">end</span>
+      <span class="ruby-keyword">end</span>
+
+      <span class="ruby-identifier">raise</span> <span class="ruby-constant">ArgumentError</span>, <span class="ruby-node">&quot;Font not found: #{path_or_name}&quot;</span>
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+<hr>
+
+<span id="label-4.+Icon+Support+-28Bundled+Lucide+-2B+IconFont-29" class="legacy-anchor"></span>
+<h2 id="4-icon-support-bundled-lucide--iconfont"><a href="#4-icon-support-bundled-lucide--iconfont">4. Icon Support (Bundled Lucide + IconFont)</a></h2>
+
+<p>Icons are a special case of text rendering — icon fonts are TTF files where glyphs are symbols instead of letters. Since we already have FreeType, the infrastructure is free. The gap is <strong>convenience</strong>: mapping human-readable names to Unicode codepoints.</p>
+
+<span id="label-4.1+Bundled+Font" class="legacy-anchor"></span>
+<h3 id="41-bundled-font"><a href="#41-bundled-font">4.1 Bundled Font</a></h3>
+
+<p>The gem ships <a target="_top" href="https://lucide.dev/">Lucide</a> (ISC license, ~120KB TTF, ~1,500 icons) as a zero-config icon set. The font and its license live in the gem’s <code>data/</code> directory:</p>
+
+<pre class="ruby"><span class="ruby-identifier">data</span><span class="ruby-operator">/</span>
+  <span class="ruby-identifier">fonts</span><span class="ruby-operator">/</span>
+    <span class="ruby-identifier">lucide</span>.<span class="ruby-identifier">ttf</span>
+    <span class="ruby-constant">LICENSE</span><span class="ruby-operator">-</span><span class="ruby-identifier">lucide</span>.<span class="ruby-identifier">txt</span>
+</pre>
+
+<p>Accessed at runtime via a root path helper:</p>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">def</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier ruby-title">data_path</span>(<span class="ruby-operator">*</span><span class="ruby-identifier">segments</span>)
+    <span class="ruby-constant">File</span>.<span class="ruby-identifier">join</span>(<span class="ruby-constant">File</span>.<span class="ruby-identifier">expand_path</span>(<span class="ruby-string">&quot;../..&quot;</span>, <span class="ruby-identifier">__dir__</span>), <span class="ruby-string">&quot;data&quot;</span>, <span class="ruby-operator">*</span><span class="ruby-identifier">segments</span>)
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-4.2+IconFont+Class" class="legacy-anchor"></span>
+<h3 id="42-iconfont-class"><a href="#42-iconfont-class">4.2 IconFont Class</a></h3>
+
+<p><code>IconFont</code> subclasses <code>Font</code> and adds a symbol → codepoint registry. It works with any icon font (Font Awesome, Material Symbols, Phosphor, etc.), not just the bundled Lucide:</p>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">class</span> <span class="ruby-constant">IconFont</span> <span class="ruby-operator">&lt;</span> <span class="ruby-constant">Font</span>
+    <span class="ruby-identifier">attr_reader</span> <span class="ruby-value">:glyphs</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">initialize</span>(<span class="ruby-identifier">path_or_name</span> = <span class="ruby-keyword">nil</span>, <span class="ruby-value">size:</span>, <span class="ruby-value">glyphs:</span> {})
+      <span class="ruby-identifier">path</span> = <span class="ruby-identifier">path_or_name</span> <span class="ruby-operator">||</span> <span class="ruby-constant">ChromaWave</span>.<span class="ruby-identifier">data_path</span>(<span class="ruby-string">&quot;fonts&quot;</span>, <span class="ruby-string">&quot;lucide.ttf&quot;</span>)
+      <span class="ruby-keyword">super</span>(<span class="ruby-identifier">path</span>, <span class="ruby-value">size:</span>)
+      <span class="ruby-ivar">@glyphs</span> = <span class="ruby-identifier">glyphs</span>.<span class="ruby-identifier">freeze</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Look up a glyph by name</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">codepoint</span>(<span class="ruby-identifier">name</span>)
+      <span class="ruby-identifier">glyphs</span>.<span class="ruby-identifier">fetch</span>(<span class="ruby-identifier">name</span>) <span class="ruby-keyword">do</span>
+        <span class="ruby-identifier">raise</span> <span class="ruby-constant">ArgumentError</span>, <span class="ruby-node">&quot;Unknown icon: #{name}. &quot;</span> \
+              <span class="ruby-node">&quot;Available: #{glyphs.keys.first(10).join(&#39;, &#39;)}...&quot;</span>
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Convenience: render a single icon onto a Surface</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw</span>(<span class="ruby-identifier">surface</span>, <span class="ruby-identifier">name</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+      <span class="ruby-identifier">surface</span>.<span class="ruby-identifier">draw_text</span>(<span class="ruby-identifier">codepoint</span>(<span class="ruby-identifier">name</span>).<span class="ruby-identifier">chr</span>(<span class="ruby-constant">Encoding</span><span class="ruby-operator">::</span><span class="ruby-constant">UTF_8</span>),
+                        <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>, <span class="ruby-value">font:</span> <span class="ruby-keyword">self</span>, <span class="ruby-value">color:</span>)
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Built-in Lucide icon set with pre-mapped names</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier ruby-title">lucide</span>(<span class="ruby-value">size:</span>)
+      <span class="ruby-identifier">new</span>(<span class="ruby-value">size:</span>, <span class="ruby-value">glyphs:</span> <span class="ruby-constant">LUCIDE_GLYPHS</span>)
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Subset of Lucide&#39;s ~1,500 icons — the full map is generated from</span>
+    <span class="ruby-comment"># Lucide&#39;s metadata at gem build time</span>
+    <span class="ruby-constant">LUCIDE_GLYPHS</span> = {
+      <span class="ruby-value">wifi:</span>          <span class="ruby-value">0xE801</span>,
+      <span class="ruby-value">battery_full:</span>  <span class="ruby-value">0xE802</span>,
+      <span class="ruby-value">battery_low:</span>   <span class="ruby-value">0xE803</span>,
+      <span class="ruby-value">sun:</span>           <span class="ruby-value">0xE804</span>,
+      <span class="ruby-value">cloud:</span>         <span class="ruby-value">0xE805</span>,
+      <span class="ruby-value">cloud_rain:</span>    <span class="ruby-value">0xE806</span>,
+      <span class="ruby-value">thermometer:</span>   <span class="ruby-value">0xE807</span>,
+      <span class="ruby-value">arrow_up:</span>      <span class="ruby-value">0xE808</span>,
+      <span class="ruby-value">arrow_down:</span>    <span class="ruby-value">0xE809</span>,
+      <span class="ruby-value">check:</span>         <span class="ruby-value">0xE80A</span>,
+      <span class="ruby-value">x:</span>             <span class="ruby-value">0xE80B</span>,
+      <span class="ruby-value">alert_triangle:</span> <span class="ruby-value">0xE80C</span>,
+      <span class="ruby-value">clock:</span>         <span class="ruby-value">0xE80D</span>,
+      <span class="ruby-value">settings:</span>      <span class="ruby-value">0xE80E</span>,
+      <span class="ruby-comment"># ... ~1,500 total, generated from Lucide metadata</span>
+    }.<span class="ruby-identifier">freeze</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-4.3+Usage" class="legacy-anchor"></span>
+<h3 id="43-usage"><a href="#43-usage">4.3 Usage</a></h3>
+
+<pre class="ruby"><span class="ruby-comment"># Zero-config: bundled Lucide icons</span>
+<span class="ruby-identifier">icons</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">IconFont</span>.<span class="ruby-identifier">lucide</span>(<span class="ruby-value">size:</span> <span class="ruby-value">32</span>)
+<span class="ruby-identifier">icons</span>.<span class="ruby-identifier">draw</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">:wifi</span>, <span class="ruby-value">x:</span> <span class="ruby-value">10</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>)
+<span class="ruby-identifier">icons</span>.<span class="ruby-identifier">draw</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">:battery_full</span>, <span class="ruby-value">x:</span> <span class="ruby-value">50</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+<span class="ruby-identifier">icons</span>.<span class="ruby-identifier">draw</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">:cloud_rain</span>, <span class="ruby-value">x:</span> <span class="ruby-value">90</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>)
+
+<span class="ruby-comment"># Or inline with draw_text for mixed content</span>
+<span class="ruby-identifier">font</span>  = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Font</span>.<span class="ruby-identifier">new</span>(<span class="ruby-string">&quot;DejaVuSans&quot;</span>, <span class="ruby-value">size:</span> <span class="ruby-value">16</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_text</span>(<span class="ruby-string">&quot;Signal: Strong &quot;</span>, <span class="ruby-value">x:</span> <span class="ruby-value">50</span>, <span class="ruby-value">y:</span> <span class="ruby-value">14</span>, <span class="ruby-value">font:</span>)
+<span class="ruby-identifier">icons</span>.<span class="ruby-identifier">draw</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">:wifi</span>, <span class="ruby-value">x:</span> <span class="ruby-value">170</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>)
+
+<span class="ruby-comment"># Custom icon font (e.g., Font Awesome)</span>
+<span class="ruby-identifier">fa</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">IconFont</span>.<span class="ruby-identifier">new</span>(
+  <span class="ruby-string">&quot;/usr/share/fonts/FontAwesome.ttf&quot;</span>,
+  <span class="ruby-value">size:</span> <span class="ruby-value">24</span>,
+  <span class="ruby-value">glyphs:</span> { <span class="ruby-value">home:</span> <span class="ruby-value">0xF015</span>, <span class="ruby-value">user:</span> <span class="ruby-value">0xF007</span>, <span class="ruby-value">cog:</span> <span class="ruby-value">0xF013</span> }
+)
+<span class="ruby-identifier">fa</span>.<span class="ruby-identifier">draw</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">:home</span>, <span class="ruby-value">x:</span> <span class="ruby-value">10</span>, <span class="ruby-value">y:</span> <span class="ruby-value">100</span>)
+</pre>
+
+<blockquote>
+<p><strong>Glyph map generation:</strong> The <code>LUCIDE_GLYPHS</code> hash is generated from Lucide’s <code>info.json</code> metadata file via a Rake task (<code>rake icons:generate</code>). This runs at gem build/development time, not at runtime. The generated file is checked into the repo.</p>
+
+<p><strong>Why Lucide:</strong> ISC license (MIT-compatible, no attribution clause in binary distribution). ~1,500 icons with good coverage of dashboard-relevant symbols (weather, connectivity, status, navigation, devices). Actively maintained. Small file (~120KB TTF).</p>
+</blockquote>
+<hr>
+
+<span id="label-5.+Image+Loading+-28ruby-vips-29" class="legacy-anchor"></span>
+<h2 id="5-image-loading-ruby-vips"><a href="#5-image-loading-ruby-vips">5. Image Loading (ruby-vips)</a></h2>
+
+<p>Images are loaded via <strong>ruby-vips</strong> and converted to Canvas-compatible pixel data. The <code>Image</code> class provides a thin wrapper that handles format detection, color space conversion, resizing, and pixel extraction:</p>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">class</span> <span class="ruby-constant">Image</span>
+    <span class="ruby-identifier">attr_reader</span> <span class="ruby-value">:width</span>, <span class="ruby-value">:height</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">initialize</span>(<span class="ruby-identifier">vips_image</span>)
+      <span class="ruby-ivar">@vips_image</span> = <span class="ruby-identifier">ensure_rgba</span>(<span class="ruby-identifier">vips_image</span>)
+      <span class="ruby-ivar">@width</span>  = <span class="ruby-ivar">@vips_image</span>.<span class="ruby-identifier">width</span>
+      <span class="ruby-ivar">@height</span> = <span class="ruby-ivar">@vips_image</span>.<span class="ruby-identifier">height</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># --- Loading ---</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier ruby-title">load</span>(<span class="ruby-identifier">path</span>)
+      <span class="ruby-identifier">new</span>(<span class="ruby-constant">Vips</span><span class="ruby-operator">::</span><span class="ruby-constant">Image</span>.<span class="ruby-identifier">new_from_file</span>(<span class="ruby-identifier">path</span>))
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier ruby-title">from_buffer</span>(<span class="ruby-identifier">data</span>)
+      <span class="ruby-identifier">new</span>(<span class="ruby-constant">Vips</span><span class="ruby-operator">::</span><span class="ruby-constant">Image</span>.<span class="ruby-identifier">new_from_buffer</span>(<span class="ruby-identifier">data</span>, <span class="ruby-string">&quot;&quot;</span>))
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># --- Transforms (return new Image, non-destructive) ---</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">resize</span>(<span class="ruby-value">width:</span> <span class="ruby-keyword">nil</span>, <span class="ruby-value">height:</span> <span class="ruby-keyword">nil</span>)
+      <span class="ruby-identifier">scale</span> = <span class="ruby-keyword">if</span> <span class="ruby-identifier">width</span> <span class="ruby-operator">&amp;&amp;</span> <span class="ruby-identifier">height</span>
+                [<span class="ruby-identifier">width</span>.<span class="ruby-identifier">to_f</span> <span class="ruby-operator">/</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier">width</span>, <span class="ruby-identifier">height</span>.<span class="ruby-identifier">to_f</span> <span class="ruby-operator">/</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier">height</span>].<span class="ruby-identifier">min</span>
+              <span class="ruby-keyword">elsif</span> <span class="ruby-identifier">width</span>
+                <span class="ruby-identifier">width</span>.<span class="ruby-identifier">to_f</span> <span class="ruby-operator">/</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier">width</span>
+              <span class="ruby-keyword">else</span>
+                <span class="ruby-identifier">height</span>.<span class="ruby-identifier">to_f</span> <span class="ruby-operator">/</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier">height</span>
+              <span class="ruby-keyword">end</span>
+      <span class="ruby-constant">Image</span>.<span class="ruby-identifier">new</span>(<span class="ruby-ivar">@vips_image</span>.<span class="ruby-identifier">resize</span>(<span class="ruby-identifier">scale</span>))
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">crop</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-identifier">width</span>, <span class="ruby-identifier">height</span>)
+      <span class="ruby-constant">Image</span>.<span class="ruby-identifier">new</span>(<span class="ruby-ivar">@vips_image</span>.<span class="ruby-identifier">crop</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-identifier">width</span>, <span class="ruby-identifier">height</span>))
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># --- Canvas integration ---</span>
+
+    <span class="ruby-comment"># Load into a new Canvas. Uses Canvas#load_rgba_bytes for bulk transfer —</span>
+    <span class="ruby-comment"># the packed RGBA bytes from vips go directly into Canvas&#39;s packed String</span>
+    <span class="ruby-comment"># buffer without materializing any Color objects.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">to_canvas</span>
+      <span class="ruby-constant">Canvas</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span>, <span class="ruby-value">height:</span>).<span class="ruby-identifier">tap</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">canvas</span><span class="ruby-operator">|</span>
+        <span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">load_rgba_bytes</span>(<span class="ruby-ivar">@vips_image</span>.<span class="ruby-identifier">write_to_memory</span>)
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Blit directly onto an existing Canvas at (x, y). Uses Canvas#load_rgba_bytes</span>
+    <span class="ruby-comment"># for bulk transfer — C-accelerated memcpy with bounds clipping.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_onto</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>)
+      <span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">load_rgba_bytes</span>(<span class="ruby-ivar">@vips_image</span>.<span class="ruby-identifier">write_to_memory</span>,
+                             <span class="ruby-value">width:</span>, <span class="ruby-value">height:</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>)
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-identifier">private</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">ensure_rgba</span>(<span class="ruby-identifier">vips_image</span>)
+      <span class="ruby-comment"># Normalize non-RGB color spaces (CMYK, LAB, etc.) to sRGB first.</span>
+      <span class="ruby-comment"># Without this, a 4-band CMYK image would be misinterpreted as RGBA.</span>
+      <span class="ruby-identifier">img</span> = <span class="ruby-keyword">if</span> <span class="ruby-identifier">vips_image</span>.<span class="ruby-identifier">interpretation</span> <span class="ruby-operator">!=</span> <span class="ruby-value">:srgb</span> <span class="ruby-operator">&amp;&amp;</span>
+                <span class="ruby-identifier">vips_image</span>.<span class="ruby-identifier">interpretation</span> <span class="ruby-operator">!=</span> <span class="ruby-value">:b_w</span>
+               <span class="ruby-identifier">vips_image</span>.<span class="ruby-identifier">colourspace</span>(<span class="ruby-value">:srgb</span>)
+             <span class="ruby-keyword">else</span>
+               <span class="ruby-identifier">vips_image</span>
+             <span class="ruby-keyword">end</span>
+
+      <span class="ruby-keyword">case</span> <span class="ruby-identifier">img</span>.<span class="ruby-identifier">bands</span>
+      <span class="ruby-keyword">when</span> <span class="ruby-value">1</span> <span class="ruby-keyword">then</span> <span class="ruby-identifier">img</span>.<span class="ruby-identifier">colourspace</span>(<span class="ruby-value">:srgb</span>)                        <span class="ruby-comment"># grayscale → RGB</span>
+                     .<span class="ruby-identifier">bandjoin</span>(<span class="ruby-identifier">img</span>.<span class="ruby-identifier">new_from_image</span>(<span class="ruby-value">255</span>))         <span class="ruby-comment"># + full alpha</span>
+      <span class="ruby-keyword">when</span> <span class="ruby-value">2</span>                                                     <span class="ruby-comment"># grayscale + alpha</span>
+        <span class="ruby-identifier">gray</span> = <span class="ruby-identifier">img</span>[<span class="ruby-value">0</span>].<span class="ruby-identifier">colourspace</span>(<span class="ruby-value">:srgb</span>)                        <span class="ruby-comment"># gray → 3-band RGB</span>
+        <span class="ruby-identifier">gray</span>.<span class="ruby-identifier">bandjoin</span>(<span class="ruby-identifier">img</span>[<span class="ruby-value">1</span>])                                   <span class="ruby-comment"># + original alpha</span>
+      <span class="ruby-keyword">when</span> <span class="ruby-value">3</span> <span class="ruby-keyword">then</span> <span class="ruby-identifier">img</span>.<span class="ruby-identifier">bandjoin</span>(<span class="ruby-identifier">img</span>.<span class="ruby-identifier">new_from_image</span>(<span class="ruby-value">255</span>))         <span class="ruby-comment"># RGB → RGBA</span>
+      <span class="ruby-keyword">when</span> <span class="ruby-value">4</span> <span class="ruby-keyword">then</span> <span class="ruby-identifier">img</span>                                            <span class="ruby-comment"># already RGBA</span>
+      <span class="ruby-keyword">end</span>.<span class="ruby-identifier">cast</span>(<span class="ruby-value">:uchar</span>)
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-5.1+End-to-End+Image+Workflow" class="legacy-anchor"></span>
+<h3 id="51-end-to-end-image-workflow"><a href="#51-end-to-end-image-workflow">5.1 End-to-End Image Workflow</a></h3>
+
+<pre class="ruby"><span class="ruby-identifier">display</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_7in5_v2</span>)
+<span class="ruby-identifier">canvas</span>  = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Canvas</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">width</span>, <span class="ruby-value">height:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">height</span>)
+
+<span class="ruby-comment"># Load a photo, resize to fit, blit onto canvas</span>
+<span class="ruby-identifier">photo</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Image</span>.<span class="ruby-identifier">load</span>(<span class="ruby-string">&quot;vacation.jpg&quot;</span>)
+<span class="ruby-identifier">photo</span> = <span class="ruby-identifier">photo</span>.<span class="ruby-identifier">resize</span>(<span class="ruby-value">width:</span> <span class="ruby-value">400</span>)
+<span class="ruby-identifier">photo</span>.<span class="ruby-identifier">draw_onto</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">x:</span> <span class="ruby-value">200</span>, <span class="ruby-value">y:</span> <span class="ruby-value">40</span>)
+
+<span class="ruby-comment"># Load an icon with transparency — alpha composites correctly</span>
+<span class="ruby-identifier">icon</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Image</span>.<span class="ruby-identifier">load</span>(<span class="ruby-string">&quot;wifi.png&quot;</span>)     <span class="ruby-comment"># PNG with alpha channel</span>
+<span class="ruby-identifier">icon</span>.<span class="ruby-identifier">draw_onto</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">x:</span> <span class="ruby-value">10</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>)          <span class="ruby-comment"># transparent pixels blend</span>
+
+<span class="ruby-comment"># Add text overlay</span>
+<span class="ruby-identifier">font</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Font</span>.<span class="ruby-identifier">new</span>(<span class="ruby-string">&quot;DejaVuSans&quot;</span>, <span class="ruby-value">size:</span> <span class="ruby-value">24</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_text</span>(<span class="ruby-string">&quot;Signal: Strong&quot;</span>, <span class="ruby-value">x:</span> <span class="ruby-value">80</span>, <span class="ruby-value">y:</span> <span class="ruby-value">20</span>, <span class="ruby-value">font:</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+
+<span class="ruby-comment"># Render and display — Renderer quantizes RGB→mono with dithering</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)
+</pre>
+
+<blockquote>
+<p><strong>Why ruby-vips and not an adapter pattern:</strong> This gem targets Raspberry Pi hardware. Users who can install GPIO/SPI libraries can install libvips (<code>apt install libvips-dev</code>). The direct dependency avoids abstraction overhead and gives access to vips’ full feature set (color space conversion, sharpening, contrast adjustment) which is valuable for preparing photos for limited-palette displays. For users who only need the drawing primitives and text (no photo loading), <code>Image</code> is never required — Canvas and Surface work independently.</p>
+
+<p><strong>Performance note:</strong> <code>to_canvas</code> and <code>draw_onto</code> use <code>Canvas#load_rgba_bytes</code>, which bulk-copies vips’ packed RGBA output directly into Canvas’s packed String buffer. With the C accelerator, this is a row-by-row <code>memcpy</code> (~5ms for 800x480). Without the C accelerator, the Ruby fallback does byte-slice copying (~50ms). Neither path creates any Color objects. This is a ~160x improvement over the naive per-pixel <code>Color.new</code> approach.</p>
+</blockquote>
+<hr>
+
+<span id="label-6.+Content-Related+File+Inventory" class="legacy-anchor"></span>
+<h2 id="6-content-related-file-inventory"><a href="#6-content-related-file-inventory">6. Content-Related File Inventory</a></h2>
+
+<p>These files are added by the content pipeline (see <a href="EXTENSION_STRATEGY_md.html#32-directory-structure">EXTENSION_STRATEGY.md, Section 3.2</a> for the full project tree):</p>
+
+<pre>data/
+  fonts/
+    lucide.ttf                        # Bundled icon font (~120KB, ISC license)
+    LICENSE-lucide.txt                # Lucide license text
+
+lib/chroma_wave/
+  color.rb                            # Color (RGBA Data.define, named constants, compositing)
+  drawing/                            # Drawing primitives (mixed into Surface)
+    primitives.rb                     #   line, polyline, rect, rounded_rect, circle,
+    |                                 #   ellipse, arc, polygon, flood_fill
+    text.rb                           #   draw_text, word_wrap, render_glyph
+  font.rb                            # Font (FreeType wrapper, measurement, glyph iteration)
+  icon_font.rb                       # IconFont (Font subclass, symbol→codepoint registry)
+  icon_font/
+    lucide_glyphs.rb                  #   Generated glyph map (rake icons:generate)
+  image.rb                           # Image (Vips wrapper, load/resize/crop/blit)
+
+ext/chroma_wave/
+  canvas.c                            # Canvas C accelerators: clear, blit_alpha,
+  |                                   #   load_rgba (~80 lines, optional)
+  freetype.c                          # FreeType C bindings: load_face, render_glyph,
+  |                                   #   measure_width, line_height, ascent, descent
+  freetype.h                          # FT_Library lifecycle, FT_Face struct wrapper</pre>
+</div>
+<div id='context'>
+</div>
+
+</div>
+</div>
+
+<div id='footer-push'></div>
+</div>
+<div id='footer'>
+<a href="https://github.com/jeremyevans/hanna"><strong>Hanna</strong> RDoc template</a>
+</div>
+</body>
+</html>

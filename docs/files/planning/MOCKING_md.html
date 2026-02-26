@@ -1,0 +1,365 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html lang='en'>
+<head>
+<title>MOCKING.md</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+<link href='../../css/style.css' media='screen' rel='stylesheet' type='text/css'>
+<script type='text/javascript'>
+  function popupCode(url) {
+    window.open(url, "Code", "resizable=yes,scrollbars=yes,toolbar=no,status=no,height=150,width=400")
+  }
+  
+  function toggleCode(id) {
+    var code = document.getElementById(id)
+  
+    code.style.display = code.style.display != 'block' ? 'block' : 'none'
+    return true
+  }
+  
+  // Make codeblocks hidden by default
+  document.writeln('<' + 'style type="text/css">.method .source pre { display: none }<\/style>')
+</script>
+</head>
+<body class='page'>
+<div class='file' id='wrapper'>
+<div class='header'>
+<h1 class='name'>MOCKING.md
+</h1>
+<div class='paths'>
+planning/MOCKING.md
+</div>
+</div>
+<div id='content'>
+<div id='text'>
+<div id='description'>
+<span id="label-ChromaWave+Mock+Hardware+Strategy" class="legacy-anchor"></span>
+<h1 id="chromawave-mock-hardware-strategy"><a href="#chromawave-mock-hardware-strategy"><a href="../../classes/ChromaWave.html"><code>ChromaWave</code></a> Mock Hardware Strategy</a></h1>
+
+<p>Design decisions and interactive contracts for developing, testing, and previewing <a href="../../classes/ChromaWave.html"><code>ChromaWave</code></a> without physical e-paper hardware.</p>
+
+<p><strong>Parent document:</strong> <a href="EXTENSION_STRATEGY_md.html">EXTENSION_STRATEGY.md</a></p>
+<hr>
+
+<span id="label-1.+Goals" class="legacy-anchor"></span>
+<h2 id="1-goals"><a href="#1-goals">1. Goals</a></h2>
+<ol><li>
+<p><strong>The gem always installs.</strong> No GPIO/SPI library? Extension compiles with a C mock backend. Users can draw, compose, and render — hardware ops fail clearly.</p>
+</li><li>
+<p><strong>Tests never need hardware.</strong> A Ruby-level <code>MockDevice</code> captures every hardware operation as an inspectable log. Full integration tests run in CI.</p>
+</li><li>
+<p><strong>Developers can see what they’re building.</strong> Palette-accurate PNG export shows what the physical display would render, including quantization and dithering.</p>
+</li></ol>
+<hr>
+
+<span id="label-2.+Two-Layer+Mock+Architecture" class="legacy-anchor"></span>
+<h2 id="2-two-layer-mock-architecture"><a href="#2-two-layer-mock-architecture">2. Two-Layer Mock Architecture</a></h2>
+
+<p>Mocking operates at two distinct layers, each serving a different purpose:</p>
+
+<pre>┌──────────────────────────────────────────────────────────┐
+│              🧪 Ruby Layer: MockDevice                   │
+│                                                          │
+│  Instance-based, injectable, records high-level ops.     │
+│  Used in test suites and development scripts.            │
+│  Swappable at runtime — no recompilation.                │
+│                                                          │
+├──────────────────────────────────────────────────────────┤
+│              ⚙️  C Layer: MOCK Backend                    │
+│                                                          │
+│  Compile-time selection in extconf.rb.                   │
+│  No-op stubs for GPIO/SPI so the extension compiles      │
+│  on any platform. Pure memory operations work normally.  │
+│  Detected automatically when no GPIO library is found.   │
+│                                                          │
+└──────────────────────────────────────────────────────────┘</pre>
+
+<span id="label-2.1+C-Level+MOCK+Backend" class="legacy-anchor"></span>
+<h3 id="21-c-level-mock-backend"><a href="#21-c-level-mock-backend">2.1 C-Level MOCK Backend</a></h3>
+
+<p><strong>When:</strong> <a href="../ext/chroma_wave/extconf_rb.html">extconf.rb</a> finds no GPIO/SPI library (lgpio, bcm2835, gpiod, etc.)</p>
+
+<p><strong>What it does:</strong> - Provides no-op stubs for <code>DEV_Module_Init</code>, <code>DEV_Module_Exit</code>, <code>DEV_SPI_WriteByte</code>, <code>DEV_Digital_Write</code>, <code>DEV_Digital_Read</code>, and friends - The extension compiles and links successfully - <code>Framebuffer</code>, <code>Canvas</code>, <code>PixelFormat</code>, drawing, and rendering all work normally (pure memory — no hardware calls) - Hardware operations (<code>Device.new</code>, <code>Display#show</code>, <code>Display#clear</code>) raise <a href="../../classes/ChromaWave/DeviceError.html"><code>ChromaWave::DeviceError</code></a> at runtime with a clear message explaining no hardware backend was found</p>
+
+<p><strong>What it does NOT do:</strong> - No operation recording (that’s the Ruby layer’s job) - No error simulation - No timing simulation</p>
+
+<p><strong>Compile-time flag:</strong> <code>-DEPD_MOCK_BACKEND</code></p>
+
+<p><strong>Emits a warning</strong> at gem install time:</p>
+
+<pre>WARNING: No GPIO/SPI library found. ChromaWave installed with MOCK backend.
+Drawing and rendering work normally. Hardware operations will raise DeviceError.</pre>
+
+<span id="label-2.2+Ruby-Level+MockDevice" class="legacy-anchor"></span>
+<h3 id="22-ruby-level-mockdevice"><a href="#22-ruby-level-mockdevice">2.2 Ruby-Level MockDevice</a></h3>
+
+<p><strong>When:</strong> Test suites, development scripts, visual previewing</p>
+
+<p><strong>What it does:</strong> - Subclass of <code>Display</code> that replaces C hardware calls with no-op stubs - Records every hardware operation as a structured log entry - Supports configurable busy-wait delay for timeout/interrupt testing - Supports palette-accurate PNG export of the last displayed framebuffer</p>
+
+<p><strong>Instance-based.</strong> Each <code>MockDevice.new</code> is fully independent — its own operation log, its own configuration. Tests are isolated. Multiple mocks can coexist.</p>
+<hr>
+
+<span id="label-3.+MockDevice+Contract" class="legacy-anchor"></span>
+<h2 id="3-mockdevice-contract"><a href="#3-mockdevice-contract">3. MockDevice Contract</a></h2>
+
+<span id="label-3.1+Construction" class="legacy-anchor"></span>
+<h3 id="31-construction"><a href="#31-construction">3.1 Construction</a></h3>
+
+<pre class="ruby"><span class="ruby-identifier">mock</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">MockDevice</span>.<span class="ruby-identifier">new</span>(
+  <span class="ruby-value">model:</span> <span class="ruby-value">:epd_2in13_v4</span>,      <span class="ruby-comment"># determines resolution, pixel_format, capabilities</span>
+  <span class="ruby-value">busy_duration:</span> <span class="ruby-value">0</span>,           <span class="ruby-comment"># seconds (default: instant)</span>
+)
+</pre>
+
+<p><code>model:</code> is required — it loads the same model config the real Display uses, so the mock enforces the same resolution, pixel format, and capability constraints.</p>
+
+<p><code>busy_duration:</code> defaults to <code>0</code> (instant). Set to a positive value (e.g., <code>2.0</code>) to simulate real refresh timing for testing timeout and interrupt paths.</p>
+
+<span id="label-3.2+Operation+Log" class="legacy-anchor"></span>
+<h3 id="32-operation-log"><a href="#32-operation-log">3.2 Operation Log</a></h3>
+
+<p>Every hardware-level operation appends an entry to <code>mock.operations</code>. Construction logs <code>:init</code> automatically (mirroring real Display’s auto-initialization):</p>
+
+<pre class="ruby"><span class="ruby-identifier">mock</span>.<span class="ruby-identifier">operations</span>
+<span class="ruby-comment"># =&gt; [</span>
+<span class="ruby-comment">#   { op: :init,    model: :epd_2in13_v4, timestamp: &lt;Time&gt; },</span>
+<span class="ruby-comment">#   { op: :show,    buffer_bytes: 4000,    timestamp: &lt;Time&gt; },</span>
+<span class="ruby-comment">#   { op: :clear,   color: :white,         timestamp: &lt;Time&gt; },</span>
+<span class="ruby-comment">#   { op: :sleep,                          timestamp: &lt;Time&gt; },</span>
+<span class="ruby-comment">#   { op: :close,                          timestamp: &lt;Time&gt; },</span>
+<span class="ruby-comment"># ]</span>
+</pre>
+<ul><li>
+<p><code>buffer_bytes</code> is the byte length of the rendered Framebuffer sent to the display</p>
+</li><li>
+<p><code>timestamp</code> is <code>Time.now</code> at the moment the operation was recorded</p>
+</li></ul>
+
+<p><strong>Granularity is high-level only.</strong> Named operations with metadata — no raw SPI bytes. Individual command/data bytes are a C-level concern tested separately against the real HAL stubs.</p>
+
+<p><strong>Thread safety:</strong> The operation log is protected by a Mutex. Concurrent operations from multiple threads append safely.</p>
+
+<p><strong>Convenience queries:</strong></p>
+
+<pre class="ruby"><span class="ruby-identifier">mock</span>.<span class="ruby-identifier">operations</span>(<span class="ruby-value">:show</span>)         <span class="ruby-comment"># filter by op type</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">last_operation</span>             <span class="ruby-comment"># most recent entry</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">operation_count</span>(<span class="ruby-value">:show</span>)     <span class="ruby-comment"># count by type</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">clear_operations!</span>          <span class="ruby-comment"># reset log (e.g., between test phases)</span>
+</pre>
+
+<span id="label-3.3+Display+Interface" class="legacy-anchor"></span>
+<h3 id="33-display-interface"><a href="#33-display-interface">3.3 Display Interface</a></h3>
+
+<p>MockDevice is a <code>Display</code> subclass and exposes the same public API:</p>
+
+<pre class="ruby"><span class="ruby-identifier">mock</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)               <span class="ruby-comment"># records :show, stores last framebuffer</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">clear</span>(<span class="ruby-value">color:</span> <span class="ruby-value">:white</span>)       <span class="ruby-comment"># records :clear</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">sleep</span>                      <span class="ruby-comment"># records :sleep</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">close</span>                      <span class="ruby-comment"># records :close</span>
+
+<span class="ruby-comment"># All five capability modules are included based on model config:</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">display_partial</span>(<span class="ruby-identifier">fb</span>)        <span class="ruby-comment"># PartialRefresh</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">init_fast</span>                  <span class="ruby-comment"># FastRefresh</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">init_grayscale</span>             <span class="ruby-comment"># GrayscaleMode</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)               <span class="ruby-comment"># DualBuffer (overrides show for tri-color models)</span>
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">display_region</span>(<span class="ruby-identifier">fb</span>, <span class="ruby-operator">...</span>)    <span class="ruby-comment"># RegionalRefresh</span>
+</pre>
+
+<p><code>show</code> accepts a Canvas (auto-rendered via Renderer, just like real Display) or a pre-rendered Framebuffer. The rendered framebuffer is stored as <code>mock.last_framebuffer</code> for inspection and PNG export.</p>
+
+<span id="label-3.4+PNG+Export" class="legacy-anchor"></span>
+<h3 id="34-png-export"><a href="#34-png-export">3.4 PNG Export</a></h3>
+
+<pre class="ruby"><span class="ruby-identifier">mock</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">save_png</span>(<span class="ruby-string">&quot;preview.png&quot;</span>)    <span class="ruby-comment"># palette-accurate render of last_framebuffer</span>
+</pre>
+
+<p><strong>Palette-accurate</strong> means the PNG reflects what the physical display would show: - Mono display → black and white pixels only - Tri-color display → black, white, and red/yellow pixels - 7-color display → actual 7-color palette - Dithering artifacts are visible (since the Renderer has already quantized)</p>
+
+<p>The PNG is the display’s native resolution. No scaling or upsampling — it’s a pixel-perfect representation.</p>
+
+<p><strong>Dependency:</strong> Uses ruby-vips (already a project dependency for Image loading). No additional dependencies introduced.</p>
+
+<span id="label-3.5+Busy-Wait+Simulation" class="legacy-anchor"></span>
+<h3 id="35-busy-wait-simulation"><a href="#35-busy-wait-simulation">3.5 Busy-Wait Simulation</a></h3>
+
+<p>When <code>busy_duration:</code> is set to a positive value:</p>
+
+<pre class="ruby"><span class="ruby-identifier">mock</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">MockDevice</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_2in13_v4</span>, <span class="ruby-value">busy_duration:</span> <span class="ruby-value">2.0</span>)
+<span class="ruby-identifier">mock</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)  <span class="ruby-comment"># blocks for ~2 seconds (simulating refresh)</span>
+</pre>
+
+<p>This exercises timeout and interrupt code paths: - The mock simulates the wait with <code>Kernel#sleep(busy_duration)</code> inside a background thread, allowing the main thread’s timeout mechanism to fire - <code>BusyTimeoutError</code> is raised if the configured display timeout is shorter than <code>busy_duration</code> - Thread interruption via <code>Thread#raise</code> exercises the unblocking path</p>
+
+<p>When <code>busy_duration: 0</code> (default), operations complete instantly.</p>
+<hr>
+
+<span id="label-4.+Test+Integration" class="legacy-anchor"></span>
+<h2 id="4-test-integration"><a href="#4-test-integration">4. Test Integration</a></h2>
+
+<span id="label-4.1+RSpec+Helper" class="legacy-anchor"></span>
+<h3 id="41-rspec-helper"><a href="#41-rspec-helper">4.1 RSpec Helper</a></h3>
+
+<pre class="ruby"><span class="ruby-comment"># spec/support/mock_device.rb</span>
+
+<span class="ruby-constant">RSpec</span>.<span class="ruby-identifier">configure</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">config</span><span class="ruby-operator">|</span>
+  <span class="ruby-identifier">config</span>.<span class="ruby-identifier">around</span>(<span class="ruby-value">:each</span>, <span class="ruby-value">:hardware</span>) <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">example</span><span class="ruby-operator">|</span>
+    <span class="ruby-identifier">mock</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">MockDevice</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-identifier">example</span>.<span class="ruby-identifier">metadata</span>[<span class="ruby-value">:model</span>] <span class="ruby-operator">||</span> <span class="ruby-value">:epd_2in13_v4</span>)
+    <span class="ruby-identifier">example</span>.<span class="ruby-identifier">metadata</span>[<span class="ruby-value">:mock_device</span>] = <span class="ruby-identifier">mock</span>
+    <span class="ruby-identifier">example</span>.<span class="ruby-identifier">run</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<p>Usage in specs:</p>
+
+<pre class="ruby"><span class="ruby-identifier">describe</span> <span class="ruby-string">&quot;showing a canvas&quot;</span>, <span class="ruby-value">:hardware</span>, <span class="ruby-value">model:</span> <span class="ruby-value">:epd_7in5_v2</span> <span class="ruby-keyword">do</span>
+  <span class="ruby-identifier">subject</span>(<span class="ruby-value">:device</span>) { <span class="ruby-operator">|</span><span class="ruby-identifier">example</span><span class="ruby-operator">|</span> <span class="ruby-identifier">example</span>.<span class="ruby-identifier">metadata</span>[<span class="ruby-value">:mock_device</span>] }
+
+  <span class="ruby-identifier">it</span> <span class="ruby-string">&quot;records the show operation&quot;</span> <span class="ruby-keyword">do</span>
+    <span class="ruby-identifier">canvas</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Canvas</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-value">800</span>, <span class="ruby-value">height:</span> <span class="ruby-value">480</span>)
+    <span class="ruby-identifier">device</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)
+
+    <span class="ruby-identifier">expect</span>(<span class="ruby-identifier">device</span>.<span class="ruby-identifier">operations</span>(<span class="ruby-value">:show</span>).<span class="ruby-identifier">size</span>).<span class="ruby-identifier">to</span> <span class="ruby-identifier">eq</span>(<span class="ruby-value">1</span>)
+    <span class="ruby-identifier">expect</span>(<span class="ruby-identifier">device</span>.<span class="ruby-identifier">last_framebuffer</span>).<span class="ruby-identifier">not_to</span> <span class="ruby-identifier">be_nil</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-4.2+What+Each+Layer+Tests" class="legacy-anchor"></span>
+<h3 id="42-what-each-layer-tests"><a href="#42-what-each-layer-tests">4.2 What Each Layer Tests</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Test concern</th>
+<th>Uses MockDevice?</th>
+<th>Uses C MOCK?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Drawing primitives on Canvas</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Framebuffer pixel packing</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Renderer quantization / dithering</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Display#show integration</td>
+<td><strong>Yes</strong></td>
+<td>No</td>
+</tr>
+<tr>
+<td>Capability module dispatch</td>
+<td><strong>Yes</strong></td>
+<td>No</td>
+</tr>
+<tr>
+<td>Operation sequence (init→show→sleep)</td>
+<td><strong>Yes</strong></td>
+<td>No</td>
+</tr>
+<tr>
+<td>GVL release / timeout paths</td>
+<td><strong>Yes</strong> (with delay)</td>
+<td>No</td>
+</tr>
+<tr>
+<td>C extension compiles on CI</td>
+<td>No</td>
+<td><strong>Yes</strong></td>
+</tr>
+<tr>
+<td>SPI byte-level protocol correctness</td>
+<td>No</td>
+<td><strong>Yes</strong></td>
+</tr>
+<tr>
+<td><a href="../ext/chroma_wave/extconf_rb.html">extconf.rb</a> platform detection</td>
+<td>No</td>
+<td><strong>Yes</strong></td>
+</tr>
+</tbody>
+</table>
+
+<p>The majority of the test suite needs neither mock — Canvas, Framebuffer, Renderer, drawing, and all value objects are pure-memory and fully testable directly.</p>
+<hr>
+
+<span id="label-5.+Injection+Point" class="legacy-anchor"></span>
+<h2 id="5-injection-point"><a href="#5-injection-point">5. Injection Point</a></h2>
+
+<p>MockDevice is a <code>Display</code> subclass — it IS-A Display with the same capability modules, loaded from the same model registry. Anywhere code accepts a Display, a MockDevice works:</p>
+
+<pre class="ruby"><span class="ruby-comment"># Real hardware:</span>
+<span class="ruby-identifier">display</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_2in13_v4</span>)
+
+<span class="ruby-comment"># Testing — direct substitution:</span>
+<span class="ruby-identifier">display</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">MockDevice</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_2in13_v4</span>)
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)          <span class="ruby-comment"># logs :show instead of sending SPI</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">respond_to?</span>(<span class="ruby-value">:display_partial</span>)  <span class="ruby-comment"># =&gt; true (same capabilities)</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">is_a?</span>(<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>)     <span class="ruby-comment"># =&gt; true</span>
+</pre>
+
+<p>The only behavioral difference: where real Display delegates to C hardware functions (<code>_epd_display</code>, <code>_epd_clear</code>, etc.), MockDevice overrides those private methods with Ruby stubs that record the operation and return immediately (or sleep for <code>busy_duration</code>).</p>
+<hr>
+
+<span id="label-6.+Scope+Boundaries" class="legacy-anchor"></span>
+<h2 id="6-scope-boundaries"><a href="#6-scope-boundaries">6. Scope Boundaries</a></h2>
+
+<span id="label-In+scope+-28v1-29" class="legacy-anchor"></span>
+<h3 id="in-scope-v1"><a href="#in-scope-v1">In scope (v1)</a></h3>
+<ul><li>
+<p>C MOCK backend with no-op GPIO/SPI stubs</p>
+</li><li>
+<p>Ruby MockDevice with operation logging</p>
+</li><li>
+<p>High-level operation log (init, show, clear, sleep, close)</p>
+</li><li>
+<p>Palette-accurate PNG export via <code>save_png</code></p>
+</li><li>
+<p>Configurable busy-wait delay</p>
+</li><li>
+<p>Instance-based (independent mocks, isolated tests)</p>
+</li><li>
+<p>RSpec test helper integration</p>
+</li></ul>
+
+<span id="label-Out+of+scope+-28future-29" class="legacy-anchor"></span>
+<h3 id="out-of-scope-future"><a href="#out-of-scope-future">Out of scope (future)</a></h3>
+<ul><li>
+<p>Raw SPI byte-level recording</p>
+</li><li>
+<p>Network-based display simulation (remote preview)</p>
+</li><li>
+<p>Live GUI preview window</p>
+</li><li>
+<p>Mock failure injection (simulate SPI errors, GPIO failures)</p>
+</li><li>
+<p>Multi-display mock coordination</p>
+</li><li>
+<p>Performance profiling hooks</p>
+</li></ul>
+</div>
+<div id='context'>
+</div>
+
+</div>
+</div>
+
+<div id='footer-push'></div>
+</div>
+<div id='footer'>
+<a href="https://github.com/jeremyevans/hanna"><strong>Hanna</strong> RDoc template</a>
+</div>
+</body>
+</html>

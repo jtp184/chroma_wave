@@ -1,0 +1,209 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html lang='en'>
+<head>
+<title>ChromaWave::DriverExtraction::Opcodes</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+<link href='../../../css/style.css' media='screen' rel='stylesheet' type='text/css'>
+<script type='text/javascript'>
+  function popupCode(url) {
+    window.open(url, "Code", "resizable=yes,scrollbars=yes,toolbar=no,status=no,height=150,width=400")
+  }
+  
+  function toggleCode(id) {
+    var code = document.getElementById(id)
+  
+    code.style.display = code.style.display != 'block' ? 'block' : 'none'
+    return true
+  }
+  
+  // Make codeblocks hidden by default
+  document.writeln('<' + 'style type="text/css">.method .source pre { display: none }<\/style>')
+</script>
+</head>
+<body class='page'>
+<div class='class' id='wrapper'>
+<div class='header'>
+<h1 class='name'><span class='type'>module</span>
+ChromaWave::DriverExtraction::Opcodes
+</h1>
+<ol class='paths'>
+<li>
+<a href="../../../files/lib/chroma_wave/driver_extraction/opcodes_rb.html">lib/chroma_wave/driver_extraction/opcodes.rb</a>
+</li>
+</ol>
+</div>
+<div id='content'>
+<div id='text'>
+<div id='description'>
+<p>Sentinel opcodes and lookup tables for driver config extraction.</p>
+
+<p>Sentinel opcodes match the constants defined in chroma_wave.h. Lookup tables map Ruby symbols to their C enum/flag names.</p>
+</div>
+<div id='context'>
+</div>
+<div id='section'>
+<div id='constants-list'>
+<h2>Constants</h2>
+<div class='name-list'>
+<table summary='Constants'>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>BUSY_POLARITY_NAMES</td>
+<td>=</td>
+<td class='context-item-value'>{
+active_high: 'BUSY_ACTIVE_HIGH',
+active_low: 'BUSY_ACTIVE_LOW'
+}.freeze</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'>
+<p>Maps Ruby busy polarity symbols to C enum names.</p>
+</td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>CAPABILITY_NAMES</td>
+<td>=</td>
+<td class='context-item-value'>{
+partial: 'EPD_CAP_PARTIAL',
+fast: 'EPD_CAP_FAST',
+grayscale: 'EPD_CAP_GRAYSCALE',
+dual_buf: 'EPD_CAP_DUAL_BUF'
+}.freeze</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'>
+<p>Maps Ruby capability symbols to C flag names.</p>
+</td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>DISPLAY_DATA_CMDS</td>
+<td>=</td>
+<td class='context-item-value'>[0x10, 0x13, 0x24, 0x26].freeze</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'>
+<p>Display data command bytes used to identify primary/secondary write commands.</p>
+</td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>PIXEL_FORMAT_NAMES</td>
+<td>=</td>
+<td class='context-item-value'>{
+mono: 'PIXEL_FORMAT_MONO',
+gray4: 'PIXEL_FORMAT_GRAY4',
+color4: 'PIXEL_FORMAT_COLOR4',
+color7: 'PIXEL_FORMAT_COLOR7'
+}.freeze</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'>
+<p>Maps Ruby pixel format symbols to C enum names.</p>
+</td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>SENTINEL_NAMES</td>
+<td>=</td>
+<td class='context-item-value'>{
+SEQ_SET_CURSOR => 'SEQ_SET_CURSOR',
+SEQ_SET_WINDOW => 'SEQ_SET_WINDOW',
+SEQ_SW_RESET => 'SEQ_SW_RESET',
+SEQ_HW_RESET => 'SEQ_HW_RESET',
+SEQ_DELAY_MS => 'SEQ_DELAY_MS',
+SEQ_END => 'SEQ_END',
+SEQ_WAIT_BUSY => 'SEQ_WAIT_BUSY'
+}.freeze</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'>
+<p>Human-readable names for sentinel opcodes, used in C output comments.</p>
+</td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>SEQ_DELAY_MS</td>
+<td>=</td>
+<td class='context-item-value'>0xFD</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'></td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>SEQ_END</td>
+<td>=</td>
+<td class='context-item-value'>0xFE</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'></td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>SEQ_HW_RESET</td>
+<td>=</td>
+<td class='context-item-value'>0xFC</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'></td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>SEQ_SET_CURSOR</td>
+<td>=</td>
+<td class='context-item-value'>0xF9</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'>
+<p>Sentinel opcodes matching <a href="../../../files/ext/chroma_wave/chroma_wave_h.html">chroma_wave.h</a></p>
+</td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>SEQ_SET_WINDOW</td>
+<td>=</td>
+<td class='context-item-value'>0xFA</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'></td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>SEQ_SW_RESET</td>
+<td>=</td>
+<td class='context-item-value'>0xFB</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'></td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>SEQ_WAIT_BUSY</td>
+<td>=</td>
+<td class='context-item-value'>0xFF</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'></td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>STANDARD_TURN_ON_SEQUENCES</td>
+<td>=</td>
+<td class='context-item-value'>[[0x22, 0x20], [0x12], [0x20]].freeze</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'>
+<p>Standard TurnOnDisplay sequences considered “normal” (not Tier 2).</p>
+</td>
+</tr>
+<tr class='top-aligned-row context-row'>
+<td class='context-item-name'>TIER2_MODELS</td>
+<td>=</td>
+<td class='context-item-value'>{
+'EPD_4in2' => 'LUT selection in init',
+'EPD_3in7' => 'LUT + 4-gray, unusual register protocol',
+'EPD_7in5_V2' => 'Buffer inversion in Display()',
+'EPD_5in65f' => 'Power cycling per refresh, dual busy polarity',
+'EPD_4in01f' => 'Power cycling per refresh, dual busy polarity',
+'EPD_2in7_V2' => '159-byte LUT for 4-gray mode',
+'EPD_1in02d' => 'Unusual protocol, LUT-based, non-standard busy',
+'EPD_3in52' => 'Complex LUT loading',
+'EPD_2in7' => 'Embedded LUT tables'
+}.freeze</td>
+<td>&nbsp;</td>
+<td class='context-item-desc'>
+<p>Models requiring Tier 2 manual overrides due to complex init protocols.</p>
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div id='footer-push'></div>
+</div>
+<div id='footer'>
+<a href="https://github.com/jeremyevans/hanna"><strong>Hanna</strong> RDoc template</a>
+</div>
+</body>
+</html>

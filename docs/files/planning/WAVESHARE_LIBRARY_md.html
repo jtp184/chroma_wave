@@ -1,0 +1,896 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html lang='en'>
+<head>
+<title>WAVESHARE_LIBRARY.md</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+<link href='../../css/style.css' media='screen' rel='stylesheet' type='text/css'>
+<script type='text/javascript'>
+  function popupCode(url) {
+    window.open(url, "Code", "resizable=yes,scrollbars=yes,toolbar=no,status=no,height=150,width=400")
+  }
+  
+  function toggleCode(id) {
+    var code = document.getElementById(id)
+  
+    code.style.display = code.style.display != 'block' ? 'block' : 'none'
+    return true
+  }
+  
+  // Make codeblocks hidden by default
+  document.writeln('<' + 'style type="text/css">.method .source pre { display: none }<\/style>')
+</script>
+</head>
+<body class='page'>
+<div class='file' id='wrapper'>
+<div class='header'>
+<h1 class='name'>WAVESHARE_LIBRARY.md
+</h1>
+<div class='paths'>
+planning/WAVESHARE_LIBRARY.md
+</div>
+</div>
+<div id='content'>
+<div id='text'>
+<div id='description'>
+<span id="label-Waveshare+E-Paper+Display+Library+Evaluation" class="legacy-anchor"></span>
+<h1 id="waveshare-e-paper-display-library-evaluation"><a href="#waveshare-e-paper-display-library-evaluation">Waveshare E-Paper Display Library Evaluation</a></h1>
+
+<span id="label-1.+Overview" class="legacy-anchor"></span>
+<h2 id="1-overview"><a href="#1-overview">1. Overview</a></h2>
+
+<p>The vendor library at <code>vendor/waveshare_epd/</code> is Waveshare’s official C SDK for driving their e-Paper display product line from Linux single-board computers (Raspberry Pi, Jetson Nano). It is a compile-time-configured, flat C library with no dynamic dispatch, no runtime polymorphism, and no allocator abstraction. Every display model is a separate pair of <code>.h</code>/<code>.c</code> files that hard-code controller register sequences, LUT waveform tables, and buffer layout math.</p>
+
+<p><strong>License:</strong> MIT (all files).</p>
+<hr>
+
+<span id="label-2.+Directory+Structure" class="legacy-anchor"></span>
+<h2 id="2-directory-structure"><a href="#2-directory-structure">2. Directory Structure</a></h2>
+
+<pre>vendor/waveshare_epd/
+  lib/
+    Config/                 # Hardware Abstraction Layer (HAL)
+      DEV_Config.h/c          Platform-agnostic GPIO/SPI/delay interface
+      Debug.h                 Conditional printf macro (compile-time -DDEBUG)
+      RPI_gpiod.h/c           gpiod backend for RPi (USE_DEV_LIB)
+      dev_hardware_SPI.h/c    /dev/spidev0.0 backend for RPi
+      sysfs_gpio.h/c          sysfs GPIO backend for Jetson
+      sysfs_software_spi.h/c  Bit-bang SPI backend for Jetson
+    e-Paper/                # Display Model Drivers (~70 .h + ~70 .c files)
+      EPD_&lt;model&gt;.h/c         One pair per hardware SKU
+    Fonts/                  # Bitmap Font Tables
+      fonts.h                 sFONT (ASCII) and cFONT (GB2312) typedefs
+      font8.c .. font24.c    Bitmap data for 8/12/16/20/24px ASCII fonts
+      font12CN.c, font24CN.c Bitmap data for Chinese character fonts
+    GUI/                    # Drawing / Image Layer
+      GUI_Paint.h/c           2D primitives, text, rotation, mirroring
+      GUI_BMPfile.h/c         BMP file loading (1-bit, 4-gray, 7-color, etc.)
+  examples/                 # Test programs, one per display model
+    EPD_&lt;model&gt;_test.c
+    main.c                    Entry point that calls the selected test
+    ImageData.h/c             Embedded test image bitmaps
+  pic/                      # Sample BMP images for testing
+  Makefile                  # Compile-time model + platform selection</pre>
+<hr>
+
+<span id="label-3.+Architecture+and+Layering" class="legacy-anchor"></span>
+<h2 id="3-architecture-and-layering"><a href="#3-architecture-and-layering">3. Architecture and Layering</a></h2>
+
+<p>The library uses a strict four-layer stack, all resolved at compile time:</p>
+
+<pre>Application Code (examples / our Ruby extension)
+        |
+        v
+  +------------------+
+  | GUI_Paint         |  Drawing primitives, text rendering, BMP loading.
+  | GUI_BMPfile       |  Operates on a caller-allocated byte buffer.
+  +------------------+
+        |
+        v
+  +------------------+
+  | EPD_&lt;model&gt;       |  Model-specific driver. Knows resolution, controller
+  |                    |  register protocol, LUT waveforms, busy-wait polarity.
+  |                    |  Calls DEV_* HAL functions directly.
+  +------------------+
+        |
+        v
+  +------------------+
+  | DEV_Config        |  Thin HAL: GPIO read/write, SPI byte/block,
+  |                    |  delay_ms, module_init/exit.
+  +------------------+
+        |
+        v
+  +------------------+
+  | Platform Backend  |  One of: bcm2835, wiringPi, lgpio, gpiod,
+  |                    |  sysfs GPIO, software SPI (Jetson).
+  |                    |  Selected via #ifdef at compile time.
+  +------------------+</pre>
+
+<p><strong>Key architectural facts:</strong></p>
+<ul><li>
+<p><strong>No vtable / function pointers.</strong> Display model selection is a compile-time Makefile choice (<code>EPD=epd2in13V4</code>). Only one driver compiles into any given binary.</p>
+</li><li>
+<p><strong>Global mutable state.</strong> <code>PAINT Paint</code> is a single global struct. <code>Paint_SelectImage()</code> swaps the active buffer pointer. Only one image context is active at a time.</p>
+</li><li>
+<p><strong>GPIO pin assignments are global ints</strong>, set once in <code>DEV_GPIO_Init()</code>.</p>
+</li><li>
+<p><strong>No memory management abstraction.</strong> Callers <code>malloc</code> image buffers and pass raw <code>UBYTE*</code> pointers. The library never allocates.</p>
+</li></ul>
+<hr>
+
+<span id="label-4.+Key+Data+Types" class="legacy-anchor"></span>
+<h2 id="4-key-data-types"><a href="#4-key-data-types">4. Key Data Types</a></h2>
+
+<span id="label-4.1+Primitive+Aliases+-28DEV_Config.h-29" class="legacy-anchor"></span>
+<h3 id="41-primitive-aliases-devconfigh"><a href="#41-primitive-aliases-devconfigh">4.1 Primitive Aliases (<code>DEV_Config.h</code>)</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Alias</th>
+<th>C Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>UBYTE</code></td>
+<td><code>uint8_t</code></td>
+<td>Pixel data, register values</td>
+</tr>
+<tr>
+<td><code>UWORD</code></td>
+<td><code>uint16_t</code></td>
+<td>Coordinates, dimensions, colors</td>
+</tr>
+<tr>
+<td><code>UDOUBLE</code></td>
+<td><code>uint32_t</code></td>
+<td>Buffer addresses, byte counts (misnomer)</td>
+</tr>
+</tbody>
+</table>
+
+<span id="label-4.2+Image+Context+-28GUI_Paint.h-29" class="legacy-anchor"></span>
+<h3 id="42-image-context-guipainth"><a href="#42-image-context-guipainth">4.2 Image Context (<code>GUI_Paint.h</code>)</a></h3>
+
+<pre class="c">typedef struct {
+    UBYTE *Image;          // Pointer to caller-owned pixel buffer
+    UWORD  Width;          // Logical width  (after rotation)
+    UWORD  Height;         // Logical height (after rotation)
+    UWORD  WidthMemory;    // Physical width  (before rotation)
+    UWORD  HeightMemory;   // Physical height (before rotation)
+    UWORD  Color;          // Default background color
+    UWORD  Rotate;         // 0, 90, 180, 270
+    UWORD  Mirror;         // MIRROR_NONE / HORIZONTAL / VERTICAL / ORIGIN
+    UWORD  WidthByte;      // Bytes per row (depends on Scale)
+    UWORD  HeightByte;     // Rows (== HeightMemory)
+    UWORD  Scale;          // Bits-per-pixel mode: 2, 4, 6, 7, or 16
+} PAINT;</pre>
+
+<p><code>Scale</code> controls pixel packing in the buffer:</p>
+
+<table role="table">
+<thead>
+<tr>
+<th>Scale</th>
+<th>BPP</th>
+<th>Pixels/Byte</th>
+<th>Packing</th>
+<th>Use Case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2</td>
+<td>1</td>
+<td>8</td>
+<td>MSB-first bitmask</td>
+<td>Monochrome (black/white)</td>
+</tr>
+<tr>
+<td>4</td>
+<td>2</td>
+<td>4</td>
+<td>2-bit pairs, MSB-first</td>
+<td>4-level grayscale</td>
+</tr>
+<tr>
+<td>6</td>
+<td>4</td>
+<td>2</td>
+<td>High/low nibble</td>
+<td>6-color displays</td>
+</tr>
+<tr>
+<td>7</td>
+<td>4</td>
+<td>2</td>
+<td>High/low nibble</td>
+<td>7-color (5.65“ ACeP)</td>
+</tr>
+<tr>
+<td>16</td>
+<td>4</td>
+<td>2</td>
+<td>High/low nibble</td>
+<td>Dithered output</td>
+</tr>
+</tbody>
+</table>
+
+<span id="label-4.3+Enumerations" class="legacy-anchor"></span>
+<h3 id="43-enumerations"><a href="#43-enumerations">4.3 Enumerations</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Enum</th>
+<th>Values</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MIRROR_IMAGE</code></td>
+<td>NONE, HORIZONTAL, VERTICAL, ORIGIN</td>
+<td>Buffer mirroring mode</td>
+</tr>
+<tr>
+<td><code>DOT_PIXEL</code></td>
+<td>1x1 through 8x8</td>
+<td>Brush/point size</td>
+</tr>
+<tr>
+<td><code>DOT_STYLE</code></td>
+<td>FILL_AROUND, FILL_RIGHTUP</td>
+<td>Point expansion direction</td>
+</tr>
+<tr>
+<td><code>LINE_STYLE</code></td>
+<td>SOLID, DOTTED</td>
+<td>Line rendering mode</td>
+</tr>
+<tr>
+<td><code>DRAW_FILL</code></td>
+<td>EMPTY, FULL</td>
+<td>Shape fill mode</td>
+</tr>
+</tbody>
+</table>
+
+<span id="label-4.4+Color+Constants" class="legacy-anchor"></span>
+<h3 id="44-color-constants"><a href="#44-color-constants">4.4 Color Constants</a></h3>
+
+<pre class="c">// Monochrome
+#define WHITE  0xFF
+#define BLACK  0x00
+#define RED    BLACK  // Alias used for secondary color layer
+
+// 4-level Grayscale
+#define GRAY1  0x03   // Blackest
+#define GRAY2  0x02
+#define GRAY3  0x01
+#define GRAY4  0x00   // White
+
+// 7-color (EPD_5in65f only, defined in its header)
+#define EPD_5IN65F_BLACK   0x0
+#define EPD_5IN65F_WHITE   0x1
+#define EPD_5IN65F_GREEN   0x2
+#define EPD_5IN65F_BLUE    0x3
+#define EPD_5IN65F_RED     0x4
+#define EPD_5IN65F_YELLOW  0x5
+#define EPD_5IN65F_ORANGE  0x6
+#define EPD_5IN65F_CLEAN   0x7  // Afterimage artifact, not usable</pre>
+<hr>
+
+<span id="label-5.+Display+Model+Taxonomy" class="legacy-anchor"></span>
+<h2 id="5-display-model-taxonomy"><a href="#5-display-model-taxonomy">5. Display Model Taxonomy</a></h2>
+
+<span id="label-5.1+Model+Count" class="legacy-anchor"></span>
+<h3 id="51-model-count"><a href="#51-model-count">5.1 Model Count</a></h3>
+
+<p>~70 header files in <code>lib/e-Paper/</code>, representing <strong>95+ distinct hardware SKUs</strong> when version suffixes are counted. The Makefile enumerates 66 named build targets.</p>
+
+<span id="label-5.2+Classification+by+Color+Capability" class="legacy-anchor"></span>
+<h3 id="52-classification-by-color-capability"><a href="#52-classification-by-color-capability">5.2 Classification by Color Capability</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Category</th>
+<th>Suffix Pattern</th>
+<th>Buffer(s)</th>
+<th>Example Models</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Monochrome (B/W)</td>
+<td>no suffix, V2-V4</td>
+<td>1 (1-bit)</td>
+<td>EPD_2in13_V4, EPD_7in5_V2</td>
+</tr>
+<tr>
+<td>Grayscale (4-level)</td>
+<td><code>g</code>, <code>_4Gray</code> init</td>
+<td>1 (2-bit)</td>
+<td>EPD_1in64g, EPD_3in7, EPD_7in5_V2*</td>
+</tr>
+<tr>
+<td>Black + Red/Yellow</td>
+<td><code>b</code>, <code>bc</code>, <code>c</code></td>
+<td>2 (1-bit each)</td>
+<td>EPD_2in13b_V4, EPD_4in2bc</td>
+</tr>
+<tr>
+<td>7-color (ACeP)</td>
+<td><code>f</code></td>
+<td>1 (4-bit)</td>
+<td>EPD_5in65f, EPD_4in01f</td>
+</tr>
+<tr>
+<td>Extended color</td>
+<td><code>e</code></td>
+<td>1 (4-bit)</td>
+<td>EPD_7in3e</td>
+</tr>
+</tbody>
+</table>
+
+<p>*Some monochrome models support an alternate 4-gray initialization mode (e.g., <code>EPD_7IN5_V2_Init_4Gray</code>).</p>
+
+<span id="label-5.3+Classification+by+Refresh+Capability" class="legacy-anchor"></span>
+<h3 id="53-classification-by-refresh-capability"><a href="#53-classification-by-refresh-capability">5.3 Classification by Refresh Capability</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Capability</th>
+<th>API Pattern</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full refresh only</td>
+<td><code>Init()</code>, <code>Display(buf)</code></td>
+<td>Simplest models, B+R/Y dual-buffer</td>
+</tr>
+<tr>
+<td>Full + Fast</td>
+<td><code>Init()</code>, <code>Init_Fast()</code></td>
+<td>Faster full refresh via temp trick</td>
+</tr>
+<tr>
+<td>Full + Partial</td>
+<td><code>Init()</code>, <code>Display_Partial()</code></td>
+<td>Region update without full redraw</td>
+</tr>
+<tr>
+<td>Full + Base + Part</td>
+<td><code>Display_Base()</code>, <code>_Partial()</code></td>
+<td>Write base frame, then diff updates</td>
+</tr>
+<tr>
+<td>Partial + region</td>
+<td><code>Display_Part(buf,x,y,w,h)</code></td>
+<td>Sub-rectangle partial refresh</td>
+</tr>
+</tbody>
+</table>
+
+<span id="label-5.4+Per-Model+API+Surface+-28Representative-29" class="legacy-anchor"></span>
+<h3 id="54-per-model-api-surface-representative"><a href="#54-per-model-api-surface-representative">5.4 Per-Model API Surface (Representative)</a></h3>
+
+<p><strong>Monochrome with partial refresh</strong> (<code>EPD_2in13_V4.h</code>):</p>
+
+<pre class="c">EPD_2in13_V4_Init()              // Standard full-refresh init
+EPD_2in13_V4_Init_Fast()         // Fast refresh via temp register trick
+EPD_2in13_V4_Init_GUI()          // GUI-optimized init
+EPD_2in13_V4_Clear()             // Clear to white
+EPD_2in13_V4_Clear_Black()       // Clear to black
+EPD_2in13_V4_Display(buf)        // Full refresh from buffer
+EPD_2in13_V4_Display_Fast(buf)   // Fast refresh from buffer
+EPD_2in13_V4_Display_Base(buf)   // Write base image (for partial)
+EPD_2in13_V4_Display_Partial(buf)// Partial refresh from buffer
+EPD_2in13_V4_Sleep()             // Enter deep sleep</pre>
+
+<p><strong>Dual-buffer black+red</strong> (<code>EPD_2in13b_V4.h</code>):</p>
+
+<pre class="c">EPD_2IN13B_V4_Init()
+EPD_2IN13B_V4_Clear()
+EPD_2IN13B_V4_Display(blackBuf, redBuf)  // Two buffers!
+EPD_2IN13B_V4_Sleep()</pre>
+
+<p><strong>Large monochrome with grayscale</strong> (<code>EPD_7in5_V2.h</code>):</p>
+
+<pre class="c">EPD_7IN5_V2_Init()
+EPD_7IN5_V2_Init_Fast()
+EPD_7IN5_V2_Init_Part()
+EPD_7IN5_V2_Init_4Gray()
+EPD_7IN5_V2_Clear()
+EPD_7IN5_V2_ClearBlack()
+EPD_7IN5_V2_Display(buf)
+EPD_7IN5_V2_Display_Part(buf, x1, y1, x2, y2)
+EPD_7IN5_V2_Display_4Gray(buf)
+EPD_7IN5_V2_Sleep()</pre>
+
+<span id="label-5.5+Naming+Inconsistencies" class="legacy-anchor"></span>
+<h3 id="55-naming-inconsistencies"><a href="#55-naming-inconsistencies">5.5 Naming Inconsistencies</a></h3>
+
+<p>The library has no consistent naming convention across models:</p>
+<ul><li>
+<p>Case: <code>EPD_2in13_V4</code> vs <code>EPD_2IN13B_V4</code> vs <code>EPD_7IN5_V2</code></p>
+</li><li>
+<p>Init return: some <code>void</code>, some <code>UBYTE</code> (return status)</p>
+</li><li>
+<p>Clear variants: <code>Clear()</code> + <code>Clear_Black()</code> vs <code>ClearBlack()</code> vs just <code>Clear(color)</code></p>
+</li><li>
+<p>Display signature: <code>Display(buf)</code> vs <code>Display(blackBuf, redBuf)</code> vs <code>Display_part(buf,x,y,w,h)</code></p>
+</li><li>
+<p>Partial: <code>Display_Partial()</code> vs <code>Display_Part()</code> vs <code>Display_part()</code></p>
+</li><li>
+<p>Busy polarity: some wait for HIGH, some for LOW (per controller chip)</p>
+</li></ul>
+<hr>
+
+<span id="label-6.+Hardware+Abstraction+Layer+-28DEV_Config-29" class="legacy-anchor"></span>
+<h2 id="6-hardware-abstraction-layer-devconfig"><a href="#6-hardware-abstraction-layer-devconfig">6. Hardware Abstraction Layer (DEV_Config)</a></h2>
+
+<span id="label-6.1+Interface" class="legacy-anchor"></span>
+<h3 id="61-interface"><a href="#61-interface">6.1 Interface</a></h3>
+
+<pre class="c">// GPIO
+void  DEV_Digital_Write(UWORD Pin, UBYTE Value);
+UBYTE DEV_Digital_Read(UWORD Pin);
+void  DEV_GPIO_Mode(UWORD Pin, UWORD Mode);  // 0=input, 1=output
+
+// SPI
+void  DEV_SPI_WriteByte(UBYTE Value);
+void  DEV_SPI_Write_nByte(uint8_t *pData, uint32_t Len);
+void  DEV_SPI_SendData(UBYTE Reg);     // Bit-bang SPI (software fallback)
+UBYTE DEV_SPI_ReadData(void);          // Bit-bang SPI read
+
+// Lifecycle
+UBYTE DEV_Module_Init(void);    // Returns 0 on success, 1 on failure
+void  DEV_Module_Exit(void);
+void  DEV_Delay_ms(UDOUBLE xms);</pre>
+
+<span id="label-6.2+GPIO+Pin+Mapping" class="legacy-anchor"></span>
+<h3 id="62-gpio-pin-mapping"><a href="#62-gpio-pin-mapping">6.2 GPIO Pin Mapping</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Signal</th>
+<th>RPi BCM</th>
+<th>Function</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EPD_RST_PIN</td>
+<td>17</td>
+<td>Hardware reset (active low pulse)</td>
+</tr>
+<tr>
+<td>EPD_DC_PIN</td>
+<td>25</td>
+<td>Data/Command select (0=cmd, 1=data)</td>
+</tr>
+<tr>
+<td>EPD_CS_PIN</td>
+<td>8</td>
+<td>SPI chip select (active low)</td>
+</tr>
+<tr>
+<td>EPD_BUSY_PIN</td>
+<td>24</td>
+<td>Display busy status (input)</td>
+</tr>
+<tr>
+<td>EPD_PWR_PIN</td>
+<td>18</td>
+<td>Power control (active high)</td>
+</tr>
+<tr>
+<td>EPD_MOSI_PIN</td>
+<td>10</td>
+<td>SPI MOSI (for bit-bang fallback)</td>
+</tr>
+<tr>
+<td>EPD_SCLK_PIN</td>
+<td>11</td>
+<td>SPI clock (for bit-bang fallback)</td>
+</tr>
+</tbody>
+</table>
+
+<span id="label-6.3+Platform+Backends" class="legacy-anchor"></span>
+<h3 id="63-platform-backends"><a href="#63-platform-backends">6.3 Platform Backends</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Macro</th>
+<th>Library</th>
+<th>Platform</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>USE_BCM2835_LIB</code></td>
+<td>bcm2835</td>
+<td>RPi 1-4</td>
+<td>Direct register access, fastest</td>
+</tr>
+<tr>
+<td><code>USE_WIRINGPI_LIB</code></td>
+<td>wiringPi</td>
+<td>RPi 1-4</td>
+<td>Deprecated upstream</td>
+</tr>
+<tr>
+<td><code>USE_LGPIO_LIB</code></td>
+<td>lgpio</td>
+<td>RPi 5</td>
+<td>Default in Makefile, newest</td>
+</tr>
+<tr>
+<td><code>USE_DEV_LIB</code></td>
+<td>gpiod+spidev</td>
+<td>RPi (any)</td>
+<td>Most portable Linux GPIO</td>
+</tr>
+<tr>
+<td><code>USE_DEV_LIB</code></td>
+<td>sysfs</td>
+<td>Jetson</td>
+<td>sysfs GPIO + software SPI</td>
+</tr>
+</tbody>
+</table>
+
+<span id="label-6.4+SPI+Configuration" class="legacy-anchor"></span>
+<h3 id="64-spi-configuration"><a href="#64-spi-configuration">6.4 SPI Configuration</a></h3>
+
+<p>All backends configure SPI mode 0, MSB-first, ~10 MHz clock. The display protocol is: 1. Pull DC low for command byte 2. Pull DC high for data byte(s) 3. CS is toggled around each byte transfer</p>
+
+<span id="label-6.5+Display+Lifecycle+-28Common+Pattern-29" class="legacy-anchor"></span>
+<h3 id="65-display-lifecycle-common-pattern"><a href="#65-display-lifecycle-common-pattern">6.5 Display Lifecycle (Common Pattern)</a></h3>
+
+<pre>DEV_Module_Init()                  // Open GPIO/SPI handles, set pin directions
+  |
+EPD_&lt;model&gt;_Init()                 // Reset pulse -&gt; SW reset cmd -&gt; register config
+  |                                // Load LUT waveform tables (model-specific)
+EPD_&lt;model&gt;_Clear()                // Optional: fill display RAM with 0xFF
+  |
+[Caller allocates image buffer]    // size = ceil(width/8) * height  (for 1-bit)
+  |
+Paint_NewImage(buf, w, h, rot, bg) // Initialize PAINT global with buffer geometry
+Paint_Clear(WHITE)                 // Fill buffer
+Paint_Draw*(...)                   // Draw into buffer
+  |
+EPD_&lt;model&gt;_Display(buf)           // Send buffer over SPI -&gt; trigger refresh
+EPD_&lt;model&gt;_ReadBusy()             // Spin-wait until refresh completes
+  |
+EPD_&lt;model&gt;_Sleep()                // Enter deep sleep (display retains image)
+  |
+DEV_Module_Exit()                  // Release GPIO/SPI handles</pre>
+<hr>
+
+<span id="label-7.+GUI+-2F+Drawing+Layer" class="legacy-anchor"></span>
+<h2 id="7-gui--drawing-layer"><a href="#7-gui--drawing-layer">7. GUI / Drawing Layer</a></h2>
+
+<span id="label-7.1+API+Summary" class="legacy-anchor"></span>
+<h3 id="71-api-summary"><a href="#71-api-summary">7.1 API Summary</a></h3>
+
+<p><strong>Image Management:</strong> - <code>Paint_NewImage(buf, w, h, rotate, color)</code> – configure global PAINT struct - <code>Paint_SelectImage(buf)</code> – switch active buffer pointer - <code>Paint_SetRotate(0|90|180|270)</code> – logical rotation - <code>Paint_SetMirroring(MIRROR_*)</code> – horizontal/vertical flip - <code>Paint_SetScale(2|4|6|7|16)</code> – set bits-per-pixel mode - <code>Paint_Clear(color)</code> – fill entire buffer - <code>Paint_ClearWindows(x1,y1,x2,y2,color)</code> – fill rectangle</p>
+
+<p><strong>Drawing Primitives:</strong> - <code>Paint_SetPixel(x, y, color)</code> – single pixel (handles rotation, mirror, scale) - <code>Paint_DrawPoint(x, y, color, size, style)</code> – sized point (1x1 to 8x8) - <code>Paint_DrawLine(x1,y1,x2,y2, color, width, style)</code> – Bresenham line - <code>Paint_DrawRectangle(x1,y1,x2,y2, color, width, fill)</code> – rect or filled rect - <code>Paint_DrawCircle(cx,cy,r, color, width, fill)</code> – Bresenham circle</p>
+
+<p><strong>Text:</strong> - <code>Paint_DrawChar(x, y, char, font, fg, bg)</code> – single ASCII character - <code>Paint_DrawString_EN(x, y, str, font, fg, bg)</code> – English string with wrapping - <code>Paint_DrawString_CN(x, y, str, font, fg, bg)</code> – Chinese (GB2312) string - <code>Paint_DrawNum(x, y, int, font, fg, bg)</code> – integer - <code>Paint_DrawNumDecimals(x, y, double, font, digits, fg, bg)</code> – decimal number - <code>Paint_DrawTime(x, y, time, font, fg, bg)</code> – HH:MM:SS from PAINT_TIME struct</p>
+
+<p><strong>Image Loading:</strong> - <code>Paint_DrawBitMap(buf)</code> – raw byte copy from embedded bitmap - <code>GUI_ReadBmp(path, x, y)</code> – load 1-bit BMP from file - <code>GUI_ReadBmp_4Gray(path, x, y)</code> – load and quantize to 4-gray - <code>GUI_ReadBmp_16Gray(path, x, y)</code> – load and quantize to 16-gray - <code>GUI_ReadBmp_RGB_4Color(path, x, y)</code> – load and quantize to 4-color - <code>GUI_ReadBmp_RGB_6Color(path, x, y)</code> – quantize to 6-color - <code>GUI_ReadBmp_RGB_7Color(path, x, y)</code> – quantize to 7-color (ACeP)</p>
+
+<span id="label-7.2+Font+System" class="legacy-anchor"></span>
+<h3 id="72-font-system"><a href="#72-font-system">7.2 Font System</a></h3>
+
+<p>Two font types:</p>
+
+<pre class="c">typedef struct { const uint8_t *table; uint16_t Width; uint16_t Height; } sFONT;    // ASCII bitmap
+typedef struct { const CH_CN *table; uint16_t size, ASCII_Width, Width, Height; } cFONT; // GB2312</pre>
+
+<p>Available sizes: Font8 (5x8), Font12 (7x12), Font16 (11x16), Font20 (14x20), Font24 (17x24), Font12CN, Font24CN.</p>
+
+<p>Fonts are hard-coded bitmap arrays. No TTF/OTF support. No kerning. Fixed-width only.</p>
+
+<span id="label-7.3+Design+Limitations" class="legacy-anchor"></span>
+<h3 id="73-design-limitations"><a href="#73-design-limitations">7.3 Design Limitations</a></h3>
+<ol><li>
+<p><strong>Single global PAINT struct.</strong> Cannot compose multiple image contexts simultaneously. <code>Paint_SelectImage()</code> is the only way to switch, and it doesn’t save/restore state.</p>
+</li><li>
+<p><strong>No clipping.</strong> Out-of-bounds writes silently fail via bounds check in <code>Paint_SetPixel</code>, but drawing a shape that partially extends off-screen will just drop pixels.</p>
+</li><li>
+<p><strong>No alpha / compositing.</strong> All drawing is opaque replacement.</p>
+</li><li>
+<p><strong>No anti-aliasing.</strong> Circle and line algorithms are pixel-exact Bresenham.</p>
+</li><li>
+<p><strong>Paint_DrawNum has a bug</strong>: it swaps fg/bg arguments when calling <code>Paint_DrawString_EN</code>.</p>
+</li></ol>
+<hr>
+
+<span id="label-8.+Build+System" class="legacy-anchor"></span>
+<h2 id="8-build-system"><a href="#8-build-system">8. Build System</a></h2>
+
+<p>The Makefile uses a massive <code>ifeq</code> chain (66 entries) to select one driver <code>.c</code> + one test <code>.c</code> based on the <code>EPD</code> variable:</p>
+
+<pre class="bash">make RPI EPD=epd2in13V4    # Build for 2.13&quot; V4 on Raspberry Pi with lgpio
+make JETSON EPD=epd7in5V2  # Build for 7.5&quot; V2 on Jetson Nano</pre>
+
+<p><strong>Compilation units for a typical build:</strong> 1. <code>DEV_Config.c</code> + platform backend <code>.c</code> files (compiled separately as RPI_DEV/JETSON_DEV) 2. <code>EPD_&lt;model&gt;.c</code> (the selected driver) 3. <code>GUI_Paint.c</code>, <code>GUI_BMPfile.c</code> 4. All <code>Fonts/*.c</code> files 5. <code>EPD_&lt;model&gt;_test.c</code>, <code>main.c</code>, <code>ImageData.c</code></p>
+
+<p>Output: a single <code>epd</code> executable.</p>
+
+<p><strong>Compiler flags:</strong> <code>-g -O -ffunction-sections -fdata-sections -Wall</code> <strong>Linker flags:</strong> <code>-Wl,--gc-sections</code> + platform library (<code>-llgpio</code>, <code>-lbcm2835</code>, etc.)</p>
+<hr>
+
+<span id="label-9.+Driver+Variation+Analysis" class="legacy-anchor"></span>
+<h2 id="9-driver-variation-analysis"><a href="#9-driver-variation-analysis">9. Driver Variation Analysis</a></h2>
+
+<p>Examination of 8 representative drivers across all categories reveals how much of the vendor code is truly unique vs duplicated boilerplate.</p>
+
+<span id="label-9.1+Identical+Boilerplate+-28Present+in+All+70+Drivers-29" class="legacy-anchor"></span>
+<h3 id="91-identical-boilerplate-present-in-all-70-drivers"><a href="#91-identical-boilerplate-present-in-all-70-drivers">9.1 Identical Boilerplate (Present in All 70 Drivers)</a></h3>
+
+<p>Every driver file contains <code>static</code> copies of these four functions with identical bodies:</p>
+
+<pre class="c">static void EPD_&lt;model&gt;_Reset(void)        // DEV_Digital_Write RST pin sequence
+static void EPD_&lt;model&gt;_SendCommand(UBYTE)  // DC=0, CS=0, SPI write, CS=1
+static void EPD_&lt;model&gt;_SendData(UBYTE)     // DC=1, CS=0, SPI write, CS=1
+void EPD_&lt;model&gt;_ReadBusy(void)             // Spin-wait on BUSY pin</pre>
+
+<p><code>SendCommand</code> and <code>SendData</code> are byte-for-byte identical across all 70 files. <code>Reset</code> varies only in timing (<code>{20,2,20}</code> ms for most, <code>{200,2,200}</code> for EPD_5in65f, <code>{100,2,100}</code> for EPD_13in3k, <code>{30,3,30}</code> for EPD_3in7). <code>ReadBusy</code> varies only in polarity (wait for HIGH vs wait for LOW).</p>
+
+<span id="label-9.2+What+Actually+Varies+Per+Driver" class="legacy-anchor"></span>
+<h3 id="92-what-actually-varies-per-driver"><a href="#92-what-actually-varies-per-driver">9.2 What Actually Varies Per Driver</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Driver</th>
+<th>LOC</th>
+<th>Init Pattern</th>
+<th>Display Pattern</th>
+<th>Unique Logic?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EPD_2in13_V4</td>
+<td>370</td>
+<td>cmd/data sequence</td>
+<td>cmd 0x24 + byte loop</td>
+<td>No</td>
+</tr>
+<tr>
+<td>EPD_2in13b_V4</td>
+<td>228</td>
+<td>cmd/data sequence</td>
+<td>0x24 + 0x26 dual buf</td>
+<td>No</td>
+</tr>
+<tr>
+<td>EPD_13in3k</td>
+<td>549</td>
+<td>cmd/data sequence</td>
+<td>cmd 0x24 + byte loop</td>
+<td>No</td>
+</tr>
+<tr>
+<td>EPD_4in2</td>
+<td>767</td>
+<td>cmd/data + <strong>5 LUT tables</strong></td>
+<td>std mono</td>
+<td><strong>Yes</strong> (LUT selection)</td>
+</tr>
+<tr>
+<td>EPD_3in7</td>
+<td>641</td>
+<td>cmd/data + <strong>LUT load</strong></td>
+<td>std + <strong>4-gray repack</strong></td>
+<td><strong>Yes</strong> (mode logic)</td>
+</tr>
+<tr>
+<td>EPD_7in5_V2</td>
+<td>466</td>
+<td>cmd/data + power</td>
+<td><strong>inverts buffer in-place</strong></td>
+<td><strong>Yes</strong> (destructive)</td>
+</tr>
+<tr>
+<td>EPD_1in64g</td>
+<td>231</td>
+<td>cmd/data sequence</td>
+<td>4-bit nibble pairs</td>
+<td>No (format only)</td>
+</tr>
+<tr>
+<td>EPD_5in65f</td>
+<td>242</td>
+<td>cmd/data sequence</td>
+<td><strong>power on/off per refresh</strong></td>
+<td><strong>Yes</strong> (lifecycle)</td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Findings:</strong> Of 8 drivers examined, 4 can be fully described as config data. The other 4 need custom code for specific operations but still share 60%+ of their logic with the generic path.</p>
+
+<span id="label-9.3+Reset+Timing+Variation" class="legacy-anchor"></span>
+<h3 id="93-reset-timing-variation"><a href="#93-reset-timing-variation">9.3 Reset Timing Variation</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Category</th>
+<th>Timing (pre/low/post ms)</th>
+<th>Models</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Standard</td>
+<td>20 / 2 / 20</td>
+<td>Most mono, dual-buffer models</td>
+</tr>
+<tr>
+<td>Large display</td>
+<td>100 / 2 / 100</td>
+<td>EPD_13in3k</td>
+</tr>
+<tr>
+<td>Color display</td>
+<td>200 / 2 / 200</td>
+<td>EPD_5in65f</td>
+</tr>
+<tr>
+<td>Medium variant</td>
+<td>30 / 3 / 30</td>
+<td>EPD_3in7</td>
+</tr>
+</tbody>
+</table>
+
+<span id="label-9.4+Busy-Wait+Polarity" class="legacy-anchor"></span>
+<h3 id="94-busy-wait-polarity"><a href="#94-busy-wait-polarity">9.4 Busy-Wait Polarity</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Polarity</th>
+<th>Models</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Active-LOW (0=busy, wait for HIGH)</td>
+<td>EPD_2in13_V4, EPD_2in13b_V4, EPD_13in3k</td>
+</tr>
+<tr>
+<td>Active-HIGH (1=busy, wait for LOW)</td>
+<td>EPD_7in5_V2, EPD_1in64g, EPD_3in7</td>
+</tr>
+<tr>
+<td>Both (separate BusyHigh/BusyLow)</td>
+<td>EPD_5in65f</td>
+</tr>
+</tbody>
+</table>
+
+<p>No universal standard – polarity is determined by the display controller IC.</p>
+
+<span id="label-9.5+Init+Sequence+Structure" class="legacy-anchor"></span>
+<h3 id="95-init-sequence-structure"><a href="#95-init-sequence-structure">9.5 Init Sequence Structure</a></h3>
+
+<p>All Init functions follow the same structural pattern regardless of complexity:</p>
+
+<pre>Reset() → ReadBusy() → [SendCommand(cmd) → SendData(d0) → SendData(d1) → ...] × N → ReadBusy()</pre>
+
+<p>The sequences differ only in which commands/data bytes are sent and in what order. This is directly expressible as a byte array: <code>{cmd, n_bytes, byte0, byte1, ..., cmd, n_bytes, ...}</code>.</p>
+
+<p>Exception: models with LUT tables (EPD_4in2, EPD_3in7) have <strong>multiple</strong> init sequences selected at runtime based on display mode (full refresh, partial, 4-gray).</p>
+<hr>
+
+<span id="label-10.+Code+Quality+Assessment" class="legacy-anchor"></span>
+<h2 id="10-code-quality-assessment"><a href="#10-code-quality-assessment">10. Code Quality Assessment</a></h2>
+
+<span id="label-10.1+Strengths" class="legacy-anchor"></span>
+<h3 id="101-strengths"><a href="#101-strengths">10.1 Strengths</a></h3>
+<ul><li>
+<p><strong>Clean layer separation.</strong> HAL, driver, drawing, and application layers are well-isolated.</p>
+</li><li>
+<p><strong>Consistent driver structure.</strong> Despite naming inconsistencies, every driver follows the same pattern: Reset -&gt; SendCommand/SendData -&gt; ReadBusy -&gt; SetWindows/SetCursor.</p>
+</li><li>
+<p><strong>No dynamic allocation.</strong> The library never calls malloc internally. Buffer ownership is clear.</p>
+</li><li>
+<p><strong>MIT license.</strong> No licensing complications for vendoring into a gem.</p>
+</li></ul>
+
+<span id="label-10.2+Weaknesses" class="legacy-anchor"></span>
+<h3 id="102-weaknesses"><a href="#102-weaknesses">10.2 Weaknesses</a></h3>
+<ul><li>
+<p><strong>Massive code duplication.</strong> Every EPD_*.c file re-implements <code>Reset()</code>, <code>SendCommand()</code>, <code>SendData()</code>, <code>ReadBusy()</code> as <code>static</code> functions with identical bodies (except busy polarity). ~1,400 lines of pure duplication across 70 files.</p>
+</li><li>
+<p><strong>Inconsistent naming.</strong> Mixed case (<code>EPD_2in13_V4</code> vs <code>EPD_2IN13B_V4</code>), inconsistent method names (<code>Clear_Black</code> vs <code>ClearBlack</code>), inconsistent return types (<code>void</code> vs <code>UBYTE</code>).</p>
+</li><li>
+<p><strong>Global state everywhere.</strong> <code>PAINT Paint</code>, GPIO pin globals, ifdef platform selection.</p>
+</li><li>
+<p><strong>No error handling.</strong> Functions don’t return error codes. SPI failures are silent. The only error path is <code>DEV_Module_Init()</code> returning 1.</p>
+</li><li>
+<p><strong>Busy-wait with no timeout.</strong> <code>ReadBusy()</code> loops forever if the display hangs.</p>
+</li><li>
+<p><strong><code>UDOUBLE</code> is <code>uint32_t</code>, not <code>double</code>.</strong> Confusing typedef name.</p>
+</li><li>
+<p><strong>DEV_SPI_SendnData uses sizeof(pointer).</strong> Bug on line 316 of DEV_Config.c: <code>size = sizeof(Reg)</code> where <code>Reg</code> is <code>UBYTE*</code> – this always gives 4 or 8, not the array length.</p>
+</li><li>
+<p><strong>EPD_7IN5_V2_Display inverts the caller’s buffer in-place.</strong> The API implies const-correctness but destructively modifies the input. This is a data-corruption bug if the caller reuses the buffer.</p>
+</li></ul>
+
+<span id="label-10.3+Code+Size+Estimate" class="legacy-anchor"></span>
+<h3 id="103-code-size-estimate"><a href="#103-code-size-estimate">10.3 Code Size Estimate</a></h3>
+
+<table role="table">
+<thead>
+<tr>
+<th>Component</th>
+<th>Files</th>
+<th>~Lines of C</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DEV_Config + backends</td>
+<td>~8</td>
+<td>~1,200</td>
+</tr>
+<tr>
+<td>EPD_*.c drivers</td>
+<td>~70</td>
+<td>~25,000</td>
+</tr>
+<tr>
+<td>GUI_Paint + BMPfile</td>
+<td>2</td>
+<td>~1,200</td>
+</tr>
+<tr>
+<td>Fonts</td>
+<td>7</td>
+<td>~15,000</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td>~87</td>
+<td>~42,400</td>
+</tr>
+</tbody>
+</table>
+
+<p>Most of the line count is in font bitmap tables and repetitive driver register sequences.</p>
+</div>
+<div id='context'>
+</div>
+
+</div>
+</div>
+
+<div id='footer-push'></div>
+</div>
+<div id='footer'>
+<a href="https://github.com/jeremyevans/hanna"><strong>Hanna</strong> RDoc template</a>
+</div>
+</body>
+</html>

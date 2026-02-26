@@ -1,0 +1,798 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html lang='en'>
+<head>
+<title>API_REFERENCE.md</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+<link href='../../css/style.css' media='screen' rel='stylesheet' type='text/css'>
+<script type='text/javascript'>
+  function popupCode(url) {
+    window.open(url, "Code", "resizable=yes,scrollbars=yes,toolbar=no,status=no,height=150,width=400")
+  }
+  
+  function toggleCode(id) {
+    var code = document.getElementById(id)
+  
+    code.style.display = code.style.display != 'block' ? 'block' : 'none'
+    return true
+  }
+  
+  // Make codeblocks hidden by default
+  document.writeln('<' + 'style type="text/css">.method .source pre { display: none }<\/style>')
+</script>
+</head>
+<body class='page'>
+<div class='file' id='wrapper'>
+<div class='header'>
+<h1 class='name'>API_REFERENCE.md
+</h1>
+<div class='paths'>
+planning/API_REFERENCE.md
+</div>
+</div>
+<div id='content'>
+<div id='text'>
+<div id='description'>
+<span id="label-ChromaWave+API+Reference" class="legacy-anchor"></span>
+<h1 id="chromawave-api-reference"><a href="#chromawave-api-reference"><a href="../../classes/ChromaWave.html"><code>ChromaWave</code></a> API Reference</a></h1>
+
+<p>Target API contracts for the <a href="../../classes/ChromaWave.html"><code>ChromaWave</code></a> C extension and Ruby library. These are <strong>implementation targets</strong> — the code examples show the intended public interfaces and key internal patterns.</p>
+
+<p>For architectural rationale and design decisions, see <a href="EXTENSION_STRATEGY_md.html">EXTENSION_STRATEGY.md</a>. For content pipeline details (color, drawing, text, icons, images), see <a href="CONTENT_PIPELINE_md.html">CONTENT_PIPELINE.md</a>.</p>
+<hr>
+
+<span id="label-1.+Core+Value+Types" class="legacy-anchor"></span>
+<h2 id="1-core-value-types"><a href="#1-core-value-types">1. Core Value Types</a></h2>
+
+<span id="label-1.1+Palette" class="legacy-anchor"></span>
+<h3 id="11-palette"><a href="#11-palette">1.1 Palette</a></h3>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">class</span> <span class="ruby-constant">Palette</span>
+    <span class="ruby-identifier">include</span> <span class="ruby-constant">Enumerable</span>
+
+    <span class="ruby-identifier">attr_reader</span> <span class="ruby-value">:entries</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier ruby-title">[]</span>(<span class="ruby-operator">*</span><span class="ruby-identifier">entries</span>) = <span class="ruby-identifier">new</span>(<span class="ruby-identifier">entries</span>)
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">initialize</span>(<span class="ruby-identifier">entries</span>)
+      <span class="ruby-identifier">entries</span>.<span class="ruby-identifier">each</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">name</span><span class="ruby-operator">|</span>
+        <span class="ruby-keyword">unless</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">NAME_MAP</span>.<span class="ruby-identifier">key?</span>(<span class="ruby-identifier">name</span>)
+          <span class="ruby-identifier">raise</span> <span class="ruby-constant">ArgumentError</span>, <span class="ruby-node">&quot;unknown palette color #{name.inspect}; &quot;</span> \
+                <span class="ruby-node">&quot;registered colors: #{Color::NAME_MAP.keys.join(&#39;, &#39;)}&quot;</span>
+        <span class="ruby-keyword">end</span>
+      <span class="ruby-keyword">end</span>
+      <span class="ruby-ivar">@entries</span> = <span class="ruby-identifier">entries</span>.<span class="ruby-identifier">freeze</span>
+      <span class="ruby-ivar">@index</span> = <span class="ruby-identifier">entries</span>.<span class="ruby-identifier">each_with_index</span>.<span class="ruby-identifier">to_h</span>.<span class="ruby-identifier">freeze</span>
+      <span class="ruby-comment"># Pre-resolve palette entries → RGBA for distance calculations.</span>
+      <span class="ruby-comment"># Avoids repeated Color.from_name lookups during quantization.</span>
+      <span class="ruby-ivar">@rgba_by_entry</span> = <span class="ruby-identifier">entries</span>.<span class="ruby-identifier">map</span> { <span class="ruby-operator">|</span><span class="ruby-identifier">name</span><span class="ruby-operator">|</span> [<span class="ruby-identifier">name</span>, <span class="ruby-constant">Color</span>.<span class="ruby-identifier">from_name</span>(<span class="ruby-identifier">name</span>)] }.<span class="ruby-identifier">to_h</span>.<span class="ruby-identifier">freeze</span>
+      <span class="ruby-comment"># Memoization cache: packed RGBA integer → nearest palette entry.</span>
+      <span class="ruby-comment"># Dashboard UIs reuse the same few colors across thousands of pixels;</span>
+      <span class="ruby-comment"># this cache turns O(palette_size) per pixel into O(1) for repeats.</span>
+      <span class="ruby-comment"># Key is a packed 32-bit integer (not a String) to avoid allocation per lookup.</span>
+      <span class="ruby-ivar">@nearest_cache</span> = {}
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">each</span>(<span class="ruby-operator">&amp;</span>) = <span class="ruby-identifier">entries</span>.<span class="ruby-identifier">each</span>(<span class="ruby-operator">&amp;</span>)
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">size</span> = <span class="ruby-identifier">entries</span>.<span class="ruby-identifier">size</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">include?</span>(<span class="ruby-identifier">color</span>) = <span class="ruby-ivar">@index</span>.<span class="ruby-identifier">key?</span>(<span class="ruby-identifier">color</span>)
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">index_of</span>(<span class="ruby-identifier">color</span>) = <span class="ruby-ivar">@index</span>.<span class="ruby-identifier">fetch</span>(<span class="ruby-identifier">color</span>)
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">color_at</span>(<span class="ruby-identifier">index</span>) = <span class="ruby-identifier">entries</span>.<span class="ruby-identifier">fetch</span>(<span class="ruby-identifier">index</span>)
+
+    <span class="ruby-comment"># Map an RGBA Color to the nearest palette entry.</span>
+    <span class="ruby-comment"># Used by the Renderer during quantization. Results are memoized</span>
+    <span class="ruby-comment"># by a packed integer key — zero allocation per cache hit.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">nearest_color</span>(<span class="ruby-identifier">rgba</span>)
+      <span class="ruby-identifier">key</span> = (<span class="ruby-identifier">rgba</span>.<span class="ruby-identifier">r</span> <span class="ruby-operator">&lt;&lt;</span> <span class="ruby-value">24</span>) <span class="ruby-operator">|</span> (<span class="ruby-identifier">rgba</span>.<span class="ruby-identifier">g</span> <span class="ruby-operator">&lt;&lt;</span> <span class="ruby-value">16</span>) <span class="ruby-operator">|</span> (<span class="ruby-identifier">rgba</span>.<span class="ruby-identifier">b</span> <span class="ruby-operator">&lt;&lt;</span> <span class="ruby-value">8</span>) <span class="ruby-operator">|</span> <span class="ruby-identifier">rgba</span>.<span class="ruby-identifier">a</span>
+      <span class="ruby-ivar">@nearest_cache</span>[<span class="ruby-identifier">key</span>] <span class="ruby-operator">||=</span>
+        <span class="ruby-identifier">entries</span>.<span class="ruby-identifier">min_by</span> { <span class="ruby-operator">|</span><span class="ruby-identifier">name</span><span class="ruby-operator">|</span> <span class="ruby-identifier">color_distance</span>(<span class="ruby-identifier">rgba</span>, <span class="ruby-ivar">@rgba_by_entry</span>[<span class="ruby-identifier">name</span>]) }
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-identifier">private</span>
+
+    <span class="ruby-comment"># Redmean color distance — a cheap perceptual approximation that weights</span>
+    <span class="ruby-comment"># RGB channels based on human vision sensitivity. Dramatically better than</span>
+    <span class="ruby-comment"># Euclidean RGB for palette mapping (e.g., dark blues correctly map to blue</span>
+    <span class="ruby-comment"># instead of black). See https://www.compuphase.com/cmetric.htm</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">color_distance</span>(<span class="ruby-identifier">a</span>, <span class="ruby-identifier">b</span>)
+      <span class="ruby-identifier">rmean</span> = (<span class="ruby-identifier">a</span>.<span class="ruby-identifier">r</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">b</span>.<span class="ruby-identifier">r</span>) <span class="ruby-operator">/</span> <span class="ruby-value">2.0</span>
+      <span class="ruby-identifier">dr</span> = <span class="ruby-identifier">a</span>.<span class="ruby-identifier">r</span> <span class="ruby-operator">-</span> <span class="ruby-identifier">b</span>.<span class="ruby-identifier">r</span>
+      <span class="ruby-identifier">dg</span> = <span class="ruby-identifier">a</span>.<span class="ruby-identifier">g</span> <span class="ruby-operator">-</span> <span class="ruby-identifier">b</span>.<span class="ruby-identifier">g</span>
+      <span class="ruby-identifier">db</span> = <span class="ruby-identifier">a</span>.<span class="ruby-identifier">b</span> <span class="ruby-operator">-</span> <span class="ruby-identifier">b</span>.<span class="ruby-identifier">b</span>
+      (<span class="ruby-value">2</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">rmean</span> <span class="ruby-operator">/</span> <span class="ruby-value">256.0</span>) <span class="ruby-operator">*</span> <span class="ruby-identifier">dr</span><span class="ruby-operator">**</span><span class="ruby-value">2</span> <span class="ruby-operator">+</span> <span class="ruby-value">4</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">dg</span><span class="ruby-operator">**</span><span class="ruby-value">2</span> <span class="ruby-operator">+</span> (<span class="ruby-value">2</span> <span class="ruby-operator">+</span> (<span class="ruby-value">255</span> <span class="ruby-operator">-</span> <span class="ruby-identifier">rmean</span>) <span class="ruby-operator">/</span> <span class="ruby-value">256.0</span>) <span class="ruby-operator">*</span> <span class="ruby-identifier">db</span><span class="ruby-operator">**</span><span class="ruby-value">2</span>
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-1.2+PixelFormat" class="legacy-anchor"></span>
+<h3 id="12-pixelformat"><a href="#12-pixelformat">1.2 PixelFormat</a></h3>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-constant">PixelFormat</span> = <span class="ruby-constant">Data</span>.<span class="ruby-identifier">define</span>(<span class="ruby-value">:name</span>, <span class="ruby-value">:bits_per_pixel</span>, <span class="ruby-value">:palette</span>) <span class="ruby-keyword">do</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">pixels_per_byte</span> = <span class="ruby-value">8</span> <span class="ruby-operator">/</span> <span class="ruby-identifier">bits_per_pixel</span>
+
+    <span class="ruby-constant">MONO</span>   = <span class="ruby-identifier">new</span>(<span class="ruby-value">name:</span> <span class="ruby-value">:mono</span>,   <span class="ruby-value">bits_per_pixel:</span> <span class="ruby-value">1</span>, <span class="ruby-value">palette:</span> <span class="ruby-constant">Palette</span>[<span class="ruby-value">:black</span>, <span class="ruby-value">:white</span>])
+    <span class="ruby-constant">GRAY4</span>  = <span class="ruby-identifier">new</span>(<span class="ruby-value">name:</span> <span class="ruby-value">:gray4</span>,  <span class="ruby-value">bits_per_pixel:</span> <span class="ruby-value">2</span>,
+                 <span class="ruby-value">palette:</span> <span class="ruby-constant">Palette</span>[<span class="ruby-value">:black</span>, <span class="ruby-value">:dark_gray</span>, <span class="ruby-value">:light_gray</span>, <span class="ruby-value">:white</span>])
+    <span class="ruby-constant">COLOR4</span> = <span class="ruby-identifier">new</span>(<span class="ruby-value">name:</span> <span class="ruby-value">:color4</span>, <span class="ruby-value">bits_per_pixel:</span> <span class="ruby-value">4</span>,
+                 <span class="ruby-value">palette:</span> <span class="ruby-constant">Palette</span>[<span class="ruby-value">:black</span>, <span class="ruby-value">:white</span>, <span class="ruby-value">:yellow</span>, <span class="ruby-value">:red</span>])
+    <span class="ruby-constant">COLOR7</span> = <span class="ruby-identifier">new</span>(<span class="ruby-value">name:</span> <span class="ruby-value">:color7</span>, <span class="ruby-value">bits_per_pixel:</span> <span class="ruby-value">4</span>,
+                 <span class="ruby-value">palette:</span> <span class="ruby-constant">Palette</span>[<span class="ruby-value">:black</span>, <span class="ruby-value">:white</span>, <span class="ruby-value">:green</span>, <span class="ruby-value">:blue</span>, <span class="ruby-value">:red</span>, <span class="ruby-value">:yellow</span>, <span class="ruby-value">:orange</span>])
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">buffer_size</span>(<span class="ruby-identifier">width</span>, <span class="ruby-identifier">height</span>)
+      <span class="ruby-identifier">bytes_per_row</span> = (<span class="ruby-identifier">width</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">pixels_per_byte</span> <span class="ruby-operator">-</span> <span class="ruby-value">1</span>) <span class="ruby-operator">/</span> <span class="ruby-identifier">pixels_per_byte</span>
+      <span class="ruby-identifier">bytes_per_row</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">height</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">valid_color?</span>(<span class="ruby-identifier">color</span>) = <span class="ruby-identifier">palette</span>.<span class="ruby-identifier">include?</span>(<span class="ruby-identifier">color</span>)
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<blockquote>
+<p><strong>Palette ordering:</strong> The vendor library names grayscale values in reverse (<code>GRAY1</code> = blackest, <code>GRAY4</code> = white). Our <code>GRAY4</code> format intentionally reorders to <code>[:black, :dark_gray, :light_gray, :white]</code> (dark-to-light). The numeric mapping to vendor values happens at the C boundary.</p>
+
+<p><strong>Scale:</strong> The vendor’s <code>Scale</code> integer (2, 4, 6, 7) is <strong>not exposed</strong> in the Ruby <code>PixelFormat</code> API — it is an internal detail used only at the C boundary where <a href="../ext/chroma_wave/framebuffer_c.html">framebuffer.c</a> maps <code>pixel_format</code> enum values to packing logic.</p>
+</blockquote>
+<hr>
+
+<span id="label-2.+Surface+Protocol+-26+Implementations" class="legacy-anchor"></span>
+<h2 id="2-surface-protocol--implementations"><a href="#2-surface-protocol--implementations">2. Surface Protocol &amp; Implementations</a></h2>
+
+<span id="label-2.1+Surface+Module" class="legacy-anchor"></span>
+<h3 id="21-surface-module"><a href="#21-surface-module">2.1 Surface Module</a></h3>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">module</span> <span class="ruby-constant">Surface</span>
+    <span class="ruby-comment"># Required by includers:</span>
+    <span class="ruby-comment">#   #width, #height     → Integer</span>
+    <span class="ruby-comment">#   #set_pixel(x, y, color = Color::BLACK)</span>
+    <span class="ruby-comment">#   #get_pixel(x, y) → color</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">in_bounds?</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>) = <span class="ruby-identifier">x</span> <span class="ruby-operator">&gt;=</span> <span class="ruby-value">0</span> <span class="ruby-operator">&amp;&amp;</span> <span class="ruby-identifier">x</span> <span class="ruby-operator">&lt;</span> <span class="ruby-identifier">width</span> <span class="ruby-operator">&amp;&amp;</span> <span class="ruby-identifier">y</span> <span class="ruby-operator">&gt;=</span> <span class="ruby-value">0</span> <span class="ruby-operator">&amp;&amp;</span> <span class="ruby-identifier">y</span> <span class="ruby-operator">&lt;</span> <span class="ruby-identifier">height</span>
+
+    <span class="ruby-comment"># Default clear: fill the entire surface via set_pixel.</span>
+    <span class="ruby-comment"># Includers (Canvas, Framebuffer) override with optimized versions.</span>
+    <span class="ruby-comment"># Layer inherits this and correctly fills only its own bounds.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">clear</span>(<span class="ruby-identifier">color</span> = <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">WHITE</span>)
+      <span class="ruby-identifier">height</span>.<span class="ruby-identifier">times</span> { <span class="ruby-operator">|</span><span class="ruby-identifier">y</span><span class="ruby-operator">|</span> <span class="ruby-identifier">width</span>.<span class="ruby-identifier">times</span> { <span class="ruby-operator">|</span><span class="ruby-identifier">x</span><span class="ruby-operator">|</span> <span class="ruby-identifier">set_pixel</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-identifier">color</span>) } }
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_line</span>(<span class="ruby-identifier">x0</span>, <span class="ruby-identifier">y0</span>, <span class="ruby-identifier">x1</span>, <span class="ruby-identifier">y1</span>, <span class="ruby-value">color:</span>)
+      <span class="ruby-comment"># Bresenham — delegates to self.set_pixel</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_rect</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-identifier">w</span>, <span class="ruby-identifier">h</span>, <span class="ruby-value">color:</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">false</span>)
+      <span class="ruby-comment"># Outline or filled rectangle</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">draw_circle</span>(<span class="ruby-identifier">cx</span>, <span class="ruby-identifier">cy</span>, <span class="ruby-identifier">r</span>, <span class="ruby-value">color:</span>, <span class="ruby-value">fill:</span> <span class="ruby-keyword">false</span>)
+      <span class="ruby-comment"># Midpoint circle algorithm</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">blit</span>(<span class="ruby-identifier">source</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>)
+      <span class="ruby-comment"># Copy pixels from another Surface</span>
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<blockquote>
+<p><strong>Bounds contract:</strong> <code>set_pixel</code> silently drops out-of-bounds writes (clipping behavior). <code>get_pixel</code> returns <code>nil</code> for out-of-bounds coordinates — callers that read pixels near edges must check for <code>nil</code> or use <code>in_bounds?</code> first. Drawing primitives (which only call <code>set_pixel</code>) are naturally safe. Code that reads pixels (e.g., <code>blit</code> compositing) must guard against <code>nil</code> returns from the destination surface. This asymmetry is intentional: silent clipping on writes avoids bounds-check overhead in the hot drawing path, while explicit <code>nil</code> on reads prevents silent use of garbage data.</p>
+</blockquote>
+
+<p>For the full set of drawing primitives (polyline, rounded_rect, ellipse, arc, polygon, flood_fill), see <a href="CONTENT_PIPELINE_md.html#2-shape-primitives">CONTENT_PIPELINE.md, Section 2</a>.</p>
+
+<span id="label-2.2+Canvas" class="legacy-anchor"></span>
+<h3 id="22-canvas"><a href="#22-canvas">2.2 Canvas</a></h3>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">class</span> <span class="ruby-constant">Canvas</span>
+    <span class="ruby-identifier">include</span> <span class="ruby-constant">Surface</span>
+
+    <span class="ruby-identifier">attr_reader</span> <span class="ruby-value">:width</span>, <span class="ruby-value">:height</span>
+
+    <span class="ruby-constant">BYTES_PER_PIXEL</span> = <span class="ruby-value">4</span>  <span class="ruby-comment"># RGBA</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">initialize</span>(<span class="ruby-value">width:</span>, <span class="ruby-value">height:</span>, <span class="ruby-value">background:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">WHITE</span>)
+      <span class="ruby-ivar">@width</span> = <span class="ruby-identifier">width</span>
+      <span class="ruby-ivar">@height</span> = <span class="ruby-identifier">height</span>
+      <span class="ruby-comment"># Packed RGBA String — one contiguous allocation, single GC object.</span>
+      <span class="ruby-comment"># C accelerators operate directly on this buffer via RSTRING_PTR.</span>
+      <span class="ruby-ivar">@buffer</span> = (<span class="ruby-identifier">background</span>.<span class="ruby-identifier">to_rgba_bytes</span> <span class="ruby-operator">*</span> (<span class="ruby-identifier">width</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">height</span>)).<span class="ruby-identifier">b</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">set_pixel</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-identifier">color</span> = <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+      <span class="ruby-keyword">return</span> <span class="ruby-keyword">unless</span> <span class="ruby-identifier">in_bounds?</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>)
+      <span class="ruby-ivar">@buffer</span>[(<span class="ruby-identifier">y</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">width</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">x</span>) <span class="ruby-operator">*</span> <span class="ruby-constant">BYTES_PER_PIXEL</span>, <span class="ruby-constant">BYTES_PER_PIXEL</span>] =
+        <span class="ruby-identifier">color</span>.<span class="ruby-identifier">to_rgba_bytes</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">get_pixel</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>)
+      <span class="ruby-keyword">return</span> <span class="ruby-keyword">unless</span> <span class="ruby-identifier">in_bounds?</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>)
+      <span class="ruby-constant">Color</span>.<span class="ruby-identifier">from_rgba_bytes</span>(
+        <span class="ruby-ivar">@buffer</span>[(<span class="ruby-identifier">y</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">width</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">x</span>) <span class="ruby-operator">*</span> <span class="ruby-constant">BYTES_PER_PIXEL</span>, <span class="ruby-constant">BYTES_PER_PIXEL</span>]
+      )
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># C-accelerated: memset-equivalent fill of packed RGBA bytes.</span>
+    <span class="ruby-comment"># Falls back to Ruby loop if C extension unavailable.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">clear</span>(<span class="ruby-identifier">color</span> = <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">WHITE</span>)
+      <span class="ruby-identifier">_canvas_clear</span>(<span class="ruby-identifier">color</span>.<span class="ruby-identifier">r</span>, <span class="ruby-identifier">color</span>.<span class="ruby-identifier">g</span>, <span class="ruby-identifier">color</span>.<span class="ruby-identifier">b</span>, <span class="ruby-identifier">color</span>.<span class="ruby-identifier">a</span>)
+    <span class="ruby-keyword">rescue</span> <span class="ruby-constant">NoMethodError</span>
+      <span class="ruby-comment"># Build a full-size RGBA string from the 4-byte color pattern, then</span>
+      <span class="ruby-comment"># replace the buffer contents. This allocates one transient String</span>
+      <span class="ruby-comment"># (~1.5MB for 800×480) but avoids 384K individual String#[]= calls.</span>
+      <span class="ruby-comment"># The transient is eligible for GC immediately after replace returns.</span>
+      <span class="ruby-identifier">pixel</span> = <span class="ruby-identifier">color</span>.<span class="ruby-identifier">to_rgba_bytes</span>
+      <span class="ruby-ivar">@buffer</span>.<span class="ruby-identifier">replace</span>(<span class="ruby-identifier">pixel</span> <span class="ruby-operator">*</span> (<span class="ruby-identifier">width</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">height</span>))
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># C-accelerated: per-pixel alpha composite of source onto self.</span>
+    <span class="ruby-comment"># Falls back to Ruby loop if C extension unavailable.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">blit</span>(<span class="ruby-identifier">source</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>)
+      <span class="ruby-keyword">if</span> <span class="ruby-identifier">source</span>.<span class="ruby-identifier">is_a?</span>(<span class="ruby-constant">Canvas</span>) <span class="ruby-operator">&amp;&amp;</span> <span class="ruby-identifier">respond_to?</span>(<span class="ruby-value">:_canvas_blit_alpha</span>, <span class="ruby-keyword">true</span>)
+        <span class="ruby-identifier">_canvas_blit_alpha</span>(<span class="ruby-identifier">source</span>, <span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>)
+      <span class="ruby-keyword">else</span>
+        <span class="ruby-identifier">blit_ruby</span>(<span class="ruby-identifier">source</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>)
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Bulk-load packed RGBA bytes (from Image#write_to_memory or similar).</span>
+    <span class="ruby-comment"># C-accelerated: single memcpy into the buffer. Falls back to Ruby.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">load_rgba_bytes</span>(<span class="ruby-identifier">bytes</span>, <span class="ruby-value">width:</span> <span class="ruby-ivar">@width</span>, <span class="ruby-value">height:</span> <span class="ruby-ivar">@height</span>, <span class="ruby-value">x:</span> <span class="ruby-value">0</span>, <span class="ruby-value">y:</span> <span class="ruby-value">0</span>)
+      <span class="ruby-keyword">if</span> <span class="ruby-identifier">respond_to?</span>(<span class="ruby-value">:_canvas_load_rgba</span>, <span class="ruby-keyword">true</span>)
+        <span class="ruby-identifier">_canvas_load_rgba</span>(<span class="ruby-identifier">bytes</span>, <span class="ruby-identifier">width</span>, <span class="ruby-identifier">height</span>, <span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>)
+      <span class="ruby-keyword">else</span>
+        <span class="ruby-identifier">load_rgba_bytes_ruby</span>(<span class="ruby-identifier">bytes</span>, <span class="ruby-value">width:</span>, <span class="ruby-value">height:</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>)
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Raw buffer access — used by Renderer for direct byte iteration</span>
+    <span class="ruby-comment"># without per-pixel Color materialization.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">rgba_bytes</span> = <span class="ruby-ivar">@buffer</span>
+
+    <span class="ruby-comment"># Create a clipped sub-region for independent drawing</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">layer</span>(<span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>, <span class="ruby-value">width:</span>, <span class="ruby-value">height:</span>, <span class="ruby-operator">&amp;</span><span class="ruby-identifier">block</span>)
+      <span class="ruby-constant">Layer</span>.<span class="ruby-identifier">new</span>(<span class="ruby-keyword">self</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>, <span class="ruby-value">width:</span>, <span class="ruby-value">height:</span>).<span class="ruby-identifier">tap</span> { <span class="ruby-operator">|</span><span class="ruby-identifier">l</span><span class="ruby-operator">|</span> <span class="ruby-keyword">yield</span> <span class="ruby-identifier">l</span> <span class="ruby-keyword">if</span> <span class="ruby-identifier">block</span> }
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-identifier">private</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">blit_ruby</span>(<span class="ruby-identifier">source</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>)
+      <span class="ruby-identifier">source</span>.<span class="ruby-identifier">height</span>.<span class="ruby-identifier">times</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">sy</span><span class="ruby-operator">|</span>
+        <span class="ruby-identifier">source</span>.<span class="ruby-identifier">width</span>.<span class="ruby-identifier">times</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">sx</span><span class="ruby-operator">|</span>
+          <span class="ruby-identifier">src_color</span> = <span class="ruby-identifier">source</span>.<span class="ruby-identifier">get_pixel</span>(<span class="ruby-identifier">sx</span>, <span class="ruby-identifier">sy</span>)
+          <span class="ruby-keyword">next</span> <span class="ruby-keyword">if</span> <span class="ruby-identifier">src_color</span>.<span class="ruby-identifier">transparent?</span>
+          <span class="ruby-identifier">dest_x</span>, <span class="ruby-identifier">dest_y</span> = <span class="ruby-identifier">x</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">sx</span>, <span class="ruby-identifier">y</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">sy</span>
+          <span class="ruby-keyword">next</span> <span class="ruby-keyword">unless</span> <span class="ruby-identifier">in_bounds?</span>(<span class="ruby-identifier">dest_x</span>, <span class="ruby-identifier">dest_y</span>)
+          <span class="ruby-identifier">bg</span> = <span class="ruby-identifier">get_pixel</span>(<span class="ruby-identifier">dest_x</span>, <span class="ruby-identifier">dest_y</span>)
+          <span class="ruby-identifier">set_pixel</span>(<span class="ruby-identifier">dest_x</span>, <span class="ruby-identifier">dest_y</span>, <span class="ruby-identifier">src_color</span>.<span class="ruby-identifier">over</span>(<span class="ruby-identifier">bg</span>))
+        <span class="ruby-keyword">end</span>
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">load_rgba_bytes_ruby</span>(<span class="ruby-identifier">bytes</span>, <span class="ruby-value">width:</span>, <span class="ruby-value">height:</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>)
+      <span class="ruby-identifier">height</span>.<span class="ruby-identifier">times</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">row</span><span class="ruby-operator">|</span>
+        <span class="ruby-identifier">width</span>.<span class="ruby-identifier">times</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">col</span><span class="ruby-operator">|</span>
+          <span class="ruby-identifier">src_off</span> = (<span class="ruby-identifier">row</span> <span class="ruby-operator">*</span> <span class="ruby-identifier">width</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">col</span>) <span class="ruby-operator">*</span> <span class="ruby-constant">BYTES_PER_PIXEL</span>
+          <span class="ruby-identifier">dst_off</span> = ((<span class="ruby-identifier">y</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">row</span>) <span class="ruby-operator">*</span> <span class="ruby-ivar">@width</span> <span class="ruby-operator">+</span> (<span class="ruby-identifier">x</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">col</span>)) <span class="ruby-operator">*</span> <span class="ruby-constant">BYTES_PER_PIXEL</span>
+          <span class="ruby-keyword">next</span> <span class="ruby-keyword">unless</span> <span class="ruby-identifier">in_bounds?</span>(<span class="ruby-identifier">x</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">col</span>, <span class="ruby-identifier">y</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">row</span>)
+          <span class="ruby-ivar">@buffer</span>[<span class="ruby-identifier">dst_off</span>, <span class="ruby-constant">BYTES_PER_PIXEL</span>] = <span class="ruby-identifier">bytes</span>[<span class="ruby-identifier">src_off</span>, <span class="ruby-constant">BYTES_PER_PIXEL</span>]
+        <span class="ruby-keyword">end</span>
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-2.3+Layer" class="legacy-anchor"></span>
+<h3 id="23-layer"><a href="#23-layer">2.3 Layer</a></h3>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">class</span> <span class="ruby-constant">Layer</span>
+    <span class="ruby-identifier">include</span> <span class="ruby-constant">Surface</span>
+
+    <span class="ruby-identifier">attr_reader</span> <span class="ruby-value">:width</span>, <span class="ruby-value">:height</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">initialize</span>(<span class="ruby-identifier">parent</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>, <span class="ruby-value">width:</span>, <span class="ruby-value">height:</span>)
+      <span class="ruby-ivar">@parent</span> = <span class="ruby-identifier">parent</span>
+      <span class="ruby-ivar">@offset_x</span> = <span class="ruby-identifier">x</span>
+      <span class="ruby-ivar">@offset_y</span> = <span class="ruby-identifier">y</span>
+      <span class="ruby-ivar">@width</span> = <span class="ruby-identifier">width</span>
+      <span class="ruby-ivar">@height</span> = <span class="ruby-identifier">height</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">set_pixel</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-identifier">color</span> = <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+      <span class="ruby-keyword">return</span> <span class="ruby-keyword">unless</span> <span class="ruby-identifier">in_bounds?</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>)
+      <span class="ruby-ivar">@parent</span>.<span class="ruby-identifier">set_pixel</span>(<span class="ruby-ivar">@offset_x</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">x</span>, <span class="ruby-ivar">@offset_y</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">y</span>, <span class="ruby-identifier">color</span>)
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">get_pixel</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>)
+      <span class="ruby-keyword">return</span> <span class="ruby-keyword">unless</span> <span class="ruby-identifier">in_bounds?</span>(<span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>)
+      <span class="ruby-ivar">@parent</span>.<span class="ruby-identifier">get_pixel</span>(<span class="ruby-ivar">@offset_x</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">x</span>, <span class="ruby-ivar">@offset_y</span> <span class="ruby-operator">+</span> <span class="ruby-identifier">y</span>)
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<blockquote>
+<p><strong>Layer bounds are not validated against the parent.</strong> <code>Layer.new</code> does not check that the region falls within the parent’s dimensions. A Layer extending past the parent edge will delegate out-of-bounds coordinates to the parent’s <code>set_pixel</code>/<code>get_pixel</code>, which clip silently (writes) or return <code>nil</code> (reads). This is by design — it avoids validation overhead and allows intentional “overflow” patterns where a Layer is used as a logical coordinate space even if partially off-screen.</p>
+</blockquote>
+
+<span id="label-2.4+Framebuffer+-28C-backed-29" class="legacy-anchor"></span>
+<h3 id="24-framebuffer-c-backed"><a href="#24-framebuffer-c-backed">2.4 Framebuffer (C-backed)</a></h3>
+
+<pre>Framebuffer (C-backed, TypedData)
+  +-- Includes: Surface protocol
+  +-- Owns: raw byte buffer (xmalloc&#39;d)
+  +-- Knows: width, height, PixelFormat
+  +-- Methods: set_pixel, get_pixel, clear, buffer_bytes, buffer_size
+  +-- set_pixel/get_pixel: format-aware bit-packing (C, ~100 lines from GUI_Paint.c)
+  +-- No drawing state, no transforms, no global state</pre>
+
+<blockquote>
+<p><strong><code>set_pixel</code> color contract:</strong> Framebuffer’s <code>set_pixel</code> accepts a <strong>palette entry</strong> (<code>:black</code>, <code>:red</code>, etc.) — the same lowercase symbols used in <code>Palette</code> entries. The C implementation maps the palette entry to its integer index via <code>Palette#index_of</code>, then bit-packs that index into the buffer at the correct position. <code>get_pixel</code> does the reverse: extracts the integer index and returns the palette entry via <code>Palette#color_at</code>.</p>
+
+<pre class="ruby"><span class="ruby-identifier">fb</span>.<span class="ruby-identifier">set_pixel</span>(<span class="ruby-value">10</span>, <span class="ruby-value">20</span>, <span class="ruby-value">:black</span>)     <span class="ruby-comment"># palette entry → index → bit-packed</span>
+<span class="ruby-identifier">fb</span>.<span class="ruby-identifier">get_pixel</span>(<span class="ruby-value">10</span>, <span class="ruby-value">20</span>)             <span class="ruby-comment"># → :black</span>
+</pre>
+
+<p>The <code>Surface</code> mixin’s drawing primitives accept a <code>color:</code> keyword. On a Canvas, this is a <code>Color</code> (RGBA). On a Framebuffer, this is a palette entry. The <code>Surface</code> protocol doesn’t constrain the type — it just passes whatever <code>color:</code> value through to <code>set_pixel</code>. This duck-typing means the same <code>draw_rect</code> call works on both, with the color type matching the surface’s storage format. The <code>Renderer</code> is the bridge: it maps <code>Color</code> → palette entry during quantization, writing palette entries into the Framebuffer.</p>
+
+<p><strong>Padding invariant:</strong> For non-byte-aligned widths, the trailing bits in the last byte of each row are <strong>always zero</strong>. This applies to all sub-byte formats: MONO (1 bpp, e.g., 122px = 15.25 bytes/row → 16 bytes with 6 padding bits) and GRAY4 (2 bpp, e.g., 122px = 30.5 bytes/row → 31 bytes with 4 padding bits). <code>set_pixel</code> never writes to padding positions, and <code>clear</code> zeros the entire buffer including padding. This invariant must be preserved by <a href="../ext/chroma_wave/framebuffer_c.html">framebuffer.c</a> to prevent display artifacts from garbage padding bits.</p>
+</blockquote>
+<hr>
+
+<span id="label-3.+Display+-26+Capabilities" class="legacy-anchor"></span>
+<h2 id="3-display--capabilities"><a href="#3-display--capabilities">3. Display &amp; Capabilities</a></h2>
+
+<span id="label-3.1+Display+Base+Class" class="legacy-anchor"></span>
+<h3 id="31-display-base-class"><a href="#31-display-base-class">3.1 Display Base Class</a></h3>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">class</span> <span class="ruby-constant">Display</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">show</span>(<span class="ruby-identifier">canvas_or_fb</span>)
+      <span class="ruby-identifier">ensure_initialized!</span>
+      <span class="ruby-identifier">fb</span> = <span class="ruby-keyword">case</span> <span class="ruby-identifier">canvas_or_fb</span>
+           <span class="ruby-keyword">when</span> <span class="ruby-constant">Canvas</span>     <span class="ruby-keyword">then</span> <span class="ruby-identifier">renderer</span>.<span class="ruby-identifier">render</span>(<span class="ruby-identifier">canvas_or_fb</span>)
+           <span class="ruby-keyword">when</span> <span class="ruby-constant">Framebuffer</span> <span class="ruby-keyword">then</span> <span class="ruby-identifier">canvas_or_fb</span>
+           <span class="ruby-keyword">else</span> <span class="ruby-identifier">raise</span> <span class="ruby-constant">TypeError</span>, <span class="ruby-node">&quot;expected Canvas or Framebuffer, got #{canvas_or_fb.class}&quot;</span>
+           <span class="ruby-keyword">end</span>
+      <span class="ruby-identifier">validate_format!</span>(<span class="ruby-identifier">fb</span>)
+      <span class="ruby-identifier">device</span>.<span class="ruby-identifier">synchronize</span> { <span class="ruby-identifier">_epd_display</span>(<span class="ruby-identifier">fb</span>) }
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">clear</span>(<span class="ruby-value">color:</span> <span class="ruby-value">:white</span>)
+      <span class="ruby-identifier">ensure_initialized!</span>
+      <span class="ruby-identifier">device</span>.<span class="ruby-identifier">synchronize</span> { <span class="ruby-identifier">_epd_clear</span>(<span class="ruby-identifier">color</span>) }
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">sleep</span>
+      <span class="ruby-identifier">device</span>.<span class="ruby-identifier">synchronize</span> { <span class="ruby-identifier">_epd_sleep</span> }
+      <span class="ruby-ivar">@initialized</span> = <span class="ruby-keyword">false</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">close</span>
+      <span class="ruby-identifier">sleep</span> <span class="ruby-keyword">rescue</span> <span class="ruby-keyword">nil</span>
+      <span class="ruby-identifier">device</span>.<span class="ruby-identifier">close</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Block-style lifecycle: auto-closes when the block exits.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-keyword">self</span>.<span class="ruby-identifier ruby-title">open</span>(<span class="ruby-value">model:</span>, <span class="ruby-operator">&amp;</span><span class="ruby-identifier">block</span>)
+      <span class="ruby-identifier">display</span> = <span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span>)
+      <span class="ruby-keyword">return</span> <span class="ruby-identifier">display</span> <span class="ruby-keyword">unless</span> <span class="ruby-identifier">block</span>
+      <span class="ruby-keyword">begin</span>
+        <span class="ruby-keyword">yield</span> <span class="ruby-identifier">display</span>
+      <span class="ruby-keyword">ensure</span>
+        <span class="ruby-identifier">display</span>.<span class="ruby-identifier">close</span>
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-identifier">private</span>
+
+    <span class="ruby-comment"># Lazy initialization: the hardware init sequence runs on first use,</span>
+    <span class="ruby-comment"># not at construction time. This allows Display objects to be created</span>
+    <span class="ruby-comment"># without hardware present (useful for testing, configuration, and</span>
+    <span class="ruby-comment"># querying model capabilities). The MOCK backend&#39;s init is a no-op.</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">ensure_initialized!</span>
+      <span class="ruby-keyword">return</span> <span class="ruby-keyword">if</span> <span class="ruby-ivar">@initialized</span>
+
+      <span class="ruby-identifier">device</span>.<span class="ruby-identifier">synchronize</span> { <span class="ruby-identifier">_epd_init</span> }
+      <span class="ruby-ivar">@initialized</span> = <span class="ruby-keyword">true</span>
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-3.2+C+Bridge+Methods" class="legacy-anchor"></span>
+<h3 id="32-c-bridge-methods"><a href="#32-c-bridge-methods">3.2 C Bridge Methods</a></h3>
+
+<p>All C-backed display operations are defined as <strong>private methods on the Display base class</strong> in <code>Init_chroma_wave</code>. The Ruby capability modules provide the public API with validation:</p>
+
+<pre class="c">/* In chroma_wave.c Init_chroma_wave(): */
+rb_define_private_method(rb_cDisplay, &quot;_epd_init&quot;,
+                         rb_epd_init, 0);
+rb_define_private_method(rb_cDisplay, &quot;_epd_clear&quot;,
+                         rb_epd_clear, 1);
+rb_define_private_method(rb_cDisplay, &quot;_epd_sleep&quot;,
+                         rb_epd_sleep, 0);
+rb_define_private_method(rb_cDisplay, &quot;_epd_display_base&quot;,
+                         rb_epd_display_base, 1);
+rb_define_private_method(rb_cDisplay, &quot;_epd_display_partial&quot;,
+                         rb_epd_display_partial, 1);
+rb_define_private_method(rb_cDisplay, &quot;_epd_init_fast&quot;,
+                         rb_epd_init_fast, 0);
+rb_define_private_method(rb_cDisplay, &quot;_epd_display_fast&quot;,
+                         rb_epd_display_fast, 1);
+rb_define_private_method(rb_cDisplay, &quot;_epd_display_dual&quot;,
+                         rb_epd_display_dual, 2);
+rb_define_private_method(rb_cDisplay, &quot;_epd_display_region&quot;,
+                         rb_epd_display_region, 5);
+/* ... etc. C implementations check driver-&gt;custom_display or fall
+   through to the generic config-driven path. */
+
+/* Canvas C accelerators (canvas.c): operate on Canvas&#39;s String buffer */
+rb_define_private_method(rb_cCanvas, &quot;_canvas_clear&quot;,
+                         rb_canvas_clear, 4);        /* r, g, b, a */
+rb_define_private_method(rb_cCanvas, &quot;_canvas_blit_alpha&quot;,
+                         rb_canvas_blit_alpha, 3);   /* source, x, y */
+rb_define_private_method(rb_cCanvas, &quot;_canvas_load_rgba&quot;,
+                         rb_canvas_load_rgba, 5);    /* bytes, w, h, x, y */</pre>
+
+<span id="label-3.3+Capability+Modules" class="legacy-anchor"></span>
+<h3 id="33-capability-modules"><a href="#33-capability-modules">3.3 Capability Modules</a></h3>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">module</span> <span class="ruby-constant">Capabilities</span>
+    <span class="ruby-keyword">module</span> <span class="ruby-constant">PartialRefresh</span>
+      <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">display_partial</span>(<span class="ruby-identifier">framebuffer</span>)
+        <span class="ruby-identifier">validate_format!</span>(<span class="ruby-identifier">framebuffer</span>)
+        <span class="ruby-identifier">_epd_display_partial</span>(<span class="ruby-identifier">framebuffer</span>)   <span class="ruby-comment"># private C method</span>
+      <span class="ruby-keyword">end</span>
+
+      <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">display_base</span>(<span class="ruby-identifier">framebuffer</span>)
+        <span class="ruby-identifier">validate_format!</span>(<span class="ruby-identifier">framebuffer</span>)
+        <span class="ruby-identifier">_epd_display_base</span>(<span class="ruby-identifier">framebuffer</span>)
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">module</span> <span class="ruby-constant">FastRefresh</span>
+      <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">init_fast</span>  = <span class="ruby-identifier">_epd_init_fast</span>
+      <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">display_fast</span>(<span class="ruby-identifier">framebuffer</span>)
+        <span class="ruby-identifier">validate_format!</span>(<span class="ruby-identifier">framebuffer</span>)
+        <span class="ruby-identifier">_epd_display_fast</span>(<span class="ruby-identifier">framebuffer</span>)
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">module</span> <span class="ruby-constant">GrayscaleMode</span>
+      <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">init_grayscale</span> = <span class="ruby-identifier">_epd_init_grayscale</span>
+      <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">display_grayscale</span>(<span class="ruby-identifier">framebuffer</span>)
+        <span class="ruby-identifier">validate_format!</span>(<span class="ruby-identifier">framebuffer</span>)
+        <span class="ruby-identifier">_epd_display_grayscale</span>(<span class="ruby-identifier">framebuffer</span>)
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">module</span> <span class="ruby-constant">DualBuffer</span>
+      <span class="ruby-comment"># Pure hardware concern: sends two mono framebuffers over SPI.</span>
+      <span class="ruby-comment"># Canvas → dual-FB splitting is handled by Renderer.</span>
+
+      <span class="ruby-comment"># Common path: Canvas is auto-split into two mono FBs via Renderer.</span>
+      <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">show</span>(<span class="ruby-identifier">canvas</span>)
+        <span class="ruby-identifier">black_fb</span>, <span class="ruby-identifier">red_fb</span> = <span class="ruby-identifier">renderer</span>.<span class="ruby-identifier">render_dual</span>(<span class="ruby-identifier">canvas</span>)
+        <span class="ruby-identifier">device</span>.<span class="ruby-identifier">synchronize</span> { <span class="ruby-identifier">_epd_display_dual</span>(<span class="ruby-identifier">black_fb</span>, <span class="ruby-identifier">red_fb</span>) }
+      <span class="ruby-keyword">end</span>
+
+      <span class="ruby-comment"># Power-user path: provide two pre-rendered mono Framebuffers directly.</span>
+      <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">show_raw</span>(<span class="ruby-identifier">black_fb</span>, <span class="ruby-identifier">red_fb</span>)
+        [<span class="ruby-identifier">black_fb</span>, <span class="ruby-identifier">red_fb</span>].<span class="ruby-identifier">each</span> { <span class="ruby-identifier">validate_format!</span>(<span class="ruby-identifier">_1</span>) }
+        <span class="ruby-identifier">device</span>.<span class="ruby-identifier">synchronize</span> { <span class="ruby-identifier">_epd_display_dual</span>(<span class="ruby-identifier">black_fb</span>, <span class="ruby-identifier">red_fb</span>) }
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">module</span> <span class="ruby-constant">RegionalRefresh</span>
+      <span class="ruby-comment"># Sub-rectangle partial refresh — updates only a region of the display</span>
+      <span class="ruby-comment"># without redrawing the entire screen. Faster than full partial refresh</span>
+      <span class="ruby-comment"># for small UI updates (e.g., clock digit, status icon).</span>
+      <span class="ruby-comment">#</span>
+      <span class="ruby-comment"># Coordinates are in physical display pixels (pre-transform).</span>
+      <span class="ruby-comment"># The framebuffer must match the region dimensions, not the full display.</span>
+      <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">display_region</span>(<span class="ruby-identifier">framebuffer</span>, <span class="ruby-value">x:</span>, <span class="ruby-value">y:</span>, <span class="ruby-value">width:</span>, <span class="ruby-value">height:</span>)
+        <span class="ruby-identifier">validate_format!</span>(<span class="ruby-identifier">framebuffer</span>)
+        <span class="ruby-identifier">expected</span> = <span class="ruby-identifier">pixel_format</span>.<span class="ruby-identifier">buffer_size</span>(<span class="ruby-identifier">width</span>, <span class="ruby-identifier">height</span>)
+        <span class="ruby-keyword">unless</span> <span class="ruby-identifier">framebuffer</span>.<span class="ruby-identifier">buffer_size</span> <span class="ruby-operator">==</span> <span class="ruby-identifier">expected</span>
+          <span class="ruby-identifier">raise</span> <span class="ruby-constant">FormatMismatchError</span>,
+                <span class="ruby-node">&quot;region framebuffer size #{framebuffer.buffer_size} != expected #{expected} &quot;</span> \
+                <span class="ruby-node">&quot;for #{width}x#{height} region&quot;</span>
+        <span class="ruby-keyword">end</span>
+        <span class="ruby-identifier">_epd_display_region</span>(<span class="ruby-identifier">framebuffer</span>, <span class="ruby-identifier">x</span>, <span class="ruby-identifier">y</span>, <span class="ruby-identifier">width</span>, <span class="ruby-identifier">height</span>)
+      <span class="ruby-keyword">end</span>
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+
+<span id="label-3.4+Model+Registry" class="legacy-anchor"></span>
+<h3 id="34-model-registry"><a href="#34-model-registry">3.4 Model Registry</a></h3>
+
+<pre class="ruby"><span class="ruby-constant">CAPABILITY_MAP</span> = {
+  <span class="ruby-constant">EPD_CAP_PARTIAL</span>   <span class="ruby-operator">=&gt;</span> <span class="ruby-constant">Capabilities</span><span class="ruby-operator">::</span><span class="ruby-constant">PartialRefresh</span>,
+  <span class="ruby-constant">EPD_CAP_FAST</span>      <span class="ruby-operator">=&gt;</span> <span class="ruby-constant">Capabilities</span><span class="ruby-operator">::</span><span class="ruby-constant">FastRefresh</span>,
+  <span class="ruby-constant">EPD_CAP_GRAYSCALE</span> <span class="ruby-operator">=&gt;</span> <span class="ruby-constant">Capabilities</span><span class="ruby-operator">::</span><span class="ruby-constant">GrayscaleMode</span>,
+  <span class="ruby-constant">EPD_CAP_DUAL_BUF</span>  <span class="ruby-operator">=&gt;</span> <span class="ruby-constant">Capabilities</span><span class="ruby-operator">::</span><span class="ruby-constant">DualBuffer</span>,
+  <span class="ruby-constant">EPD_CAP_REGIONAL</span>  <span class="ruby-operator">=&gt;</span> <span class="ruby-constant">Capabilities</span><span class="ruby-operator">::</span><span class="ruby-constant">RegionalRefresh</span>,
+}.<span class="ruby-identifier">freeze</span>
+
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Native</span>.<span class="ruby-identifier">each_model_config</span> <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">name</span>, <span class="ruby-identifier">config</span><span class="ruby-operator">|</span>
+  <span class="ruby-identifier">klass</span> = <span class="ruby-constant">Class</span>.<span class="ruby-identifier">new</span>(<span class="ruby-constant">Display</span>) <span class="ruby-keyword">do</span>
+    <span class="ruby-identifier">config</span>.<span class="ruby-identifier">capability_flags</span>.<span class="ruby-identifier">each</span> { <span class="ruby-operator">|</span><span class="ruby-identifier">flag</span><span class="ruby-operator">|</span> <span class="ruby-identifier">include</span> <span class="ruby-constant">CAPABILITY_MAP</span>[<span class="ruby-identifier">flag</span>] }
+  <span class="ruby-keyword">end</span>
+  <span class="ruby-identifier">registry</span>[<span class="ruby-identifier">name</span>.<span class="ruby-identifier">to_sym</span>] = <span class="ruby-identifier">klass</span>
+<span class="ruby-keyword">end</span>
+</pre>
+<hr>
+
+<span id="label-4.+Renderer" class="legacy-anchor"></span>
+<h2 id="4-renderer"><a href="#4-renderer">4. Renderer</a></h2>
+
+<pre class="ruby"><span class="ruby-keyword">module</span> <span class="ruby-constant">ChromaWave</span>
+  <span class="ruby-keyword">class</span> <span class="ruby-constant">Renderer</span>
+    <span class="ruby-identifier">attr_reader</span> <span class="ruby-value">:pixel_format</span>, <span class="ruby-value">:dither</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">initialize</span>(<span class="ruby-value">pixel_format:</span>, <span class="ruby-value">dither:</span> <span class="ruby-value">:floyd_steinberg</span>)
+      <span class="ruby-ivar">@pixel_format</span> = <span class="ruby-identifier">pixel_format</span>
+      <span class="ruby-ivar">@dither</span> = <span class="ruby-identifier">dither</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># Render a Canvas into a Framebuffer</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">render</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-value">into:</span> <span class="ruby-keyword">nil</span>)
+      <span class="ruby-identifier">fb</span> = <span class="ruby-identifier">into</span> <span class="ruby-operator">||</span> <span class="ruby-constant">Framebuffer</span>.<span class="ruby-identifier">new</span>(
+        <span class="ruby-value">width:</span> <span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">width</span>, <span class="ruby-value">height:</span> <span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">height</span>,
+        <span class="ruby-value">format:</span> <span class="ruby-identifier">pixel_format</span>
+      )
+      <span class="ruby-identifier">quantize</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-identifier">fb</span>)
+      <span class="ruby-identifier">fb</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-comment"># For dual-buffer displays: one Canvas → two mono Framebuffers</span>
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">render_dual</span>(<span class="ruby-identifier">canvas</span>)
+      <span class="ruby-identifier">black_fb</span> = <span class="ruby-constant">Framebuffer</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">width</span>, <span class="ruby-value">height:</span> <span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">height</span>,
+                                  <span class="ruby-value">format:</span> <span class="ruby-constant">PixelFormat</span><span class="ruby-operator">::</span><span class="ruby-constant">MONO</span>)
+      <span class="ruby-identifier">red_fb</span>   = <span class="ruby-constant">Framebuffer</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">width</span>, <span class="ruby-value">height:</span> <span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">height</span>,
+                                  <span class="ruby-value">format:</span> <span class="ruby-constant">PixelFormat</span><span class="ruby-operator">::</span><span class="ruby-constant">MONO</span>)
+      <span class="ruby-identifier">split_channels</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-identifier">black_fb</span>, <span class="ruby-identifier">red_fb</span>)
+      [<span class="ruby-identifier">black_fb</span>, <span class="ruby-identifier">red_fb</span>]
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-identifier">private</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">quantize</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-identifier">fb</span>)
+      <span class="ruby-comment"># Iterate canvas.rgba_bytes directly (4-byte stride per pixel).</span>
+      <span class="ruby-comment"># For each pixel, materialize a Color only for the Palette#nearest_color</span>
+      <span class="ruby-comment"># call (memoized — repeated colors hit the cache). Map the result to a</span>
+      <span class="ruby-comment"># palette entry, apply dithering to distribute quantization error, and</span>
+      <span class="ruby-comment"># write the palette entry to fb.set_pixel.</span>
+    <span class="ruby-keyword">end</span>
+
+    <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">split_channels</span>(<span class="ruby-identifier">canvas</span>, <span class="ruby-identifier">black_fb</span>, <span class="ruby-identifier">red_fb</span>)
+      <span class="ruby-comment"># Route :black/:dark pixels → black_fb</span>
+      <span class="ruby-comment"># Route :red/:yellow pixels → red_fb</span>
+      <span class="ruby-comment"># Everything else → black_fb (default layer)</span>
+    <span class="ruby-keyword">end</span>
+  <span class="ruby-keyword">end</span>
+<span class="ruby-keyword">end</span>
+</pre>
+<hr>
+
+<span id="label-5.+Two-Tier+Driver+Registry+-28C-29" class="legacy-anchor"></span>
+<h2 id="5-two-tier-driver-registry-c"><a href="#5-two-tier-driver-registry-c">5. Two-Tier Driver Registry ©</a></h2>
+
+<span id="label-5.1+Tier+1-3A+Static+Configuration" class="legacy-anchor"></span>
+<h3 id="51-tier-1-static-configuration"><a href="#51-tier-1-static-configuration">5.1 Tier 1: Static Configuration</a></h3>
+
+<pre class="c">typedef struct {
+    const char   *name;              /* &quot;epd_2in13_v4&quot; */
+    uint16_t      width, height;     /* 122, 250 */
+    uint8_t       pixel_format;      /* PIXEL_FORMAT_MONO, _GRAY4, _COLOR7, etc. */
+    uint8_t       busy_active_level; /* 0 = active-low, 1 = active-high */
+    uint16_t      reset_timing[3];   /* {pre_ms, low_ms, post_ms} e.g. {20, 2, 20} */
+    uint8_t       display_cmd;       /* 0x24 or 0x10 */
+    const uint8_t *init_sequence;    /* Encoded: {cmd, n_data, data0, data1, ...} */
+    uint16_t      init_sequence_len;
+    uint32_t      capabilities;      /* EPD_CAP_FAST | EPD_CAP_PARTIAL | ... */
+} epd_model_config_t;</pre>
+
+<span id="label-5.2+Tier+2-3A+Optional+Code+Overrides" class="legacy-anchor"></span>
+<h3 id="52-tier-2-optional-code-overrides"><a href="#52-tier-2-optional-code-overrides">5.2 Tier 2: Optional Code Overrides</a></h3>
+
+<pre class="c">typedef struct {
+    const epd_model_config_t *config;
+    int  (*custom_init)(const epd_model_config_t *cfg, uint8_t mode);
+    int  (*custom_display)(const epd_model_config_t *cfg, const uint8_t *buf, size_t len);
+    void (*pre_display)(const epd_model_config_t *cfg);   /* e.g. 5in65f power-on */
+    void (*post_display)(const epd_model_config_t *cfg);  /* e.g. 5in65f power-off */
+} epd_driver_t;</pre>
+
+<span id="label-5.3+Tier+2+Override+Example+-28EPD_4in2+LUT+selection-29" class="legacy-anchor"></span>
+<h3 id="53-tier-2-override-example-epd4in2-lut-selection"><a href="#53-tier-2-override-example-epd4in2-lut-selection">5.3 Tier 2 Override Example (EPD_4in2 LUT selection)</a></h3>
+
+<pre class="c">static const uint8_t lut_full[]    = { /* ... */ };
+static const uint8_t lut_partial[] = { /* ... */ };
+
+static int epd_4in2_custom_init(
+    const epd_model_config_t *cfg, uint8_t mode) {
+    epd_generic_init(cfg);  /* shared register sequence from Tier 1 */
+    switch (mode) {
+        case MODE_FULL:    load_lut(lut_full, sizeof(lut_full)); break;
+        case MODE_PARTIAL: load_lut(lut_partial, sizeof(lut_partial)); break;
+    }
+    return EPD_OK;
+}</pre>
+
+<span id="label-5.4+Shared+Device+I-2FO" class="legacy-anchor"></span>
+<h3 id="54-shared-device-io"><a href="#54-shared-device-io">5.4 Shared Device I/O</a></h3>
+
+<pre class="c">/* Shared I/O functions on Device — called by all drivers */
+void epd_reset(const epd_model_config_t *cfg);
+void epd_send_command(uint8_t cmd);
+void epd_send_data(uint8_t data);
+void epd_send_data_bulk(const uint8_t *data, size_t len);
+int  epd_read_busy(const epd_model_config_t *cfg, uint32_t timeout_ms);</pre>
+
+<span id="label-5.5+Busy-Wait+with+Timeout" class="legacy-anchor"></span>
+<h3 id="55-busy-wait-with-timeout"><a href="#55-busy-wait-with-timeout">5.5 Busy-Wait with Timeout</a></h3>
+
+<pre class="c">int epd_read_busy(const epd_model_config_t *cfg, uint32_t timeout_ms) {
+    uint32_t elapsed = 0;
+    while (DEV_Digital_Read(EPD_BUSY_PIN) == cfg-&gt;busy_active_level) {
+        if (elapsed &gt;= timeout_ms) return EPD_ERR_TIMEOUT;
+        DEV_Delay_ms(10);
+        elapsed += 10;
+    }
+    return EPD_OK;
+}</pre>
+
+<span id="label-5.6+EPD_5in65f+Dual+Busy+Polarity+Override" class="legacy-anchor"></span>
+<h3 id="56-epd5in65f-dual-busy-polarity-override"><a href="#56-epd5in65f-dual-busy-polarity-override">5.6 EPD_5in65f Dual Busy Polarity Override</a></h3>
+
+<pre class="c">static int epd_5in65f_custom_display(
+    const epd_model_config_t *cfg, const uint8_t *buf, size_t len) {
+    epd_5in65f_power_on();
+    epd_wait_busy_high(cfg, 5000);     /* wait for HIGH (power ready) */
+    send_buffer(buf, len);
+    epd_wait_busy_low(cfg, 30000);     /* wait for LOW (refresh done) */
+    epd_5in65f_power_off();
+    return EPD_OK;
+}</pre>
+<hr>
+
+<span id="label-6.+Error+Hierarchy" class="legacy-anchor"></span>
+<h2 id="6-error-hierarchy"><a href="#6-error-hierarchy">6. Error Hierarchy</a></h2>
+
+<pre class="ruby"><span class="ruby-comment"># Hardware errors (runtime failures, things go wrong with the device)</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Error</span> <span class="ruby-operator">&lt;</span> <span class="ruby-constant">StandardError</span>              <span class="ruby-comment"># base class for all gem errors</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">DeviceError</span> <span class="ruby-operator">&lt;</span> <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Error</span>    <span class="ruby-comment"># SPI/GPIO failures</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">InitError</span> <span class="ruby-operator">&lt;</span> <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">DeviceError</span>    <span class="ruby-comment"># DEV_Module_Init failed</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">BusyTimeoutError</span> <span class="ruby-operator">&lt;</span> <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">DeviceError</span>  <span class="ruby-comment"># ReadBusy exceeded timeout</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">SPIError</span> <span class="ruby-operator">&lt;</span> <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">DeviceError</span>     <span class="ruby-comment"># SPI transfer failed</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">DependencyError</span> <span class="ruby-operator">&lt;</span> <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Error</span>  <span class="ruby-comment"># optional dep missing (FreeType)</span>
+
+<span class="ruby-comment"># API misuse (programmer errors, fail fast)</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">FormatMismatchError</span> <span class="ruby-operator">&lt;</span> <span class="ruby-constant">ArgumentError</span>  <span class="ruby-comment"># wrong PixelFormat for display</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">ModelNotFoundError</span> <span class="ruby-operator">&lt;</span> <span class="ruby-constant">ArgumentError</span>   <span class="ruby-comment"># unknown model symbol</span>
+</pre>
+<hr>
+
+<span id="label-7.+Thread+Safety" class="legacy-anchor"></span>
+<h2 id="7-thread-safety"><a href="#7-thread-safety">7. Thread Safety</a></h2>
+
+<pre class="ruby"><span class="ruby-keyword">class</span> <span class="ruby-constant">Device</span>
+  <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">initialize</span>
+    <span class="ruby-ivar">@mutex</span> = <span class="ruby-constant">Mutex</span>.<span class="ruby-identifier">new</span>
+  <span class="ruby-keyword">end</span>
+
+  <span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">synchronize</span>(<span class="ruby-operator">&amp;</span><span class="ruby-identifier">block</span>) = <span class="ruby-ivar">@mutex</span>.<span class="ruby-identifier">synchronize</span>(<span class="ruby-operator">&amp;</span><span class="ruby-identifier">block</span>)
+<span class="ruby-keyword">end</span>
+</pre>
+
+<p>All hardware operations (<code>Display#show</code>, <code>Display#clear</code>, <code>Display#init</code>) synchronize through the Device’s mutex. <code>Framebuffer#set_pixel</code> and other pure-memory operations are <strong>not locked</strong>— they have no hardware interaction and contention is the caller’s responsibility.</p>
+
+<p>The GVL release composes correctly with this: the mutex is acquired before entering C, the GVL is released inside C for the busy-wait, and the mutex is released after the C call returns. Other Ruby threads can run during the busy-wait but cannot start a concurrent hardware operation.</p>
+<hr>
+
+<span id="label-8.+Transform+Integration" class="legacy-anchor"></span>
+<h2 id="8-transform-integration"><a href="#8-transform-integration">8. Transform Integration</a></h2>
+
+<pre>Transform (Ruby value object)
+  +-- Knows: rotation (0/90/180/270), mirror mode, logical dimensions
+  +-- Method: apply(x, y) -&gt; [physical_x, physical_y]
+  +-- Composed with any Surface via TransformedSurface wrapper</pre>
+
+<blockquote>
+<p><strong>Deferred design:</strong> The concrete Transform API (wrapper class, composition semantics, integration with Renderer) will be designed during implementation. The key constraint is that Canvas always operates in logical (unrotated) coordinates — physical rotation is applied at the Renderer→Framebuffer boundary, not inside Canvas or Surface.</p>
+</blockquote>
+<hr>
+
+<span id="label-9.+Usage+Examples" class="legacy-anchor"></span>
+<h2 id="9-usage-examples"><a href="#9-usage-examples">9. Usage Examples</a></h2>
+
+<span id="label-Dashboard+Composition" class="legacy-anchor"></span>
+<h3 id="dashboard-composition"><a href="#dashboard-composition">Dashboard Composition</a></h3>
+
+<pre class="ruby"><span class="ruby-identifier">display</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_7in5_v2</span>)
+<span class="ruby-identifier">canvas</span>  = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Canvas</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">width</span>, <span class="ruby-value">height:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">height</span>)
+
+<span class="ruby-comment"># Header bar — independent clipped region, local coordinates</span>
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">layer</span>(<span class="ruby-value">x:</span> <span class="ruby-value">0</span>, <span class="ruby-value">y:</span> <span class="ruby-value">0</span>, <span class="ruby-value">width:</span> <span class="ruby-value">800</span>, <span class="ruby-value">height:</span> <span class="ruby-value">60</span>) <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">header</span><span class="ruby-operator">|</span>
+  <span class="ruby-identifier">header</span>.<span class="ruby-identifier">clear</span>(<span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+  <span class="ruby-identifier">header</span>.<span class="ruby-identifier">draw_text</span>(<span class="ruby-string">&quot;Dashboard&quot;</span>, <span class="ruby-value">x:</span> <span class="ruby-value">10</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">WHITE</span>, <span class="ruby-value">font:</span> <span class="ruby-identifier">title_font</span>)
+<span class="ruby-keyword">end</span>
+
+<span class="ruby-comment"># Chart widget — rendered off-screen, blitted into position</span>
+<span class="ruby-identifier">chart</span> = <span class="ruby-identifier">render_temperature_chart</span>(<span class="ruby-value">width:</span> <span class="ruby-value">380</span>, <span class="ruby-value">height:</span> <span class="ruby-value">200</span>)  <span class="ruby-comment"># returns a Canvas</span>
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">blit</span>(<span class="ruby-identifier">chart</span>, <span class="ruby-value">x:</span> <span class="ruby-value">10</span>, <span class="ruby-value">y:</span> <span class="ruby-value">70</span>)
+
+<span class="ruby-comment"># Sidebar — another independent region</span>
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">layer</span>(<span class="ruby-value">x:</span> <span class="ruby-value">410</span>, <span class="ruby-value">y:</span> <span class="ruby-value">70</span>, <span class="ruby-value">width:</span> <span class="ruby-value">380</span>, <span class="ruby-value">height:</span> <span class="ruby-value">400</span>) <span class="ruby-keyword">do</span> <span class="ruby-operator">|</span><span class="ruby-identifier">sidebar</span><span class="ruby-operator">|</span>
+  <span class="ruby-identifier">sidebar</span>.<span class="ruby-identifier">draw_text</span>(<span class="ruby-string">&quot;Status: OK&quot;</span>, <span class="ruby-value">x:</span> <span class="ruby-value">10</span>, <span class="ruby-value">y:</span> <span class="ruby-value">10</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>, <span class="ruby-value">font:</span> <span class="ruby-identifier">body_font</span>)
+  <span class="ruby-identifier">sidebar</span>.<span class="ruby-identifier">draw_rect</span>(<span class="ruby-value">0</span>, <span class="ruby-value">0</span>, <span class="ruby-identifier">sidebar</span>.<span class="ruby-identifier">width</span>, <span class="ruby-identifier">sidebar</span>.<span class="ruby-identifier">height</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+<span class="ruby-keyword">end</span>
+
+<span class="ruby-comment"># Single render pass: RGB canvas → quantized framebuffer → hardware</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)
+</pre>
+
+<span id="label-Display+Workflows" class="legacy-anchor"></span>
+<h3 id="display-workflows"><a href="#display-workflows">Display Workflows</a></h3>
+
+<pre class="ruby"><span class="ruby-comment"># Common path: draw on a Canvas, let Display handle rendering</span>
+<span class="ruby-identifier">canvas</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Canvas</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">width:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">width</span>, <span class="ruby-value">height:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">height</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_rect</span>(<span class="ruby-value">10</span>, <span class="ruby-value">10</span>, <span class="ruby-value">100</span>, <span class="ruby-value">50</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">BLACK</span>)
+<span class="ruby-identifier">canvas</span>.<span class="ruby-identifier">draw_circle</span>(<span class="ruby-value">60</span>, <span class="ruby-value">60</span>, <span class="ruby-value">30</span>, <span class="ruby-value">color:</span> <span class="ruby-constant">Color</span><span class="ruby-operator">::</span><span class="ruby-constant">RED</span>)
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">canvas</span>)                                 <span class="ruby-comment"># renders + sends to hardware</span>
+
+<span class="ruby-comment"># Power path: control rendering directly</span>
+<span class="ruby-identifier">renderer</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Renderer</span>.<span class="ruby-identifier">new</span>(
+  <span class="ruby-value">pixel_format:</span> <span class="ruby-identifier">display</span>.<span class="ruby-identifier">pixel_format</span>,
+  <span class="ruby-value">dither:</span> <span class="ruby-value">:ordered</span>                                   <span class="ruby-comment"># choose dithering strategy</span>
+)
+<span class="ruby-identifier">fb</span> = <span class="ruby-identifier">renderer</span>.<span class="ruby-identifier">render</span>(<span class="ruby-identifier">canvas</span>)
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">show</span>(<span class="ruby-identifier">fb</span>)                                     <span class="ruby-comment"># send pre-rendered framebuffer</span>
+
+<span class="ruby-comment"># Dual-buffer power path: provide two raw framebuffers</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">show_raw</span>(<span class="ruby-identifier">custom_black_fb</span>, <span class="ruby-identifier">custom_red_fb</span>)
+</pre>
+
+<span id="label-Model+Discovery" class="legacy-anchor"></span>
+<h3 id="model-discovery"><a href="#model-discovery">Model Discovery</a></h3>
+
+<pre class="ruby"><span class="ruby-identifier">display</span> = <span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_2in13_v4</span>)
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">class</span>                                  <span class="ruby-comment"># =&gt; anonymous subclass of Display</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">respond_to?</span>(<span class="ruby-value">:display_partial</span>)          <span class="ruby-comment"># =&gt; true</span>
+<span class="ruby-identifier">display</span>.<span class="ruby-identifier">is_a?</span>(<span class="ruby-constant">Capabilities</span><span class="ruby-operator">::</span><span class="ruby-constant">PartialRefresh</span>)    <span class="ruby-comment"># =&gt; true</span>
+
+<span class="ruby-comment"># Discovery</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">models</span>  <span class="ruby-comment"># =&gt; [:epd_2in13_v4, :epd_7in5_v2, ...]</span>
+
+<span class="ruby-comment"># Typo raises immediately</span>
+<span class="ruby-constant">ChromaWave</span><span class="ruby-operator">::</span><span class="ruby-constant">Display</span>.<span class="ruby-identifier">new</span>(<span class="ruby-value">model:</span> <span class="ruby-value">:epd_2in13</span>)
+<span class="ruby-comment"># =&gt; ChromaWave::ModelNotFoundError: unknown model :epd_2in13</span>
+<span class="ruby-comment">#    Did you mean: :epd_2in13_v4, :epd_2in13b_v4?</span>
+</pre>
+</div>
+<div id='context'>
+</div>
+
+</div>
+</div>
+
+<div id='footer-push'></div>
+</div>
+<div id='footer'>
+<a href="https://github.com/jeremyevans/hanna"><strong>Hanna</strong> RDoc template</a>
+</div>
+</body>
+</html>

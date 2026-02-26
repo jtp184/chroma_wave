@@ -28,4 +28,24 @@ namespace :generate do
   end
 end
 
-task default: %i[clobber compile spec rubocop]
+RDOC_EXCLUDE = %w[
+  bin/console
+  bin/setup
+  coverage
+  docs
+  Gemfile
+  Gemfile.lock
+  pkg
+  Rakefile
+  spec
+  tmp
+  vendor
+].map { |r| "--exclude=#{r}" }.join(' ').freeze
+
+desc 'Generate documentation'
+task :docs do
+  sh 'rm -rf docs'
+  sh "rdoc --output=docs --format=hanna --all --main=README.md #{RDOC_EXCLUDE}"
+end
+
+task default: %i[clobber compile spec rubocop docs]

@@ -1,0 +1,181 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html lang='en'>
+<head>
+<title>ChromaWave::DriverExtraction::Runner::SummaryPrinting</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+<link href='../../../../css/style.css' media='screen' rel='stylesheet' type='text/css'>
+<script type='text/javascript'>
+  function popupCode(url) {
+    window.open(url, "Code", "resizable=yes,scrollbars=yes,toolbar=no,status=no,height=150,width=400")
+  }
+  
+  function toggleCode(id) {
+    var code = document.getElementById(id)
+  
+    code.style.display = code.style.display != 'block' ? 'block' : 'none'
+    return true
+  }
+  
+  // Make codeblocks hidden by default
+  document.writeln('<' + 'style type="text/css">.method .source pre { display: none }<\/style>')
+</script>
+</head>
+<body class='page'>
+<div class='class' id='wrapper'>
+<div class='header'>
+<h1 class='name'><span class='type'>module</span>
+ChromaWave::DriverExtraction::Runner::SummaryPrinting
+</h1>
+<ol class='paths'>
+<li>
+<a href="../../../../files/lib/chroma_wave/driver_extraction/runner/summary_printing_rb.html">lib/chroma_wave/driver_extraction/runner/summary_printing.rb</a>
+</li>
+</ol>
+</div>
+<div id='content'>
+<div id='text'>
+<div id='description'>
+<p>Methods for printing the extraction summary report.</p>
+
+<p>Outputs total counts, tier2 model details, and warning details after all models have been processed.</p>
+</div>
+<div id='method-list'>
+<h2>Methods</h2>
+<h3>Private Instance</h3>
+<ol>
+<li><a href="#method-i-print_summary">print_summary</a></li>
+<li><a href="#method-i-print_summary_header">print_summary_header</a></li>
+<li><a href="#method-i-print_tier2_details">print_tier2_details</a></li>
+<li><a href="#method-i-print_warning_details">print_warning_details</a></li>
+</ol>
+</div>
+<div id='context'>
+</div>
+<div id='section'>
+<div id='methods'>
+<h2>Private Instance methods</h2>
+<div class='method private-instance' id='method-method-i-print_summary'>
+<a name='method-i-print_summary'></a>
+<div class='synopsis'>
+<span class='name'>print_summary</span><span class='arguments'>(configs, skipped)</span>
+
+</div>
+<div class='description'>
+
+<p>Prints the extraction summary.</p>
+
+<p>@param configs [Array&lt;DriverConfig&gt;] extracted configs @param skipped [Array&lt;String&gt;] skipped model names @return [void]</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-i-print_summary-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-i-print_summary-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/runner/summary_printing.rb, line 18</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">print_summary</span>(<span class="ruby-identifier">configs</span>, <span class="ruby-identifier">skipped</span>)
+  <span class="ruby-identifier">puts</span>
+  <span class="ruby-identifier">print_summary_header</span>(<span class="ruby-identifier">configs</span>, <span class="ruby-identifier">skipped</span>)
+  <span class="ruby-identifier">puts</span>
+  <span class="ruby-identifier">print_tier2_details</span>(<span class="ruby-identifier">configs</span>)
+  <span class="ruby-identifier">print_warning_details</span>(<span class="ruby-identifier">configs</span>)
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+<div class='method private-instance' id='method-method-i-print_summary_header'>
+<a name='method-i-print_summary_header'></a>
+<div class='synopsis'>
+<span class='name'>print_summary_header</span><span class='arguments'>(configs, skipped)</span>
+
+</div>
+<div class='description'>
+
+<p>Prints summary header lines.</p>
+
+<p>@param configs [Array&lt;DriverConfig&gt;] extracted configs @param skipped [Array&lt;String&gt;] skipped model names @return [void]</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-i-print_summary_header-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-i-print_summary_header-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/runner/summary_printing.rb, line 31</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">print_summary_header</span>(<span class="ruby-identifier">configs</span>, <span class="ruby-identifier">skipped</span>)
+  <span class="ruby-identifier">puts</span> <span class="ruby-string">&#39;=&#39;</span> <span class="ruby-operator">*</span> <span class="ruby-value">70</span>
+  <span class="ruby-identifier">puts</span> <span class="ruby-string">&#39;SUMMARY&#39;</span>
+  <span class="ruby-identifier">puts</span> <span class="ruby-string">&#39;=&#39;</span> <span class="ruby-operator">*</span> <span class="ruby-value">70</span>
+  <span class="ruby-identifier">puts</span> <span class="ruby-node">&quot;Total models extracted: #{configs.length}&quot;</span>
+  <span class="ruby-identifier">puts</span> <span class="ruby-node">&quot;Skipped: #{skipped.length} (#{skipped.join(&#39;, &#39;)})&quot;</span> <span class="ruby-keyword">unless</span> <span class="ruby-identifier">skipped</span>.<span class="ruby-identifier">empty?</span>
+  <span class="ruby-identifier">puts</span> <span class="ruby-node">&quot;Tier 2 models: #{configs.count(&amp;:tier2_reason)}&quot;</span>
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+<div class='method private-instance' id='method-method-i-print_tier2_details'>
+<a name='method-i-print_tier2_details'></a>
+<div class='synopsis'>
+<span class='name'>print_tier2_details</span><span class='arguments'>(configs)</span>
+
+</div>
+<div class='description'>
+
+<p>Prints Tier 2 model details.</p>
+
+<p>@param configs [Array&lt;DriverConfig&gt;] extracted configs @return [void]</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-i-print_tier2_details-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-i-print_tier2_details-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/runner/summary_printing.rb, line 44</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">print_tier2_details</span>(<span class="ruby-identifier">configs</span>)
+  <span class="ruby-identifier">tier2</span> = <span class="ruby-identifier">configs</span>.<span class="ruby-identifier">select</span>(<span class="ruby-operator">&amp;</span><span class="ruby-value">:tier2_reason</span>)
+  <span class="ruby-keyword">return</span> <span class="ruby-keyword">if</span> <span class="ruby-identifier">tier2</span>.<span class="ruby-identifier">empty?</span>
+
+  <span class="ruby-identifier">puts</span> <span class="ruby-string">&#39;Tier 2 models requiring manual overrides:&#39;</span>
+  <span class="ruby-identifier">tier2</span>.<span class="ruby-identifier">each</span> { <span class="ruby-operator">|</span><span class="ruby-identifier">c</span><span class="ruby-operator">|</span> <span class="ruby-identifier">puts</span> <span class="ruby-node">&quot;  - #{c.model_name}: #{c.tier2_reason}&quot;</span> }
+  <span class="ruby-identifier">puts</span>
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+<div class='method private-instance' id='method-method-i-print_warning_details'>
+<a name='method-i-print_warning_details'></a>
+<div class='synopsis'>
+<span class='name'>print_warning_details</span><span class='arguments'>(configs)</span>
+
+</div>
+<div class='description'>
+
+<p>Prints models with warnings.</p>
+
+<p>@param configs [Array&lt;DriverConfig&gt;] extracted configs @return [void]</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-i-print_warning_details-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-i-print_warning_details-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/runner/summary_printing.rb, line 57</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">print_warning_details</span>(<span class="ruby-identifier">configs</span>)
+  <span class="ruby-identifier">with_warnings</span> = <span class="ruby-identifier">configs</span>.<span class="ruby-identifier">reject</span> { <span class="ruby-operator">|</span><span class="ruby-identifier">c</span><span class="ruby-operator">|</span> <span class="ruby-identifier">c</span>.<span class="ruby-identifier">warnings</span>.<span class="ruby-identifier">empty?</span> }
+  <span class="ruby-keyword">return</span> <span class="ruby-keyword">if</span> <span class="ruby-identifier">with_warnings</span>.<span class="ruby-identifier">empty?</span>
+
+  <span class="ruby-identifier">puts</span> <span class="ruby-string">&#39;Models with warnings:&#39;</span>
+  <span class="ruby-identifier">with_warnings</span>.<span class="ruby-identifier">each</span> { <span class="ruby-operator">|</span><span class="ruby-identifier">c</span><span class="ruby-operator">|</span> <span class="ruby-identifier">puts</span> <span class="ruby-node">&quot;  - #{c.model_name}: #{c.warnings.join(&#39;; &#39;)}&quot;</span> }
+  <span class="ruby-identifier">puts</span>
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div id='footer-push'></div>
+</div>
+<div id='footer'>
+<a href="https://github.com/jeremyevans/hanna"><strong>Hanna</strong> RDoc template</a>
+</div>
+</body>
+</html>

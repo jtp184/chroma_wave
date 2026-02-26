@@ -1,0 +1,307 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html lang='en'>
+<head>
+<title>ChromaWave::DriverExtraction::HeaderGenerator</title>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+<link href='../../../css/style.css' media='screen' rel='stylesheet' type='text/css'>
+<script type='text/javascript'>
+  function popupCode(url) {
+    window.open(url, "Code", "resizable=yes,scrollbars=yes,toolbar=no,status=no,height=150,width=400")
+  }
+  
+  function toggleCode(id) {
+    var code = document.getElementById(id)
+  
+    code.style.display = code.style.display != 'block' ? 'block' : 'none'
+    return true
+  }
+  
+  // Make codeblocks hidden by default
+  document.writeln('<' + 'style type="text/css">.method .source pre { display: none }<\/style>')
+</script>
+</head>
+<body class='page'>
+<div class='class' id='wrapper'>
+<div class='header'>
+<h1 class='name'><span class='type'>class</span>
+ChromaWave::DriverExtraction::HeaderGenerator
+</h1>
+<ol class='paths'>
+<li>
+<a href="../../../files/lib/chroma_wave/driver_extraction/header_generator_rb.html">lib/chroma_wave/driver_extraction/header_generator.rb</a>
+</li>
+<li class='other'>
+<a href="../../../files/lib/chroma_wave/driver_extraction/header_generator/config_table_emitter_rb.html">lib/chroma_wave/driver_extraction/header_generator/config_table_emitter.rb</a>
+</li>
+<li class='other'>
+<a href="../../../files/lib/chroma_wave/driver_extraction/header_generator/sequence_formatting_rb.html">lib/chroma_wave/driver_extraction/header_generator/sequence_formatting.rb</a>
+</li>
+<li>
+<a class='show' href='#' onclick='this.parentNode.parentNode.className += &quot; expanded&quot;; this.parentNode.removeChild(this); return false'>show all</a>
+</li>
+</ol>
+<div class='parent'>
+Superclass:
+<strong>Object</strong>
+</div>
+</div>
+<div id='content'>
+<div id='text'>
+<div id='description'>
+<p>Generates a C header file from an array of {DriverConfig} structs.</p>
+
+<p>The output includes init sequence arrays, a model configuration table, and an ifndef include guard. The format matches the expected layout of <a href="../../../files/ext/chroma_wave/driver_configs_generated_h.html">driver_configs_generated.h</a>.</p>
+
+<p>@example</p>
+
+<pre class="ruby"><span class="ruby-identifier">generator</span> = <span class="ruby-constant">HeaderGenerator</span>.<span class="ruby-identifier">new</span>(<span class="ruby-identifier">configs</span>)
+<span class="ruby-constant">File</span>.<span class="ruby-identifier">write</span>(<span class="ruby-string">&#39;driver_configs_generated.h&#39;</span>, <span class="ruby-identifier">generator</span>.<span class="ruby-identifier">generate</span>)
+</pre>
+</div>
+<div id='method-list'>
+<h2>Methods</h2>
+<h3>Public Class</h3>
+<ol>
+<li><a href="#method-c-new">new</a></li>
+</ol>
+<h3>Public Instance</h3>
+<ol>
+<li><a href="#method-i-generate">generate</a></li>
+</ol>
+<h3>Private Instance</h3>
+<ol>
+<li><a href="#method-i-emit_init_arrays">emit_init_arrays</a></li>
+<li><a href="#method-i-emit_named_init_array">emit_named_init_array</a></li>
+<li><a href="#method-i-emit_primary_init_array">emit_primary_init_array</a></li>
+<li><a href="#method-i-header_footer">header_footer</a></li>
+<li><a href="#method-i-header_preamble">header_preamble</a></li>
+</ol>
+</div>
+<div id='context'>
+<div id='includes'>
+<h2>Included modules</h2>
+<ol>
+<li><a href="Opcodes.html">Opcodes</a></li>
+<li><a href="HeaderGenerator/SequenceFormatting.html">SequenceFormatting</a></li>
+<li><a href="HeaderGenerator/ConfigTableEmitter.html">ConfigTableEmitter</a></li>
+</ol>
+</div>
+</div>
+<div id='class-list'>
+<h2>Classes and Modules</h2>
+<ol>
+<li><a href="HeaderGenerator/ConfigTableEmitter.html">ChromaWave::DriverExtraction::HeaderGenerator::ConfigTableEmitter</a></li>
+<li><a href="HeaderGenerator/SequenceFormatting.html">ChromaWave::DriverExtraction::HeaderGenerator::SequenceFormatting</a></li>
+</ol>
+</div>
+<div id='section'>
+<div id='methods'>
+<h2>Public Class methods</h2>
+<div class='method public-class' id='method-method-c-new'>
+<a name='method-c-new'></a>
+<div class='synopsis'>
+<span class='name'>new</span><span class='arguments'>(configs)</span>
+
+</div>
+<div class='description'>
+
+<p>@param configs [Array&lt;DriverConfig&gt;] extracted model configurations</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-c-new-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-c-new-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/header_generator.rb, line 25</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">initialize</span>(<span class="ruby-identifier">configs</span>)
+  <span class="ruby-ivar">@configs</span> = <span class="ruby-identifier">configs</span>
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+<h2>Public Instance methods</h2>
+<div class='method public-instance' id='method-method-i-generate'>
+<a name='method-i-generate'></a>
+<div class='synopsis'>
+<span class='name'>generate</span><span class='arguments'>()</span>
+
+</div>
+<div class='description'>
+
+<p>Generates the complete C header file content.</p>
+
+<p>@return [String] complete C header file content</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-i-generate-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-i-generate-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/header_generator.rb, line 32</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">generate</span>
+  <span class="ruby-identifier">lines</span> = <span class="ruby-identifier">header_preamble</span>
+  <span class="ruby-ivar">@configs</span>.<span class="ruby-identifier">each</span> { <span class="ruby-operator">|</span><span class="ruby-identifier">config</span><span class="ruby-operator">|</span> <span class="ruby-identifier">lines</span>.<span class="ruby-identifier">concat</span>(<span class="ruby-identifier">emit_init_arrays</span>(<span class="ruby-identifier">config</span>)) }
+  <span class="ruby-identifier">lines</span>.<span class="ruby-identifier">concat</span>(<span class="ruby-identifier">emit_config_table</span>)
+  <span class="ruby-identifier">lines</span>.<span class="ruby-identifier">concat</span>(<span class="ruby-identifier">header_footer</span>)
+  <span class="ruby-identifier">lines</span>.<span class="ruby-identifier">join</span>(<span class="ruby-string">&quot;\n&quot;</span>)
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+<h2>Private Instance methods</h2>
+<div class='method private-instance' id='method-method-i-emit_init_arrays'>
+<a name='method-i-emit_init_arrays'></a>
+<div class='synopsis'>
+<span class='name'>emit_init_arrays</span><span class='arguments'>(config)</span>
+
+</div>
+<div class='description'>
+
+<p>Emits C array declarations for a config’s init sequences.</p>
+
+<p>@param config [DriverConfig] the model config @return [Array&lt;String&gt;]</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-i-emit_init_arrays-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-i-emit_init_arrays-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/header_generator.rb, line 72</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">emit_init_arrays</span>(<span class="ruby-identifier">config</span>)
+  <span class="ruby-identifier">lines</span> = <span class="ruby-identifier">emit_primary_init_array</span>(<span class="ruby-identifier">config</span>)
+  <span class="ruby-identifier">emit_named_init_array</span>(<span class="ruby-identifier">config</span>, <span class="ruby-value">:init_fast_sequence</span>, <span class="ruby-string">&#39;init_fast&#39;</span>, <span class="ruby-identifier">lines</span>)
+  <span class="ruby-identifier">emit_named_init_array</span>(<span class="ruby-identifier">config</span>, <span class="ruby-value">:init_partial_sequence</span>, <span class="ruby-string">&#39;init_partial&#39;</span>, <span class="ruby-identifier">lines</span>)
+  <span class="ruby-identifier">lines</span>
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+<div class='method private-instance' id='method-method-i-emit_named_init_array'>
+<a name='method-i-emit_named_init_array'></a>
+<div class='synopsis'>
+<span class='name'>emit_named_init_array</span><span class='arguments'>(config, field, suffix, lines)</span>
+
+</div>
+<div class='description'>
+
+<p>Emits a named init array if the sequence exists.</p>
+
+<p>@param config [DriverConfig] the model config @param field [Symbol] sequence field name @param suffix [String] C array name suffix @param lines [Array&lt;String&gt;] output accumulator @return [void]</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-i-emit_named_init_array-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-i-emit_named_init_array-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/header_generator.rb, line 102</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">emit_named_init_array</span>(<span class="ruby-identifier">config</span>, <span class="ruby-identifier">field</span>, <span class="ruby-identifier">suffix</span>, <span class="ruby-identifier">lines</span>)
+  <span class="ruby-identifier">seq</span> = <span class="ruby-identifier">config</span>.<span class="ruby-identifier">send</span>(<span class="ruby-identifier">field</span>)
+  <span class="ruby-keyword">return</span> <span class="ruby-keyword">unless</span> <span class="ruby-identifier">seq</span>
+
+  <span class="ruby-identifier">lines</span> <span class="ruby-operator">&lt;&lt;</span> <span class="ruby-node">&quot;static const uint8_t #{config.c_name}_#{suffix}[] = {&quot;</span>
+  <span class="ruby-identifier">lines</span> <span class="ruby-operator">&lt;&lt;</span> <span class="ruby-identifier">format_init_sequence</span>(<span class="ruby-identifier">seq</span>)
+  <span class="ruby-identifier">lines</span> <span class="ruby-operator">&lt;&lt;</span> <span class="ruby-string">&#39;};&#39;</span>
+  <span class="ruby-identifier">lines</span> <span class="ruby-operator">&lt;&lt;</span> <span class="ruby-string">&#39;&#39;</span>
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+<div class='method private-instance' id='method-method-i-emit_primary_init_array'>
+<a name='method-i-emit_primary_init_array'></a>
+<div class='synopsis'>
+<span class='name'>emit_primary_init_array</span><span class='arguments'>(config)</span>
+
+</div>
+<div class='description'>
+
+<p>Emits the primary init array with optional tier2 comment.</p>
+
+<p>@param config [DriverConfig] the model config @return [Array&lt;String&gt;]</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-i-emit_primary_init_array-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-i-emit_primary_init_array-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/header_generator.rb, line 83</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">emit_primary_init_array</span>(<span class="ruby-identifier">config</span>)
+  <span class="ruby-keyword">return</span> [] <span class="ruby-keyword">unless</span> <span class="ruby-identifier">config</span>.<span class="ruby-identifier">init_sequence</span>
+
+  <span class="ruby-identifier">tier2</span> = <span class="ruby-identifier">config</span>.<span class="ruby-identifier">tier2_reason</span> <span class="ruby-operator">?</span> <span class="ruby-node">&quot; /* TIER2: #{config.tier2_reason} */&quot;</span> <span class="ruby-operator">:</span> <span class="ruby-string">&#39;&#39;</span>
+  [
+    <span class="ruby-node">&quot;static const uint8_t #{config.c_name}_init[] = {#{tier2}&quot;</span>,
+    <span class="ruby-identifier">format_init_sequence</span>(<span class="ruby-identifier">config</span>.<span class="ruby-identifier">init_sequence</span>),
+    <span class="ruby-string">&#39;};&#39;</span>,
+    <span class="ruby-string">&#39;&#39;</span>
+  ]
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+<div class='method private-instance' id='method-method-i-header_footer'>
+<a name='method-i-header_footer'></a>
+<div class='synopsis'>
+<span class='name'>header_footer</span><span class='arguments'>()</span>
+
+</div>
+<div class='description'>
+
+<p>Returns the C header footer lines.</p>
+
+<p>@return [Array&lt;String&gt;]</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-i-header_footer-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-i-header_footer-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/header_generator.rb, line 58</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">header_footer</span>
+  [
+    <span class="ruby-string">&#39;&#39;</span>,
+    <span class="ruby-string">&#39;#define EPD_MODEL_COUNT (sizeof(epd_model_configs) / sizeof(epd_model_configs[0]))&#39;</span>,
+    <span class="ruby-string">&#39;&#39;</span>,
+    <span class="ruby-string">&#39;#endif /* DRIVER_CONFIGS_GENERATED_H */&#39;</span>,
+    <span class="ruby-string">&#39;&#39;</span>
+  ]
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+<div class='method private-instance' id='method-method-i-header_preamble'>
+<a name='method-i-header_preamble'></a>
+<div class='synopsis'>
+<span class='name'>header_preamble</span><span class='arguments'>()</span>
+
+</div>
+<div class='description'>
+
+<p>Returns the C header preamble lines.</p>
+
+<p>@return [Array&lt;String&gt;]</p>
+
+</div>
+<div class='source'>
+<a class='source-toggle' href='#' onclick='toggleCode(&#39;method-i-header_preamble-source&#39;); return false'>
+[show source]
+</a>
+<pre id='method-i-header_preamble-source'><span class="ruby-comment"># File lib/chroma_wave/driver_extraction/header_generator.rb, line 45</span>
+<span class="ruby-keyword">def</span> <span class="ruby-identifier ruby-title">header_preamble</span>
+  <span class="ruby-identifier">tier2_count</span> = <span class="ruby-ivar">@configs</span>.<span class="ruby-identifier">count</span>(<span class="ruby-operator">&amp;</span><span class="ruby-value">:tier2_reason</span>)
+  [
+    <span class="ruby-string">&#39;/* AUTO-GENERATED by rake generate:driver_configs -- DO NOT EDIT */&#39;</span>,
+    <span class="ruby-node">&quot;/* Models: #{@configs.length} total, #{tier2_count} tier2 */&quot;</span>,
+    <span class="ruby-string">&#39;&#39;</span>, <span class="ruby-string">&#39;#ifndef DRIVER_CONFIGS_GENERATED_H&#39;</span>, <span class="ruby-string">&#39;#define DRIVER_CONFIGS_GENERATED_H&#39;</span>,
+    <span class="ruby-string">&#39;&#39;</span>, <span class="ruby-string">&#39;#include &quot;chroma_wave.h&quot;&#39;</span>, <span class="ruby-string">&#39;#include &quot;driver_registry.h&quot;&#39;</span>, <span class="ruby-string">&#39;&#39;</span>
+  ]
+<span class="ruby-keyword">end</span></pre>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div id='footer-push'></div>
+</div>
+<div id='footer'>
+<a href="https://github.com/jeremyevans/hanna"><strong>Hanna</strong> RDoc template</a>
+</div>
+</body>
+</html>
