@@ -1,3 +1,9 @@
+/*
+ * Mock HAL backend for development/testing without GPIO/SPI hardware.
+ * NOTE: This implementation is single-threaded only. The static
+ * mock_busy_state toggle is not thread-safe and will produce
+ * non-deterministic results under parallel or forked test execution.
+ */
 #ifdef EPD_MOCK_BACKEND
 
 #include "mock_hal.h"
