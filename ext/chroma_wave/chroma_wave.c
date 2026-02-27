@@ -73,8 +73,15 @@ Init_chroma_wave(void)
     rb_eFormatMismatchError = rb_define_class_under(rb_mChromaWave, "FormatMismatchError",  rb_eArgError);
     rb_eModelNotFoundError  = rb_define_class_under(rb_mChromaWave, "ModelNotFoundError",   rb_eArgError);
 
+    /* Mode constants on Native */
+    rb_define_const(rb_mChromaWaveNative, "MODE_FULL",      INT2NUM(0));
+    rb_define_const(rb_mChromaWaveNative, "MODE_FAST",      INT2NUM(1));
+    rb_define_const(rb_mChromaWaveNative, "MODE_PARTIAL",   INT2NUM(2));
+    rb_define_const(rb_mChromaWaveNative, "MODE_GRAYSCALE", INT2NUM(3));
+
     /* Initialize sub-modules */
     Init_framebuffer();
     Init_driver_registry();
     Init_canvas();
+    Init_device();
 }

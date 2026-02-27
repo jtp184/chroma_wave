@@ -33,7 +33,7 @@ fb_dsize(const void *ptr)
     return sizeof(framebuffer_t) + fb->buffer_size;
 }
 
-static const rb_data_type_t framebuffer_type = {
+const rb_data_type_t framebuffer_type = {
     .wrap_struct_name = "ChromaWave::Framebuffer",
     .function = {
         .dmark  = NULL,

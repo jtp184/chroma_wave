@@ -102,7 +102,21 @@ module ChromaWave
           caps << :partial   if @h_content.match?(/Display_Partial|PartialDisplay|DisplayPartial|Part_Init/i)
           caps << :grayscale if @h_content.match?(/4Gray|4grey|4GRAY/i)
           caps << :dual_buf  if @h_content.match?(/Display_Base\b/)
+          caps << :regional  if regional_capable?
         end
+      end
+
+      # Detects regional (windowed) display capability.
+      #
+      # Looks for Display_Partial functions that accept coordinate parameters
+      # (Xstart, Ystart), distinguishing from full-screen partial refresh.
+      # Excludes the dual-gate 5in79 which has non-standard mirror registers.
+      #
+      # @return [Boolean] true if the model supports regional refresh
+      def regional_capable?
+        return false if @model_name.match?(/5in79/i)
+
+        @h_content.match?(/Display_Partial\s*\(.*Xstart.*Ystart/m)
       end
     end
   end

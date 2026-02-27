@@ -32,14 +32,26 @@ typedef struct epd_driver {
     int  (*custom_init)(const epd_model_config_t *cfg, uint8_t mode);
     int  (*custom_display)(const epd_model_config_t *cfg,
                            const uint8_t *buf, size_t len);
-    void (*pre_display)(const epd_model_config_t *cfg);
-    void (*post_display)(const epd_model_config_t *cfg);
+    int  (*pre_display)(const epd_model_config_t *cfg,
+                        volatile int *cancel_flag);
+    int  (*post_display)(const epd_model_config_t *cfg,
+                         volatile int *cancel_flag);
+    int  (*custom_display_region)(const epd_model_config_t *cfg,
+                                  const uint8_t *buf, size_t buf_len,
+                                  uint16_t x, uint16_t y,
+                                  uint16_t w, uint16_t h);
+    int  (*post_display_region)(const epd_model_config_t *cfg,
+                                volatile int *cancel_flag);
 } epd_driver_t;
 
 /* Generic (Tier 1) operations -- interpret init sequences */
 int  epd_generic_init(const epd_model_config_t *cfg, uint8_t mode);
 int  epd_generic_display(const epd_model_config_t *cfg,
                          const uint8_t *buf, size_t len);
+int  epd_generic_display_region(const epd_model_config_t *cfg,
+                                const uint8_t *buf, size_t buf_len,
+                                uint16_t x, uint16_t y,
+                                uint16_t w, uint16_t h);
 void epd_generic_sleep(const epd_model_config_t *cfg);
 
 /* Registry lookup */

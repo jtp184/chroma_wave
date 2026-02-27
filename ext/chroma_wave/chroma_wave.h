@@ -40,6 +40,7 @@ typedef enum {
 #define EPD_ERR_TIMEOUT  -1
 #define EPD_ERR_INIT     -2
 #define EPD_ERR_PARAM    -3
+#define EPD_ERR_ALLOC    -4
 
 /* Init sequence sentinel opcodes (0xF0-0xFF range).
  * SEQ_DELAY_MS takes a single uint8_t argument (max 255ms per opcode).
@@ -57,6 +58,7 @@ extern VALUE rb_mChromaWave;
 extern VALUE rb_mChromaWaveNative;
 extern VALUE rb_cFramebuffer;
 extern VALUE rb_cCanvas;
+extern VALUE rb_cDevice;
 extern VALUE rb_eChromaWaveError;
 extern VALUE rb_eDeviceError;
 extern VALUE rb_eInitError;
@@ -74,5 +76,6 @@ VALUE          cw_pixel_format_to_sym(pixel_format_t fmt);
 void Init_framebuffer(void);
 void Init_driver_registry(void);
 void Init_canvas(void);
+void Init_device(void);
 
 #endif /* CHROMA_WAVE_H */
