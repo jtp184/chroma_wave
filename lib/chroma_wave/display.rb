@@ -27,15 +27,16 @@ module ChromaWave
     # @param model [Symbol, String] model name (e.g. +:epd_2in13_v4+)
     # @return [Display] a subclass instance with appropriate capabilities
     # @raise [ModelNotFoundError] if the model is not in the registry
-    def self.new(model: nil, **)
+    def self.new(model: nil, **kwargs)
       if self == Display
         raise ArgumentError, 'missing keyword: :model' unless model
+        raise ArgumentError, "unknown keyword(s): #{kwargs.keys.join(', ')}" unless kwargs.empty?
 
         return Registry.build(model)
       end
 
       instance = allocate
-      instance.send(:initialize, **)
+      instance.send(:initialize, **kwargs)
       instance
     end
 
