@@ -532,6 +532,154 @@ epd_3in7_post_display(const epd_model_config_t *cfg,
 }
 
 /* ================================================================== */
+/* Category 6: Regional refresh overrides                              */
+/* ================================================================== */
+
+/* SSD1680 partial TurnOnDisplay: 0x22 + 0x1C + 0x20 + busy-wait.
+ * Used for regional refresh on SSD1680-based models. */
+static int
+ssd1680_turn_on_display_partial(const epd_model_config_t *cfg,
+                                volatile int *cancel_flag)
+{
+    epd_send_command(0x22);
+    epd_send_data(0x1C);
+    epd_send_command(0x20);
+    return epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
+}
+
+/* SSD1677 partial TurnOnDisplay: 0x22 + 0xFF + 0x20 + busy-wait.
+ * Used for regional refresh on SSD1677-based models. */
+static int
+ssd1677_turn_on_display_partial(const epd_model_config_t *cfg,
+                                volatile int *cancel_flag)
+{
+    epd_send_command(0x22);
+    epd_send_data(0xFF);
+    epd_send_command(0x20);
+    return epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
+}
+
+/* UC8179 regional display for epd_5in83_v2.
+ * Protocol: 0x91 (partial in) -> 0x90 + 9 bytes (window coords) ->
+ *           0x13 (display cmd) + region data -> TurnOnDisplay -> 0x92 (partial out) */
+static int
+epd_5in83_v2_display_region(const epd_model_config_t *cfg,
+                            const uint8_t *buf, size_t buf_len,
+                            uint16_t x, uint16_t y,
+                            uint16_t w, uint16_t h)
+{
+    uint16_t full_width_bytes = (uint16_t)((cfg->width + 7) / 8);
+    uint16_t x_byte_start = (uint16_t)(x / 8);
+    uint16_t region_width_bytes = (uint16_t)((w + 7) / 8);
+    uint16_t x_end = (uint16_t)(x + w - 1);
+    uint16_t y_end = (uint16_t)(y + h - 1);
+    uint16_t row;
+
+    if (!buf || buf_len == 0) return EPD_ERR_PARAM;
+    if (buf_len < (size_t)full_width_bytes * cfg->height) return EPD_ERR_PARAM;
+
+    /* Enter partial mode */
+    epd_send_command(0x91);
+
+    /* Set partial window: 0x90 + 9 data bytes */
+    epd_send_command(0x90);
+    epd_send_data((uint8_t)(x >> 8));
+    epd_send_data((uint8_t)(x & 0xF8));       /* x start, byte-aligned */
+    epd_send_data((uint8_t)(x_end >> 8));
+    epd_send_data((uint8_t)(x_end | 0x07));    /* x end, inclusive to byte */
+    epd_send_data((uint8_t)(y >> 8));
+    epd_send_data((uint8_t)(y & 0xFF));
+    epd_send_data((uint8_t)(y_end >> 8));
+    epd_send_data((uint8_t)(y_end & 0xFF));
+    epd_send_data(0x01);                        /* scan mode */
+
+    /* Send region pixel data via display command 0x13 */
+    epd_send_command(0x13);
+    for (row = 0; row < h; row++) {
+        size_t offset = (size_t)(y + row) * full_width_bytes + x_byte_start;
+        epd_send_data_bulk(buf + offset, region_width_bytes);
+    }
+
+    /* TurnOnDisplay: 0x12 + delay + busy-wait */
+    epd_send_command(0x12);
+    DEV_Delay_ms(100);
+
+    return EPD_OK;  /* busy-wait handled by post_display_region */
+}
+
+/* UC8179 regional display for epd_7in5b_v2.
+ * Similar to 5in83_v2 but uses 0x10 for old-data buffer (filled with 0xFF)
+ * and 0x13 for new-data buffer. */
+static int
+epd_7in5b_v2_display_region(const epd_model_config_t *cfg,
+                            const uint8_t *buf, size_t buf_len,
+                            uint16_t x, uint16_t y,
+                            uint16_t w, uint16_t h)
+{
+    uint16_t full_width_bytes = (uint16_t)((cfg->width + 7) / 8);
+    uint16_t x_byte_start = (uint16_t)(x / 8);
+    uint16_t region_width_bytes = (uint16_t)((w + 7) / 8);
+    uint16_t x_end = (uint16_t)(x + w - 1);
+    uint16_t y_end = (uint16_t)(y + h - 1);
+    uint16_t row;
+    size_t region_size = (size_t)region_width_bytes * h;
+    uint8_t *white_buf;
+
+    if (!buf || buf_len == 0) return EPD_ERR_PARAM;
+    if (buf_len < (size_t)full_width_bytes * cfg->height) return EPD_ERR_PARAM;
+
+    /* Enter partial mode */
+    epd_send_command(0x91);
+
+    /* Set partial window: 0x90 + 9 data bytes */
+    epd_send_command(0x90);
+    epd_send_data((uint8_t)(x >> 8));
+    epd_send_data((uint8_t)(x & 0xF8));
+    epd_send_data((uint8_t)(x_end >> 8));
+    epd_send_data((uint8_t)(x_end | 0x07));
+    epd_send_data((uint8_t)(y >> 8));
+    epd_send_data((uint8_t)(y & 0xFF));
+    epd_send_data((uint8_t)(y_end >> 8));
+    epd_send_data((uint8_t)(y_end & 0xFF));
+    epd_send_data(0x01);
+
+    /* Old data buffer (0x10): fill with 0xFF (white) */
+    white_buf = (uint8_t *)malloc(region_size);
+    if (!white_buf) return EPD_ERR_ALLOC;
+    memset(white_buf, 0xFF, region_size);
+    epd_send_command(0x10);
+    epd_send_data_bulk(white_buf, region_size);
+    free(white_buf);
+
+    /* New data buffer (0x13): send region pixel data */
+    epd_send_command(0x13);
+    for (row = 0; row < h; row++) {
+        size_t offset = (size_t)(y + row) * full_width_bytes + x_byte_start;
+        epd_send_data_bulk(buf + offset, region_width_bytes);
+    }
+
+    /* TurnOnDisplay: 0x12 + delay + busy-wait */
+    epd_send_command(0x12);
+    DEV_Delay_ms(100);
+
+    return EPD_OK;  /* busy-wait handled by post_display_region */
+}
+
+/* UC8179 post-display region: busy-wait + partial out.
+ * Shared by epd_5in83_v2 and epd_7in5b_v2. */
+static int
+uc8179_post_display_region(const epd_model_config_t *cfg,
+                           volatile int *cancel_flag)
+{
+    int rc = epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
+    if (rc != EPD_OK) return rc;
+
+    /* Exit partial mode */
+    epd_send_command(0x92);
+    return EPD_OK;
+}
+
+/* ================================================================== */
 /* Registration function: wire overrides into driver table             */
 /* ================================================================== */
 
@@ -689,5 +837,39 @@ tier2_register_overrides(epd_driver_t *drivers, size_t count,
     d = find_driver_slot(drivers, count, names, "epd_3in7");
     if (d) {
         d->post_display = epd_3in7_post_display;
+    }
+
+    /* ---- Category 6: Regional refresh ---- */
+
+    /* SSD1680-based: epd_2in7_v2 uses generic display_region + partial TurnOn */
+    d = find_driver_slot(drivers, count, names, "epd_2in7_v2");
+    if (d) {
+        d->post_display_region = ssd1680_turn_on_display_partial;
+    }
+
+    /* SSD1680-based: epd_2in9b_v4 */
+    d = find_driver_slot(drivers, count, names, "epd_2in9b_v4");
+    if (d) {
+        d->post_display_region = ssd1680_turn_on_display_partial;
+    }
+
+    /* SSD1677-based: epd_13in3b */
+    d = find_driver_slot(drivers, count, names, "epd_13in3b");
+    if (d) {
+        d->post_display_region = ssd1677_turn_on_display_partial;
+    }
+
+    /* UC8179-based: epd_5in83_v2 */
+    d = find_driver_slot(drivers, count, names, "epd_5in83_v2");
+    if (d) {
+        d->custom_display_region = epd_5in83_v2_display_region;
+        d->post_display_region   = uc8179_post_display_region;
+    }
+
+    /* UC8179-based: epd_7in5b_v2 */
+    d = find_driver_slot(drivers, count, names, "epd_7in5b_v2");
+    if (d) {
+        d->custom_display_region = epd_7in5b_v2_display_region;
+        d->post_display_region   = uc8179_post_display_region;
     }
 }
