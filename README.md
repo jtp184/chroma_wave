@@ -19,6 +19,67 @@ end
 
 ### On Raspberry Pi (with hardware)
 
+The fastest way to go from a blank SD card to a working display is with [pi_maker](https://github.com/jtp184/pi_maker). It handles flashing, boot config, SPI/GPIO setup, and package installation in one shot.
+
+#### Full setup with pi_maker
+
+```bash
+# Install pi_maker (once, on your workstation)
+gem install pi_maker
+
+# 1. Initialize a recipe pantry (stores your Pi configurations)
+pi_maker pantry init
+
+# 2. Store your wifi credentials
+pi_maker wifi add "YourNetwork" "YourPassword"
+
+# 3. Flash Raspberry Pi OS to the SD card
+pi_maker boot flash --image=/path/to/raspios.img --interactive
+
+# 4. Generate a ChromaWave recipe and write boot config to the card
+pi_maker recipe gem chroma_wave --interactive
+pi_maker recipe write_boot --interactive
+
+# 5. Eject, insert SD into Pi, power on, then apply the recipe over SSH
+pi_maker recipe initial --interactive
+```
+
+This enables SPI, installs all GPIO/SPI backend libraries (`lgpio`, `libgpiod-dev`, `libbcm2835-dev`), the build toolchain, optional image/font libraries, and the `chroma_wave` gem itself. The Pi is ready to drive a display as soon as the recipe finishes.
+
+ChromaWave ships a built-in `pi_maker` recipe via `ChromaWave.pi_maker_recipe`. It returns:
+
+```ruby
+ChromaWave.pi_maker_recipe
+# => {
+#   boot_config_options: {
+#     ssh: true,
+#     config: { "all" => { "dtparam=spi" => "on" } }
+#   },
+#   initial_setup_options: {
+#     apt_packages: %w[
+#       build-essential ruby-dev
+#       libvips-dev libfreetype-dev
+#       liblgpio-dev libgpiod-dev libbcm2835-dev
+#     ],
+#     gems: %w[chroma_wave],
+#     raspi_config: { "do_spi" => 0, "do_expand_rootfs" => nil }
+#   }
+# }
+```
+
+You can also create a recipe programmatically and merge it with your own settings:
+
+```ruby
+PiMaker::Recipe.define do |r|
+  r.hostname = "my-display"
+  r.password = "s3cure"
+  r.boot_config_options = ChromaWave.pi_maker_recipe[:boot_config_options]
+  r.initial_setup_options = ChromaWave.pi_maker_recipe[:initial_setup_options]
+end
+```
+
+#### Manual setup (without pi_maker)
+
 ```bash
 # Install system dependencies
 sudo apt install libvips-dev libfreetype-dev
