@@ -12,6 +12,7 @@ typedef struct {
     size_t         buffer_size;  /* width_byte * height */
 } framebuffer_t;
 
+extern const rb_data_type_t framebuffer_type;
 void Init_framebuffer(void);
 
 #endif /* FRAMEBUFFER_H */

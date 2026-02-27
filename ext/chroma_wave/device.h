@@ -12,4 +12,19 @@ int  epd_read_busy(busy_polarity_t polarity, uint32_t timeout_ms);
 int  epd_wait_busy_high(uint32_t timeout_ms);
 int  epd_wait_busy_low(uint32_t timeout_ms);
 
+/* Device state enum */
+typedef enum { DEVICE_CLOSED = 0, DEVICE_OPEN = 1 } device_state_t;
+
+/* Device wrapper: holds config, driver, and HAL lifecycle state */
+typedef struct {
+    const epd_model_config_t *config;  /* pointer into static configs (not owned) */
+    const epd_driver_t       *driver;  /* pointer into static drivers (nullable, not owned) */
+    device_state_t            state;
+    volatile int              cancel;  /* UBF cancellation flag for WS5 */
+} device_t;
+
+extern VALUE rb_cDevice;
+extern const rb_data_type_t device_type;
+void Init_device(void);
+
 #endif /* DEVICE_H */
