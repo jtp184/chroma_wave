@@ -19,6 +19,7 @@ Style/Documentation:
     - 'lib/chroma_wave/color.rb'
     - 'lib/chroma_wave/palette.rb'
     - 'lib/chroma_wave/pixel_format.rb'
+    - 'lib/chroma_wave/pen.rb'
     - 'lib/chroma_wave/framebuffer.rb'
     - 'lib/chroma_wave/canvas.rb'
     - 'lib/chroma_wave/layer.rb'
@@ -59,10 +60,11 @@ Naming/MethodParameterName:
     - sw
     - lx
 
-# Graphics algorithms use coordinate pairs, dimensions, radii, and style
-# kwargs (stroke, fill, stroke_width) that cannot be meaningfully reduced.
+# Two drawing methods have irreducible geometric complexity:
+# draw_rounded_rect(x, y, w, h, radius:, pen:) and
+# draw_arc(cx, cy, r, start_angle, end_angle, pen:)
 Metrics/ParameterLists:
-  Max: 8
+  Max: 6
 
 # Alpha compositing, drawing algorithms, and color distance formulas are
 # inherently math-heavy. Raised from default 17 to accommodate these.
