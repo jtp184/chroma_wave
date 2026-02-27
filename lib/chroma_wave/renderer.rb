@@ -71,7 +71,8 @@ module ChromaWave
     # Renders a Canvas into two MONO Framebuffers for dual-buffer COLOR4 displays.
     #
     # Tri-color E-Paper displays use separate black and red planes.
-    # Each pixel is quantized to the COLOR4 palette, then routed:
+    # The canvas is first quantized to a COLOR4 framebuffer using the
+    # configured dither strategy, then each pixel is split into planes:
     # - +:black+ -- black_fb=0, red_fb=1
     # - +:white+ -- black_fb=1, red_fb=1
     # - +:red+ or +:yellow+ -- black_fb=1, red_fb=0
@@ -84,9 +85,11 @@ module ChromaWave
       validate_canvas!(canvas)
       raise ArgumentError, 'render_dual requires COLOR4 pixel format' unless pixel_format == PixelFormat::COLOR4
 
+      # Quantize through the full dither pipeline first, then split
+      color_fb = render(canvas)
       black_fb = Framebuffer.new(canvas.width, canvas.height, PixelFormat::MONO)
       red_fb   = Framebuffer.new(canvas.width, canvas.height, PixelFormat::MONO)
-      split_channels(canvas, black_fb, red_fb)
+      split_channels_from_fb(color_fb, black_fb, red_fb)
       [black_fb, red_fb]
     end
 
@@ -338,29 +341,21 @@ module ChromaWave
       pixel.b = (bytes.getbyte(offset + 2) + threshold).round.clamp(0, 255)
     end
 
-    # Splits a Canvas into two MONO Framebuffers for dual-buffer COLOR4 displays.
+    # Splits a pre-quantized COLOR4 Framebuffer into two MONO planes.
     #
-    # Quantizes each pixel to the COLOR4 palette, then routes based on color name:
+    # Reads each pixel's palette name from the quantized framebuffer
+    # and routes it to the appropriate MONO plane:
     # - +:black+ -- black plane gets 0 (black), red plane gets 1 (white)
     # - +:white+ -- black plane gets 1 (white), red plane gets 1 (white)
     # - +:red+ or +:yellow+ -- black plane gets 1 (white), red plane gets 0 (black)
     #
-    # @param canvas [Canvas] source RGBA canvas
+    # @param color_fb [Framebuffer] COLOR4 framebuffer (already quantized)
     # @param black_fb [Framebuffer] MONO framebuffer for the black plane
     # @param red_fb [Framebuffer] MONO framebuffer for the red plane
-    def split_channels(canvas, black_fb, red_fb)
-      palette = pixel_format.palette
-      bytes = canvas.rgba_bytes
-      width = canvas.width
-      pixel = RGB.new(0, 0, 0)
-
-      canvas.height.times do |y|
-        width.times do |x|
-          offset = ((y * width) + x) * BYTES_PER_PIXEL
-          pixel.r = bytes.getbyte(offset)
-          pixel.g = bytes.getbyte(offset + 1)
-          pixel.b = bytes.getbyte(offset + 2)
-          route_dual_pixel(palette.nearest_color(pixel), black_fb, red_fb, x, y)
+    def split_channels_from_fb(color_fb, black_fb, red_fb)
+      color_fb.height.times do |y|
+        color_fb.width.times do |x|
+          route_dual_pixel(color_fb.get_pixel(x, y), black_fb, red_fb, x, y)
         end
       end
     end
