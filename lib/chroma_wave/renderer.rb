@@ -143,6 +143,12 @@ module ChromaWave
               "do not match canvas #{canvas.width}x#{canvas.height}"
       end
 
+      unless into.pixel_format == pixel_format
+        raise ArgumentError,
+              "framebuffer pixel format #{into.pixel_format.name} " \
+              "does not match renderer #{pixel_format.name}"
+      end
+
       into
     end
 
