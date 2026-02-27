@@ -74,12 +74,15 @@ module ChromaWave
     # @raise [FormatMismatchError] if a Framebuffer's format does not match
     def show(canvas_or_fb)
       ensure_initialized!
-      if canvas_or_fb.is_a?(Canvas)
+      case canvas_or_fb
+      when Canvas
         fb = renderer.render(canvas_or_fb)
         synchronize_device { device.send(:_epd_display, fb) }
-      else
+      when Framebuffer
         validate_framebuffer!(canvas_or_fb)
         synchronize_device { device.send(:_epd_display, canvas_or_fb) }
+      else
+        raise TypeError, "expected Canvas or Framebuffer, got #{canvas_or_fb.class}"
       end
       self
     end
