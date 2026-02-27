@@ -48,8 +48,12 @@ epd_send_data_bulk(const uint8_t *data, size_t len)
 /* ---- Busy-wait polling ---- */
 
 /* Global cancel flag: set by display_without_gvl, checked by epd_read_busy.
- * Acceptable as a global because the mock HAL is single-threaded and real
- * hardware only has one SPI bus. */
+ * Acceptable as a global because real hardware only has one SPI bus.
+ *
+ * TODO: Under the mock backend, two Device instances running concurrent
+ * GVL-released operations could race on this global.  Consider making
+ * epd_read_busy accept a device_t* and read the cancel flag from the
+ * per-device struct instead. */
 volatile int *epd_cancel_flag = NULL;
 
 int

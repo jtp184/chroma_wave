@@ -22,6 +22,11 @@ module ChromaWave
     # Bytes per pixel in the Canvas RGBA buffer.
     BYTES_PER_PIXEL = 4
 
+    # Lightweight RGB triple used in hot loops to avoid full Color allocation.
+    # Responds to .r, .g, .b for duck-type compatibility with Palette#nearest_color.
+    RGB = Struct.new(:r, :g, :b)
+    private_constant :RGB
+
     # Standard 4x4 Bayer matrix normalized to [0, 1) range.
     BAYER_4X4 = [
       [0.0 / 16, 8.0 / 16, 2.0 / 16, 10.0 / 16],
@@ -147,6 +152,7 @@ module ChromaWave
       when :threshold       then quantize_threshold(canvas, framebuffer)
       when :floyd_steinberg then quantize_floyd_steinberg(canvas, framebuffer)
       when :ordered         then quantize_ordered(canvas, framebuffer)
+      else raise ArgumentError, "unreachable: unknown dither #{dither}"
       end
     end
 
@@ -185,7 +191,22 @@ module ChromaWave
     # - below:       5/16
     # - below-right: 1/16
     #
-    # Uses a 2-row ring buffer to minimize memory allocation.
+    # Uses a 2-row ring buffer to minimize memory allocation. The inner loop
+    # works with raw integer r/g/b values and a reusable {RGB} struct to
+    # avoid per-pixel Color object allocation.
+    #
+    # @param canvas [Canvas] source RGBA canvas
+    # @param framebuffer [Framebuffer] target framebuffer
+    # Floyd-Steinberg error diffusion dithering.
+    #
+    # Processes pixels left-to-right, top-to-bottom. For each pixel, the
+    # accumulated error is added before finding the nearest palette color.
+    # The remaining quantization error is distributed to neighboring pixels
+    # using the classic 7/16, 3/16, 5/16, 1/16 weights.
+    #
+    # Uses a 2-row ring buffer to minimize memory allocation. The inner loop
+    # works with raw integer r/g/b values and a reusable {RGB} struct to
+    # avoid per-pixel Color object allocation.
     #
     # @param canvas [Canvas] source RGBA canvas
     # @param framebuffer [Framebuffer] target framebuffer
@@ -193,41 +214,68 @@ module ChromaWave
       palette = pixel_format.palette
       bytes = canvas.rgba_bytes
       width = canvas.width
+      color_rgb = fs_build_color_rgb(palette)
+      pixel = RGB.new(0, 0, 0)
 
       current_errors = Array.new(width) { [0.0, 0.0, 0.0] }
       next_errors    = Array.new(width) { [0.0, 0.0, 0.0] }
 
       canvas.height.times do |y|
-        width.times do |x|
-          adjusted = fs_adjusted_color(bytes, current_errors, x, y, width)
-          nearest_name = palette.nearest_color(adjusted)
-          framebuffer.set_pixel(x, y, nearest_name)
-
-          fs_distribute(current_errors, next_errors, x, width, adjusted, Color.from_name(nearest_name))
-        end
-
+        fs_process_row(bytes, y, width, pixel, palette, color_rgb, framebuffer,
+                       current_errors, next_errors)
         current_errors, next_errors = next_errors, current_errors
         next_errors.each { |err| err[0] = 0.0; err[1] = 0.0; err[2] = 0.0 } # rubocop:disable Style/Semicolon
       end
     end
 
-    # Builds the error-adjusted color for a Floyd-Steinberg pixel.
+    # Processes a single row for Floyd-Steinberg dithering.
     #
     # @param bytes [String] raw RGBA canvas bytes
-    # @param errors [Array<Array<Float>>] current row error buffer
-    # @param x [Integer] pixel x coordinate
-    # @param y [Integer] pixel y coordinate
-    # @param width [Integer] canvas width
-    # @return [Color] the adjusted color clamped to 0..255
-    def fs_adjusted_color(bytes, errors, x, y, width)
-      offset = ((y * width) + x) * BYTES_PER_PIXEL
-      err_r, err_g, err_b = errors[x]
+    # @param y_pos [Integer] current row index
+    # @param width [Integer] row width in pixels
+    # @param pixel [RGB] reusable pixel struct (mutated in place)
+    # @param palette [Palette] target palette
+    # @param color_rgb [Hash{Symbol => Array<Integer>}] palette color name to [r,g,b]
+    # @param framebuffer [Framebuffer] target framebuffer
+    # @param current_errors [Array<Array<Float>>] current row error buffer
+    # @param next_errors [Array<Array<Float>>] next row error buffer
+    def fs_process_row(bytes, y_pos, width, pixel, palette, color_rgb, # rubocop:disable Metrics/ParameterLists
+                       framebuffer, current_errors, next_errors)
+      row_offset = y_pos * width * BYTES_PER_PIXEL
+      width.times do |x|
+        fs_adjust_pixel!(pixel, bytes, row_offset + (x * BYTES_PER_PIXEL), current_errors[x])
+        nearest_name = palette.nearest_color(pixel)
+        framebuffer.set_pixel(x, y_pos, nearest_name)
+        fs_distribute(current_errors, next_errors, x, width, pixel, color_rgb[nearest_name])
+      end
+    end
 
-      Color.new(
-        r: (bytes.getbyte(offset) + err_r).round.clamp(0, 255),
-        g: (bytes.getbyte(offset + 1) + err_g).round.clamp(0, 255),
-        b: (bytes.getbyte(offset + 2) + err_b).round.clamp(0, 255)
-      )
+    # Adjusts a pixel in-place with accumulated error for Floyd-Steinberg.
+    #
+    # Mutates the given {RGB} struct to avoid per-pixel allocation.
+    #
+    # @param pixel [RGB] the struct to fill (mutated)
+    # @param bytes [String] raw RGBA canvas bytes
+    # @param offset [Integer] byte offset into the canvas buffer
+    # @param err [Array<Float>] [r, g, b] accumulated error for this pixel
+    def fs_adjust_pixel!(pixel, bytes, offset, err)
+      pixel.r = (bytes.getbyte(offset) + err[0]).round.clamp(0, 255)
+      pixel.g = (bytes.getbyte(offset + 1) + err[1]).round.clamp(0, 255)
+      pixel.b = (bytes.getbyte(offset + 2) + err[2]).round.clamp(0, 255)
+    end
+
+    # Builds a lookup table from palette color names to [r, g, b] arrays.
+    #
+    # Pre-computed once per render to avoid per-pixel Color.from_name lookups
+    # during Floyd-Steinberg error distribution.
+    #
+    # @param palette [Palette] the palette to index
+    # @return [Hash{Symbol => Array<Integer>}] name to [r, g, b] mapping
+    def fs_build_color_rgb(palette)
+      palette.each_with_object({}) do |name, map|
+        c = Color.from_name(name)
+        map[name] = [c.r, c.g, c.b].freeze
+      end
     end
 
     # Distributes Floyd-Steinberg quantization error to neighboring pixels.
@@ -236,10 +284,10 @@ module ChromaWave
     # @param next_row [Array<Array<Float>>] next row error buffer
     # @param x [Integer] current pixel x coordinate
     # @param width [Integer] row width
-    # @param adjusted [Color] the error-adjusted input color
-    # @param nearest [Color] the quantized palette color
-    def fs_distribute(current, next_row, x, width, adjusted, nearest)
-      error = [adjusted.r - nearest.r, adjusted.g - nearest.g, adjusted.b - nearest.b]
+    # @param adjusted [RGB] the error-adjusted input pixel
+    # @param nearest_rgb [Array<Integer>] [r, g, b] of the quantized palette color
+    def fs_distribute(current, next_row, x, width, adjusted, nearest_rgb)
+      error = [adjusted.r - nearest_rgb[0], adjusted.g - nearest_rgb[1], adjusted.b - nearest_rgb[2]]
 
       fs_add_error(current, x + 1, width, error, FS_RIGHT)
       fs_add_error(next_row, x - 1, width, error, FS_BELOW_LEFT)
@@ -252,14 +300,15 @@ module ChromaWave
     # @param row [Array<Array<Float>>] error buffer row
     # @param x [Integer] target pixel x coordinate
     # @param width [Integer] row width (for bounds check)
-    # @param error [Array<Float>] [r, g, b] quantization error
+    # @param error [Array<Numeric>] [r, g, b] quantization error
     # @param weight [Float] distribution weight
     def fs_add_error(row, x, width, error, weight)
       return unless x >= 0 && x < width
 
-      row[x][0] += error[0] * weight
-      row[x][1] += error[1] * weight
-      row[x][2] += error[2] * weight
+      cell = row[x]
+      cell[0] += error[0] * weight
+      cell[1] += error[1] * weight
+      cell[2] += error[2] * weight
     end
 
     # Ordered dithering using a 4x4 Bayer matrix.

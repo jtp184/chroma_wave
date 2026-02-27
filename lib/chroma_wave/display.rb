@@ -93,9 +93,11 @@ module ChromaWave
       self
     end
 
-    # Puts the display into deep sleep mode.
+    # Puts the display into deep sleep mode (EPD power-down).
     #
-    # After sleeping, the display must be re-initialized before use.
+    # This is *not* +Kernel#sleep+ -- it sends the EPD deep-sleep command,
+    # after which the display must be re-initialized before the next use.
+    # To pause execution, call +Kernel.sleep(seconds)+ instead.
     #
     # @return [self]
     def sleep
