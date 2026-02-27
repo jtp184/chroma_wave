@@ -46,6 +46,11 @@ RSpec.describe ChromaWave::Display do
       expect { described_class.new(model: :nonexistent_model) }
         .to raise_error(ChromaWave::ModelNotFoundError, /unknown model/)
     end
+
+    it 'raises ArgumentError when model is omitted' do
+      expect { described_class.new }
+        .to raise_error(ArgumentError, /missing keyword/)
+    end
   end
 
   describe '.open' do
