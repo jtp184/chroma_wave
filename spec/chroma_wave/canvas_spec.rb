@@ -268,6 +268,28 @@ RSpec.describe ChromaWave::Canvas do
     end
   end
 
+  describe '#hash' do
+    it 'returns the same hash for equal canvases' do
+      a = described_class.new(width: 5, height: 5, background: red)
+      b = described_class.new(width: 5, height: 5, background: red)
+      expect(a.hash).to eq(b.hash)
+    end
+
+    it 'works correctly as a Hash key' do
+      a = described_class.new(width: 5, height: 5, background: red)
+      b = described_class.new(width: 5, height: 5, background: red)
+      h = { a => :found }
+      expect(h[b]).to eq(:found)
+    end
+
+    it 'differs for canvases with different content' do
+      a = described_class.new(width: 5, height: 5)
+      b = described_class.new(width: 5, height: 5)
+      b.set_pixel(0, 0, red)
+      expect(a.hash).not_to eq(b.hash)
+    end
+  end
+
   describe 'memory efficiency' do
     it 'uses a single buffer String (minimal GC objects)' do
       # The key invariant: the buffer is a single String, not an array of pixels

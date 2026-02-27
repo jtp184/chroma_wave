@@ -570,6 +570,10 @@ module ChromaWave
 
       # Iterates scanline spans for a filled ellipse using midpoint algorithm.
       #
+      # Note: A scanline row may be yielded more than once when the midpoint
+      # transitions between Region 1 and Region 2 at the same y value. For
+      # fill operations this is harmless (pixels are simply overwritten).
+      #
       # @param cx [Integer] center x
       # @param cy [Integer] center y
       # @param rx [Integer] horizontal radius
@@ -776,6 +780,10 @@ module ChromaWave
 
       # Tests if an angle falls within a range (handling wrap-around).
       #
+      # Floating-point comparison means pixels at exact boundary angles may
+      # be inconsistently included or excluded. This is acceptable for
+      # integer-pixel rasterization where sub-pixel precision is irrelevant.
+      #
       # @param angle [Float] the angle to test (0..2π)
       # @param sa [Float] start angle (0..2π)
       # @param ea [Float] end angle (0..2π)
@@ -872,6 +880,10 @@ module ChromaWave
       # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
       # Pushes seed points for adjacent scanline spans.
+      #
+      # Seeds may overlap with already-filled regions; the main loop's
+      # +get_pixel == target+ guard filters these out. This trades a few
+      # extra get_pixel calls for simpler bookkeeping.
       #
       # @param stack [Array] the work stack
       # @param lx [Integer] left bound

@@ -82,6 +82,11 @@ module ChromaWave
     # are copied directly, and semi-transparent pixels are blended using
     # source-over compositing.
     #
+    # *Note:* The result alpha is always set to 255 (fully opaque). This is
+    # correct for compositing onto an opaque background but will discard
+    # destination alpha if the canvas was initialized with a transparent
+    # background.
+    #
     # Uses a C accelerator when available.
     #
     # @param source [Surface] the source surface
@@ -132,8 +137,17 @@ module ChromaWave
       other.is_a?(Canvas) &&
         width == other.width &&
         height == other.height &&
-        buffer == other.send(:buffer)
+        buffer == other.raw_buffer
     end
+
+    # Returns a hash code consistent with {#==} and {#eql?}.
+    #
+    # @return [Integer]
+    def hash
+      [self.class, width, height, buffer].hash
+    end
+
+    alias eql? ==
 
     # Returns a human-readable description of the canvas.
     #
@@ -160,6 +174,15 @@ module ChromaWave
       else
         l
       end
+    end
+
+    protected
+
+    # Exposes the internal buffer for same-class peer comparison in {#==}.
+    #
+    # @return [String] the raw RGBA buffer
+    def raw_buffer
+      @buffer
     end
 
     private
