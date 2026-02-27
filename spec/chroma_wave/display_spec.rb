@@ -143,18 +143,18 @@ RSpec.describe ChromaWave::Display do
     end
   end
 
-  describe '#sleep' do
+  describe '#deep_sleep' do
     it 'returns self' do
       described_class.open(model: model) do |display|
         display.show(make_canvas(display)) # force init
-        expect(display.sleep).to eq(display)
+        expect(display.deep_sleep).to eq(display)
       end
     end
 
-    it 're-initializes on next show after sleep' do
+    it 're-initializes on next show after deep_sleep' do
       described_class.open(model: model) do |display|
         display.show(make_canvas(display))
-        display.sleep
+        display.deep_sleep
         # Should re-init and work
         expect { display.show(make_canvas(display)) }.not_to raise_error
       end

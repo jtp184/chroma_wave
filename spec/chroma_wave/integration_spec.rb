@@ -32,7 +32,7 @@ RSpec.describe ChromaWave::Display do # rubocop:disable RSpec/SpecFilePathFormat
       it 'sleeps the display' do
         described_class.open(model: model) do |display|
           display.clear
-          expect { display.sleep }.not_to raise_error
+          expect { display.deep_sleep }.not_to raise_error
         end
       end
     end

@@ -95,12 +95,10 @@ module ChromaWave
 
     # Puts the display into deep sleep mode (EPD power-down).
     #
-    # This is *not* +Kernel#sleep+ -- it sends the EPD deep-sleep command,
-    # after which the display must be re-initialized before the next use.
-    # To pause execution, call +Kernel.sleep(seconds)+ instead.
+    # The display must be re-initialized before the next use.
     #
     # @return [self]
-    def sleep
+    def deep_sleep
       synchronize_device { device.send(:_epd_sleep) }
       @initialized = false
       @current_mode = nil
@@ -109,11 +107,11 @@ module ChromaWave
 
     # Closes the device connection.
     #
-    # Attempts a best-effort sleep before closing. Safe to call multiple times.
+    # Attempts a best-effort deep sleep before closing. Safe to call multiple times.
     #
     # @return [void]
     def close
-      sleep
+      deep_sleep
     rescue StandardError
       nil
     ensure
