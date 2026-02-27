@@ -26,6 +26,7 @@ module ChromaWave
         synchronize_device do
           device.send(:_epd_init, Native::MODE_PARTIAL)
           @current_mode = :partial
+          @initialized = true
         end
         self
       end

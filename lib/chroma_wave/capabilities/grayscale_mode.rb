@@ -14,6 +14,7 @@ module ChromaWave
         synchronize_device do
           device.send(:_epd_init, Native::MODE_GRAYSCALE)
           @current_mode = :grayscale
+          @initialized = true
         end
         self
       end
