@@ -42,6 +42,16 @@ RSpec.describe ChromaWave::Canvas do
       expect { described_class.new(width: 5, height: -1) }
         .to raise_error(ArgumentError, /height/)
     end
+
+    it 'raises ArgumentError for width exceeding MAX_DIMENSION' do
+      expect { described_class.new(width: 4097, height: 1) }
+        .to raise_error(ArgumentError, /width must be <= 4096/)
+    end
+
+    it 'raises ArgumentError for height exceeding MAX_DIMENSION' do
+      expect { described_class.new(width: 1, height: 4097) }
+        .to raise_error(ArgumentError, /height must be <= 4096/)
+    end
   end
 
   describe '#set_pixel / #get_pixel round-trip' do

@@ -10,6 +10,9 @@ module ChromaWave
   # Canvas and Framebuffer both include this module. Layer includes it
   # transitively and adds coordinate translation.
   module Surface
+    # Maximum allowed dimension for any surface (matches C extension's EPD_MAX_DIMENSION).
+    MAX_DIMENSION = 4096
+
     # Returns true if the given coordinates are within the surface bounds.
     #
     # @param x [Integer] x coordinate
@@ -69,6 +72,8 @@ module ChromaWave
     def validate_dimensions!(w, h)
       raise ArgumentError, 'width must be a positive Integer' unless w.is_a?(Integer) && w.positive?
       raise ArgumentError, 'height must be a positive Integer' unless h.is_a?(Integer) && h.positive?
+      raise ArgumentError, "width must be <= #{MAX_DIMENSION}" if w > MAX_DIMENSION
+      raise ArgumentError, "height must be <= #{MAX_DIMENSION}" if h > MAX_DIMENSION
     end
   end
 end
