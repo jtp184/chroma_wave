@@ -59,6 +59,12 @@ canvas_blit_alpha(VALUE self,
     int dw = NUM2INT(rb_dw);
     int dh = NUM2INT(rb_dh);
 
+    if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 ||
+        sw > EPD_MAX_DIMENSION || sh > EPD_MAX_DIMENSION ||
+        dw > EPD_MAX_DIMENSION || dh > EPD_MAX_DIMENSION) {
+        return Qnil;
+    }
+
     for (int sy = 0; sy < sh; sy++) {
         int dest_y = dy + sy;
         if (dest_y < 0 || dest_y >= dh) continue;
@@ -122,7 +128,11 @@ canvas_load_rgba(VALUE self,
     int y  = NUM2INT(rb_y);
     int w  = NUM2INT(rb_w);
     int h  = NUM2INT(rb_h);
-    int dh = (int)(dst_len / (dw * 4));
+
+    if (w <= 0 || h <= 0) return Qnil;
+    if (w > EPD_MAX_DIMENSION || h > EPD_MAX_DIMENSION) return Qnil;
+
+    int dh = (int)(dst_len / 4 / dw);
 
     int src_row_bytes = w * 4;
 
