@@ -20,3 +20,11 @@ require_relative 'chroma_wave/canvas'       # RGBA pixel buffer, includes Surfac
 require_relative 'chroma_wave/layer'        # Clipped sub-region, includes Surface
 require_relative 'chroma_wave/device'       # Reopens C class, adds Mutex + open/close lifecycle
 require_relative 'chroma_wave/renderer'     # Canvas -> Framebuffer dithering bridge
+
+require_relative 'chroma_wave/capabilities/partial_refresh'  # Partial-refresh display mode
+require_relative 'chroma_wave/capabilities/fast_refresh'     # Fast-refresh display mode
+require_relative 'chroma_wave/capabilities/grayscale_mode'   # Grayscale display mode
+require_relative 'chroma_wave/capabilities/dual_buffer'      # Dual-buffer tri-color support
+require_relative 'chroma_wave/capabilities/regional_refresh' # Regional sub-area refresh
+require_relative 'chroma_wave/display'      # High-level Display with lazy init + capabilities
+require_relative 'chroma_wave/registry'     # Auto-builds Display subclasses from C config
