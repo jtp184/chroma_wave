@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'did_you_mean'
+
 module ChromaWave
   # Builds Display subclasses with the correct capabilities for each model.
   #
@@ -71,29 +73,18 @@ module ChromaWave
 
       # Raises ModelNotFoundError with did-you-mean suggestions.
       #
+      # Uses Levenshtein distance via Ruby's built-in +did_you_mean+ gem
+      # for accurate fuzzy matching.
+      #
       # @param name [String] the unrecognized model name
       # @raise [ModelNotFoundError]
       def raise_not_found!(name)
-        all_names = Native.model_names
-        suggestions = all_names.select { |n| similar?(name, n) }
+        suggestions = DidYouMean::SpellChecker
+                      .new(dictionary: Native.model_names)
+                      .correct(name)
         msg = "unknown model: #{name}"
         msg += " -- did you mean: #{suggestions.join(', ')}?" unless suggestions.empty?
         raise ModelNotFoundError, msg
-      end
-
-      # Simple similarity check for did-you-mean suggestions.
-      #
-      # Returns true if models share a 6-character prefix or one contains
-      # the other as a substring.
-      #
-      # @param input [String] the user's input
-      # @param candidate [String] a known model name
-      # @return [Boolean]
-      def similar?(input, candidate)
-        return true if input.length >= 6 && candidate.start_with?(input[0, 6])
-        return true if candidate.include?(input) || input.include?(candidate)
-
-        false
       end
     end
   end
