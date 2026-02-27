@@ -189,6 +189,14 @@ module ChromaWave
 
     attr_reader :buffer
 
+    # Deep-copies the pixel buffer so dup/clone get independent data.
+    #
+    # @param source [Canvas] the canvas being copied
+    def initialize_copy(source)
+      super
+      @buffer = source.raw_buffer.dup
+    end
+
     # Computes the byte offset for pixel (x, y).
     #
     # @param x [Integer] x coordinate

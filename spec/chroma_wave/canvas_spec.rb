@@ -290,6 +290,20 @@ RSpec.describe ChromaWave::Canvas do
     end
   end
 
+  describe '#dup / #clone' do
+    subject(:canvas) { described_class.new(width: 5, height: 5, background: red) }
+
+    it 'produces an equal copy' do
+      expect(canvas.dup).to eq(canvas)
+    end
+
+    it 'produces an independent copy' do
+      copy = canvas.dup
+      copy.set_pixel(0, 0, black)
+      expect(canvas.get_pixel(0, 0)).to eq(red)
+    end
+  end
+
   describe 'memory efficiency' do
     it 'uses a single buffer String (minimal GC objects)' do
       # The key invariant: the buffer is a single String, not an array of pixels
