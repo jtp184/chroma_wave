@@ -40,6 +40,7 @@ typedef enum {
 #define EPD_ERR_TIMEOUT  -1
 #define EPD_ERR_INIT     -2
 #define EPD_ERR_PARAM    -3
+#define EPD_ERR_ALLOC    -4
 
 /* Init sequence sentinel opcodes (0xF0-0xFF range).
  * SEQ_DELAY_MS takes a single uint8_t argument (max 255ms per opcode).

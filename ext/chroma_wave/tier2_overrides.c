@@ -188,37 +188,11 @@ epd_4in2_post_display(const epd_model_config_t *cfg,
     epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
-/* -- epd_4in2_v2 (SSD1683) --------------------------------------- */
-/* TurnOnDisplay: 0x22 + 0xF7 + 0x20 + busy-wait */
-
+/* Shared TurnOnDisplay for SSD1677/SSD1683 family (4in2_v2, 4in26, 13in3k):
+ * cmd 0x22 (Display Update Control 2), data 0xF7,
+ * cmd 0x20 (Master Activation), then wait busy. */
 static void
-epd_4in2_v2_post_display(const epd_model_config_t *cfg,
-                         volatile int *cancel_flag)
-{
-    epd_send_command(0x22);
-    epd_send_data(0xF7);
-    epd_send_command(0x20);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
-}
-
-/* -- epd_4in26 (SSD1677) ----------------------------------------- */
-/* TurnOnDisplay: 0x22 + 0xF7 + 0x20 + busy-wait */
-
-static void
-epd_4in26_post_display(const epd_model_config_t *cfg,
-                       volatile int *cancel_flag)
-{
-    epd_send_command(0x22);
-    epd_send_data(0xF7);
-    epd_send_command(0x20);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
-}
-
-/* -- epd_13in3k (SSD1677-like) ------------------------------------ */
-/* TurnOnDisplay: 0x22 + 0xF7 + 0x20 + busy-wait */
-
-static void
-epd_13in3k_post_display(const epd_model_config_t *cfg,
+ssd1677_turn_on_display(const epd_model_config_t *cfg,
                         volatile int *cancel_flag)
 {
     epd_send_command(0x22);
@@ -410,15 +384,7 @@ epd_2in7_v2_display(const epd_model_config_t *cfg,
     return EPD_OK;
 }
 
-static void
-epd_2in7_v2_post_display(const epd_model_config_t *cfg,
-                         volatile int *cancel_flag)
-{
-    epd_send_command(0x22);
-    epd_send_data(0xF7);
-    epd_send_command(0x20);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
-}
+/* epd_2in7_v2 uses same TurnOnDisplay as SSD1677 family */
 
 /* -- epd_7in5_v2 (UC8179) ---------------------------------------- */
 /* Display: buf 1 = 0x10 + data, buf 2 = 0x13 + ~data (inverted) */
@@ -440,7 +406,7 @@ epd_7in5_v2_display(const epd_model_config_t *cfg,
      * could trigger GC unsafely.  Allocation is bounded by display
      * resolution (~480 KB max for 7.5" panel). */
     inv = (uint8_t *)malloc(len);
-    if (!inv) return EPD_ERR_PARAM;
+    if (!inv) return EPD_ERR_ALLOC;
     for (i = 0; i < len; i++) {
         inv[i] = (uint8_t)(~buf[i]);
     }
@@ -572,17 +538,17 @@ tier2_register_overrides(epd_driver_t *drivers, size_t count,
 
     d = find_driver_slot(drivers, count, names, "epd_4in2_v2");
     if (d) {
-        d->post_display = epd_4in2_v2_post_display;
+        d->post_display = ssd1677_turn_on_display;
     }
 
     d = find_driver_slot(drivers, count, names, "epd_4in26");
     if (d) {
-        d->post_display = epd_4in26_post_display;
+        d->post_display = ssd1677_turn_on_display;
     }
 
     d = find_driver_slot(drivers, count, names, "epd_13in3k");
     if (d) {
-        d->post_display = epd_13in3k_post_display;
+        d->post_display = ssd1677_turn_on_display;
     }
 
     /* ---- Category 2: Color displays ---- */
@@ -663,7 +629,7 @@ tier2_register_overrides(epd_driver_t *drivers, size_t count,
     d = find_driver_slot(drivers, count, names, "epd_2in7_v2");
     if (d) {
         d->custom_display = epd_2in7_v2_display;
-        d->post_display   = epd_2in7_v2_post_display;
+        d->post_display   = ssd1677_turn_on_display;
     }
 
     d = find_driver_slot(drivers, count, names, "epd_7in5_v2");

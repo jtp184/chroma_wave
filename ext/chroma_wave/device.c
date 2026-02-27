@@ -309,6 +309,9 @@ device_epd_display(VALUE self, VALUE rb_fb)
     if (args.result == EPD_ERR_TIMEOUT) {
         rb_raise(rb_eBusyTimeoutError, "busy timeout during display");
     }
+    if (args.result == EPD_ERR_ALLOC) {
+        rb_raise(rb_eDeviceError, "memory allocation failed during display");
+    }
     if (args.result != EPD_OK) {
         rb_raise(rb_eDeviceError, "EPD display failed (rc=%d)", args.result);
     }
@@ -422,6 +425,43 @@ device_epd_sleep(VALUE self)
     return Qnil;
 }
 
+/* ---- Clear helpers ---- */
+
+/* Returns bytes per row for the given width and pixel format.
+ * Mirrors framebuffer.c calc_width_byte(). */
+static uint16_t
+clear_width_byte(uint16_t width, pixel_format_t fmt)
+{
+    switch (fmt) {
+    case PIXEL_FORMAT_MONO:   return (uint16_t)((width + 7) / 8);
+    case PIXEL_FORMAT_GRAY4:  return (uint16_t)((width + 3) / 4);
+    case PIXEL_FORMAT_COLOR4:
+    case PIXEL_FORMAT_COLOR7: return (uint16_t)((width + 1) / 2);
+    }
+    return (uint16_t)((width + 7) / 8); /* fallback */
+}
+
+/* Returns the fill byte that represents "all-white" for the given format.
+ *
+ * Derivation per format:
+ *   MONO   -- 1bpp, white=1, all bits set:        0xFF
+ *   GRAY4  -- 2bpp, white=0b11, four pixels/byte: 0xFF
+ *   COLOR4 -- 4bpp, white=palette index 1, two pixels/byte: 0x11
+ *             (Palette order: black=0, white=1, red/yellow=2, ...)
+ *   COLOR7 -- 4bpp, white=palette index 1, two pixels/byte: 0x11
+ *             (ACeP order: black=0, white=1, green=2, blue=3, ...) */
+static uint8_t
+clear_fill_byte(pixel_format_t fmt)
+{
+    switch (fmt) {
+    case PIXEL_FORMAT_MONO:   return 0xFF;
+    case PIXEL_FORMAT_GRAY4:  return 0xFF;
+    case PIXEL_FORMAT_COLOR4: return 0x11;
+    case PIXEL_FORMAT_COLOR7: return 0x11;
+    }
+    return 0xFF; /* fallback */
+}
+
 /* ---- _epd_clear ---- */
 static VALUE
 device_epd_clear(VALUE self)
@@ -430,30 +470,12 @@ device_epd_clear(VALUE self)
     display_args_t args;
     size_t buf_size;
     uint8_t *buf;
-    uint8_t fill;
 
-    /* Calculate buffer size the same way framebuffer does */
-    uint16_t width_byte;
-    switch (dev->config->pixel_format) {
-    case PIXEL_FORMAT_MONO:   width_byte = (uint16_t)((dev->config->width + 7) / 8); break;
-    case PIXEL_FORMAT_GRAY4:  width_byte = (uint16_t)((dev->config->width + 3) / 4); break;
-    case PIXEL_FORMAT_COLOR4:
-    case PIXEL_FORMAT_COLOR7: width_byte = (uint16_t)((dev->config->width + 1) / 2); break;
-    default:                  width_byte = (uint16_t)((dev->config->width + 7) / 8); break;
-    }
-    buf_size = (size_t)width_byte * dev->config->height;
-
-    /* MONO: white = 0xFF; others: white = 0x00 or format-appropriate */
-    switch (dev->config->pixel_format) {
-    case PIXEL_FORMAT_MONO:   fill = 0xFF; break;
-    case PIXEL_FORMAT_GRAY4:  fill = 0xFF; break; /* all-white: 0b11_11_11_11 */
-    case PIXEL_FORMAT_COLOR4: fill = 0x11; break; /* white=1 in each nibble */
-    case PIXEL_FORMAT_COLOR7: fill = 0x11; break; /* white=1 in each nibble */
-    default:                  fill = 0xFF; break;
-    }
+    uint16_t wbyte = clear_width_byte(dev->config->width, dev->config->pixel_format);
+    buf_size = (size_t)wbyte * dev->config->height;
 
     buf = (uint8_t *)xmalloc(buf_size);
-    memset(buf, fill, buf_size);
+    memset(buf, clear_fill_byte(dev->config->pixel_format), buf_size);
 
     /* Prepare args for non-GVL execution */
     args.dev     = dev;
