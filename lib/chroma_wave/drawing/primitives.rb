@@ -8,8 +8,11 @@ module ChromaWave
     # passed straight through to +set_pixel+ — no conversion or validation
     # is performed here.
     #
-    # Shapes that accept both +stroke:+ and +fill:+ draw fill first, then
+    # Shapes that accept both stroke and fill draw fill first, then
     # stroke on top so the outline is always visible.
+    #
+    # All public drawing methods accept a +pen:+ keyword argument — a
+    # {Pen} value object bundling stroke color, fill color, and stroke width.
     module Primitives
       # Draws a straight line using Bresenham's algorithm.
       #
@@ -17,16 +20,17 @@ module ChromaWave
       # @param y0 [Integer] start y
       # @param x1 [Integer] end x
       # @param y1 [Integer] end y
-      # @param stroke [Object] line color
-      # @param stroke_width [Integer] line thickness (default: 1)
+      # @param pen [Pen] drawing style (stroke only)
       # @return [self]
-      def draw_line(x0, y0, x1, y1, stroke:, stroke_width: 1)
-        validate_draw_colors!(stroke, nil, allow_fill: false)
+      def draw_line(x0, y0, x1, y1, pen:)
+        validate_pen!(pen, allow_fill: false)
+        color = pen.stroke
+        sw = pen.stroke_width
 
-        if stroke_width <= 1
-          bresenham(x0, y0, x1, y1) { |x, y| set_pixel(x, y, stroke) }
+        if sw <= 1
+          bresenham(x0, y0, x1, y1) { |x, y| set_pixel(x, y, color) }
         else
-          draw_thick_line(x0, y0, x1, y1, stroke, stroke_width)
+          draw_thick_line(x0, y0, x1, y1, color, sw)
         end
         self
       end
@@ -34,22 +38,21 @@ module ChromaWave
       # Draws a connected series of line segments.
       #
       # @param points [Array<Array(Integer, Integer)>] array of [x, y] pairs
-      # @param stroke [Object] line color
-      # @param stroke_width [Integer] line thickness (default: 1)
+      # @param pen [Pen] drawing style (stroke only)
       # @param closed [Boolean] if true, connect last point to first
       # @return [self]
-      def draw_polyline(points, stroke:, stroke_width: 1, closed: false)
-        validate_draw_colors!(stroke, nil, allow_fill: false)
+      def draw_polyline(points, pen:, closed: false)
+        validate_pen!(pen, allow_fill: false)
         return self if points.length < 2
 
         points.each_cons(2) do |(x0, y0), (x1, y1)|
-          draw_line(x0, y0, x1, y1, stroke: stroke, stroke_width: stroke_width)
+          draw_line(x0, y0, x1, y1, pen: pen)
         end
 
         if closed
           x0, y0 = points.last
           x1, y1 = points.first
-          draw_line(x0, y0, x1, y1, stroke: stroke, stroke_width: stroke_width)
+          draw_line(x0, y0, x1, y1, pen: pen)
         end
         self
       end
@@ -60,16 +63,13 @@ module ChromaWave
       # @param y [Integer] top-left y
       # @param w [Integer] width
       # @param h [Integer] height
-      # @param stroke [Object, nil] outline color
-      # @param fill [Object, nil] fill color
-      # @param stroke_width [Integer] outline thickness (default: 1)
+      # @param pen [Pen] drawing style (stroke and/or fill)
       # @return [self]
-      def draw_rect(x, y, w, h, stroke: nil, fill: nil, stroke_width: 1)
-        validate_draw_colors!(stroke, fill)
+      def draw_rect(x, y, w, h, pen:)
         return self if w <= 0 || h <= 0
 
-        fill_rect(x, y, w, h, fill) if fill
-        stroke_rect(x, y, w, h, stroke, stroke_width) if stroke
+        fill_rect(x, y, w, h, pen.fill) if pen.fill?
+        stroke_rect(x, y, w, h, pen.stroke, pen.stroke_width) if pen.stroke?
         self
       end
 
@@ -80,17 +80,14 @@ module ChromaWave
       # @param w [Integer] width
       # @param h [Integer] height
       # @param radius [Integer] corner radius (clamped to min(w, h) / 2)
-      # @param stroke [Object, nil] outline color
-      # @param fill [Object, nil] fill color
-      # @param stroke_width [Integer] outline thickness (default: 1)
+      # @param pen [Pen] drawing style (stroke and/or fill)
       # @return [self]
-      def draw_rounded_rect(x, y, w, h, radius:, stroke: nil, fill: nil, stroke_width: 1)
-        validate_draw_colors!(stroke, fill)
+      def draw_rounded_rect(x, y, w, h, radius:, pen:)
         return self if w <= 0 || h <= 0
 
         r = clamp_radius(radius, w, h)
-        fill_rounded_rect(x, y, w, h, r, fill) if fill
-        stroke_rounded_rect(x, y, w, h, r, stroke, stroke_width) if stroke
+        fill_rounded_rect(x, y, w, h, r, pen.fill) if pen.fill?
+        stroke_rounded_rect(x, y, w, h, r, pen.stroke, pen.stroke_width) if pen.stroke?
         self
       end
 
@@ -99,22 +96,19 @@ module ChromaWave
       # @param cx [Integer] center x
       # @param cy [Integer] center y
       # @param r [Integer] radius
-      # @param stroke [Object, nil] outline color
-      # @param fill [Object, nil] fill color
-      # @param stroke_width [Integer] outline thickness (default: 1)
+      # @param pen [Pen] drawing style (stroke and/or fill)
       # @return [self]
-      def draw_circle(cx, cy, r, stroke: nil, fill: nil, stroke_width: 1)
-        validate_draw_colors!(stroke, fill)
+      def draw_circle(cx, cy, r, pen:)
         return self if r.negative?
 
         if r.zero?
-          color = fill || stroke
+          color = pen.fill || pen.stroke
           set_pixel(cx, cy, color)
           return self
         end
 
-        fill_circle(cx, cy, r, fill) if fill
-        stroke_circle(cx, cy, r, stroke, stroke_width) if stroke
+        fill_circle(cx, cy, r, pen.fill) if pen.fill?
+        stroke_circle(cx, cy, r, pen.stroke, pen.stroke_width) if pen.stroke?
         self
       end
 
@@ -124,22 +118,19 @@ module ChromaWave
       # @param cy [Integer] center y
       # @param rx [Integer] horizontal radius
       # @param ry [Integer] vertical radius
-      # @param stroke [Object, nil] outline color
-      # @param fill [Object, nil] fill color
-      # @param stroke_width [Integer] outline thickness (default: 1)
+      # @param pen [Pen] drawing style (stroke and/or fill)
       # @return [self]
-      def draw_ellipse(cx, cy, rx, ry, stroke: nil, fill: nil, stroke_width: 1)
-        validate_draw_colors!(stroke, fill)
+      def draw_ellipse(cx, cy, rx, ry, pen:)
         return self if rx.negative? || ry.negative?
 
         if rx.zero? && ry.zero?
-          color = fill || stroke
+          color = pen.fill || pen.stroke
           set_pixel(cx, cy, color)
           return self
         end
 
-        fill_ellipse(cx, cy, rx, ry, fill) if fill
-        stroke_ellipse(cx, cy, rx, ry, stroke, stroke_width) if stroke
+        fill_ellipse(cx, cy, rx, ry, pen.fill) if pen.fill?
+        stroke_ellipse(cx, cy, rx, ry, pen.stroke, pen.stroke_width) if pen.stroke?
         self
       end
 
@@ -150,30 +141,26 @@ module ChromaWave
       # @param r [Integer] radius
       # @param start_angle [Float] start angle in radians
       # @param end_angle [Float] end angle in radians
-      # @param stroke [Object] arc color
-      # @param stroke_width [Integer] arc thickness (default: 1)
+      # @param pen [Pen] drawing style (stroke only)
       # @return [self]
-      def draw_arc(cx, cy, r, start_angle, end_angle, stroke:, stroke_width: 1)
-        validate_draw_colors!(stroke, nil, allow_fill: false)
+      def draw_arc(cx, cy, r, start_angle, end_angle, pen:)
+        validate_pen!(pen, allow_fill: false)
         return self if r <= 0
 
-        draw_arc_pixels(cx, cy, r, start_angle, end_angle, stroke, stroke_width)
+        draw_arc_pixels(cx, cy, r, start_angle, end_angle, pen.stroke, pen.stroke_width)
         self
       end
 
       # Draws a filled/stroked polygon.
       #
       # @param points [Array<Array(Integer, Integer)>] vertices as [x, y] pairs
-      # @param stroke [Object, nil] outline color
-      # @param fill [Object, nil] fill color
-      # @param stroke_width [Integer] outline thickness (default: 1)
+      # @param pen [Pen] drawing style (stroke and/or fill)
       # @return [self]
-      def draw_polygon(points, stroke: nil, fill: nil, stroke_width: 1)
-        validate_draw_colors!(stroke, fill)
+      def draw_polygon(points, pen:)
         return self if points.length < 3
 
-        fill_polygon(points, fill) if fill
-        draw_polyline(points, stroke: stroke, stroke_width: stroke_width, closed: true) if stroke
+        fill_polygon(points, pen.fill) if pen.fill?
+        draw_polyline(points, pen: pen.stroke_only, closed: true) if pen.stroke?
         self
       end
 
@@ -197,18 +184,17 @@ module ChromaWave
 
       private
 
-      # Validates that at least one of stroke/fill is provided.
+      # Validates that a pen does not include fill when fill is disallowed.
       #
-      # @param stroke [Object, nil]
-      # @param fill [Object, nil]
+      # Stroke/fill presence is already validated by {Pen#initialize}, so
+      # this only guards against passing a fill-bearing pen to a stroke-only
+      # shape (e.g. +draw_line+, +draw_arc+).
+      #
+      # @param pen [Pen] the pen to validate
       # @param allow_fill [Boolean] whether fill is allowed for this shape
-      # @raise [ArgumentError] if neither provided or fill disallowed
-      def validate_draw_colors!(stroke, fill, allow_fill: true)
-        raise ArgumentError, 'fill: is not supported for this shape' if !allow_fill && fill
-
-        return unless stroke.nil? && fill.nil?
-
-        raise ArgumentError, 'must provide at least one of stroke: or fill:'
+      # @raise [ArgumentError] if fill is provided but disallowed
+      def validate_pen!(pen, allow_fill: true)
+        raise ArgumentError, 'fill is not supported for this shape' if !allow_fill && pen.fill?
       end
 
       # ── Bresenham line ────────────────────────────────────────────
@@ -299,12 +285,13 @@ module ChromaWave
       # @param color [Object] stroke color
       # @param sw [Integer] stroke width
       def stroke_rect(x, y, w, h, color, sw)
+        line_pen = Pen.stroke(color, width: sw)
         x2 = x + w - 1
         y2 = y + h - 1
-        draw_line(x, y, x2, y, stroke: color, stroke_width: sw)
-        draw_line(x, y2, x2, y2, stroke: color, stroke_width: sw)
-        draw_line(x, y, x, y2, stroke: color, stroke_width: sw)
-        draw_line(x2, y, x2, y2, stroke: color, stroke_width: sw)
+        draw_line(x, y, x2, y, pen: line_pen)
+        draw_line(x, y2, x2, y2, pen: line_pen)
+        draw_line(x, y, x, y2, pen: line_pen)
+        draw_line(x2, y, x2, y2, pen: line_pen)
       end
 
       # ── Rounded rectangle helpers ─────────────────────────────────
@@ -391,22 +378,23 @@ module ChromaWave
       # @param r [Integer] corner radius
       # @param color [Object] stroke color
       # @param sw [Integer] stroke width
-      def stroke_rounded_rect(x, y, w, h, r, color, sw) # rubocop:disable Metrics/AbcSize
+      def stroke_rounded_rect(x, y, w, h, r, color, sw) # rubocop:disable Metrics/AbcSize, Metrics/ParameterLists
+        edge_pen = Pen.stroke(color, width: sw)
         x2 = x + w - 1
         y2 = y + h - 1
 
         # Four straight edges (excluding corners)
-        draw_line(x + r, y, x2 - r, y, stroke: color, stroke_width: sw)       # top
-        draw_line(x + r, y2, x2 - r, y2, stroke: color, stroke_width: sw)     # bottom
-        draw_line(x, y + r, x, y2 - r, stroke: color, stroke_width: sw)       # left
-        draw_line(x2, y + r, x2, y2 - r, stroke: color, stroke_width: sw)     # right
+        draw_line(x + r, y, x2 - r, y, pen: edge_pen)       # top
+        draw_line(x + r, y2, x2 - r, y2, pen: edge_pen)     # bottom
+        draw_line(x, y + r, x, y2 - r, pen: edge_pen)       # left
+        draw_line(x2, y + r, x2, y2 - r, pen: edge_pen)     # right
 
         # Four corner arcs
         half_pi = Math::PI / 2
-        draw_arc(x + r, y + r, r, Math::PI, Math::PI + half_pi, stroke: color, stroke_width: sw)
-        draw_arc(x2 - r, y + r, r, -half_pi, 0.0, stroke: color, stroke_width: sw)
-        draw_arc(x + r, y2 - r, r, half_pi, Math::PI, stroke: color, stroke_width: sw)
-        draw_arc(x2 - r, y2 - r, r, 0.0, half_pi, stroke: color, stroke_width: sw)
+        draw_arc(x + r, y + r, r, Math::PI, Math::PI + half_pi, pen: edge_pen)
+        draw_arc(x2 - r, y + r, r, -half_pi, 0.0, pen: edge_pen)
+        draw_arc(x + r, y2 - r, r, half_pi, Math::PI, pen: edge_pen)
+        draw_arc(x2 - r, y2 - r, r, 0.0, half_pi, pen: edge_pen)
       end
 
       # ── Circle helpers ────────────────────────────────────────────
@@ -516,6 +504,8 @@ module ChromaWave
 
         (-outer..outer).each do |dy|
           dy_sq = dy * dy
+          next if dy_sq > outer_sq
+
           outer_x = Integer.sqrt(outer_sq - dy_sq)
 
           if dy_sq >= inner_sq
@@ -696,7 +686,7 @@ module ChromaWave
       # @param irx [Integer] inner horizontal radius
       # @param iry [Integer] inner vertical radius
       # @param color [Object] fill color
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity, Metrics/ParameterLists
       def fill_ellipse_annulus(cx, cy, orx, ory, irx, iry, color)
         return unless orx.positive? && ory.positive?
 
@@ -718,7 +708,7 @@ module ChromaWave
           end
         end
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity, Metrics/ParameterLists
 
       # ── Arc helper ────────────────────────────────────────────────
 
@@ -732,7 +722,7 @@ module ChromaWave
       # @param color [Object] pixel color
       # @param sw [Integer] stroke width
       # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
-      def draw_arc_pixels(cx, cy, r, start_angle, end_angle, color, sw)
+      def draw_arc_pixels(cx, cy, r, start_angle, end_angle, color, sw) # rubocop:disable Metrics/ParameterLists
         # Normalize angles to [0, 2π)
         two_pi = 2 * Math::PI
         sa = start_angle % two_pi
