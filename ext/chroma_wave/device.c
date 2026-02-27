@@ -47,24 +47,16 @@ epd_send_data_bulk(const uint8_t *data, size_t len)
 
 /* ---- Busy-wait polling ---- */
 
-/* Global cancel flag: set by display_without_gvl, checked by epd_read_busy.
- * Acceptable as a global because real hardware only has one SPI bus.
- *
- * TODO: Under the mock backend, two Device instances running concurrent
- * GVL-released operations could race on this global.  Consider making
- * epd_read_busy accept a device_t* and read the cancel flag from the
- * per-device struct instead. */
-volatile int *epd_cancel_flag = NULL;
-
 int
-epd_read_busy(busy_polarity_t polarity, uint32_t timeout_ms)
+epd_read_busy(busy_polarity_t polarity, uint32_t timeout_ms,
+              volatile int *cancel_flag)
 {
     uint32_t i;
     uint8_t  pin_val;
 
     for (i = 0; i < timeout_ms; i++) {
         /* Check cancellation flag (set by UBF when thread is interrupted) */
-        if (epd_cancel_flag && *epd_cancel_flag) {
+        if (cancel_flag && *cancel_flag) {
             return EPD_ERR_TIMEOUT;
         }
 
@@ -85,15 +77,15 @@ epd_read_busy(busy_polarity_t polarity, uint32_t timeout_ms)
 }
 
 int
-epd_wait_busy_high(uint32_t timeout_ms)
+epd_wait_busy_high(uint32_t timeout_ms, volatile int *cancel_flag)
 {
-    return epd_read_busy(BUSY_ACTIVE_HIGH, timeout_ms);
+    return epd_read_busy(BUSY_ACTIVE_HIGH, timeout_ms, cancel_flag);
 }
 
 int
-epd_wait_busy_low(uint32_t timeout_ms)
+epd_wait_busy_low(uint32_t timeout_ms, volatile int *cancel_flag)
 {
-    return epd_read_busy(BUSY_ACTIVE_LOW, timeout_ms);
+    return epd_read_busy(BUSY_ACTIVE_LOW, timeout_ms, cancel_flag);
 }
 
 /* ================================================================== */
@@ -235,13 +227,11 @@ display_without_gvl(void *arg)
     display_args_t *args = (display_args_t *)arg;
     const epd_model_config_t *cfg = args->dev->config;
     const epd_driver_t *drv = args->dev->driver;
-
-    /* Install cancel flag so epd_read_busy can check for interruption */
-    epd_cancel_flag = &args->dev->cancel;
+    volatile int *cancel_flag = &args->dev->cancel;
 
     /* Pre-display hook */
     if (drv && drv->pre_display) {
-        drv->pre_display(cfg);
+        drv->pre_display(cfg, cancel_flag);
     }
 
     /* Display data */
@@ -253,11 +243,8 @@ display_without_gvl(void *arg)
 
     /* Post-display hook (only if display succeeded) */
     if (args->result == EPD_OK && drv && drv->post_display) {
-        drv->post_display(cfg);
+        drv->post_display(cfg, cancel_flag);
     }
-
-    /* Clear cancel flag */
-    epd_cancel_flag = NULL;
 
     return NULL;
 }
@@ -348,13 +335,11 @@ display_dual_without_gvl(void *arg)
     display_dual_args_t *args = (display_dual_args_t *)arg;
     const epd_model_config_t *cfg = args->dev->config;
     const epd_driver_t *drv = args->dev->driver;
-
-    /* Install cancel flag so epd_read_busy can check for interruption */
-    epd_cancel_flag = &args->dev->cancel;
+    volatile int *cancel_flag = &args->dev->cancel;
 
     /* Pre-display hook */
     if (drv && drv->pre_display) {
-        drv->pre_display(cfg);
+        drv->pre_display(cfg, cancel_flag);
     }
 
     /* Send black channel via primary display command */
@@ -371,11 +356,8 @@ display_dual_without_gvl(void *arg)
 
     /* Post-display hook */
     if (drv && drv->post_display) {
-        drv->post_display(cfg);
+        drv->post_display(cfg, cancel_flag);
     }
-
-    /* Clear cancel flag */
-    epd_cancel_flag = NULL;
 
     return NULL;
 }

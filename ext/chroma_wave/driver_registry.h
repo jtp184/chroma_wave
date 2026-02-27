@@ -32,8 +32,10 @@ typedef struct epd_driver {
     int  (*custom_init)(const epd_model_config_t *cfg, uint8_t mode);
     int  (*custom_display)(const epd_model_config_t *cfg,
                            const uint8_t *buf, size_t len);
-    void (*pre_display)(const epd_model_config_t *cfg);
-    void (*post_display)(const epd_model_config_t *cfg);
+    void (*pre_display)(const epd_model_config_t *cfg,
+                        volatile int *cancel_flag);
+    void (*post_display)(const epd_model_config_t *cfg,
+                         volatile int *cancel_flag);
 } epd_driver_t;
 
 /* Generic (Tier 1) operations -- interpret init sequences */

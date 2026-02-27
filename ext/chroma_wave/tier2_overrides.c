@@ -92,13 +92,14 @@ static const uint8_t lut_2in9_partial[] = {
  * cmd 0x20 (Master Activation), cmd 0xFF (Terminate),
  * then wait busy. */
 static void
-ssd1680_turn_on_display(const epd_model_config_t *cfg)
+ssd1680_turn_on_display(const epd_model_config_t *cfg,
+                        volatile int *cancel_flag)
 {
     epd_send_command(0x22);
     epd_send_data(0xC4);
     epd_send_command(0x20);
     epd_send_command(0xFF);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* -- epd_1in54 ---------------------------------------------------- */
@@ -120,9 +121,10 @@ epd_1in54_init(const epd_model_config_t *cfg, uint8_t mode)
 }
 
 static void
-epd_1in54_post_display(const epd_model_config_t *cfg)
+epd_1in54_post_display(const epd_model_config_t *cfg,
+                       volatile int *cancel_flag)
 {
-    ssd1680_turn_on_display(cfg);
+    ssd1680_turn_on_display(cfg, cancel_flag);
 }
 
 /* -- epd_2in13 ---------------------------------------------------- */
@@ -143,9 +145,10 @@ epd_2in13_init(const epd_model_config_t *cfg, uint8_t mode)
 }
 
 static void
-epd_2in13_post_display(const epd_model_config_t *cfg)
+epd_2in13_post_display(const epd_model_config_t *cfg,
+                       volatile int *cancel_flag)
 {
-    ssd1680_turn_on_display(cfg);
+    ssd1680_turn_on_display(cfg, cancel_flag);
 }
 
 /* -- epd_2in9 ----------------------------------------------------- */
@@ -166,57 +169,62 @@ epd_2in9_init(const epd_model_config_t *cfg, uint8_t mode)
 }
 
 static void
-epd_2in9_post_display(const epd_model_config_t *cfg)
+epd_2in9_post_display(const epd_model_config_t *cfg,
+                      volatile int *cancel_flag)
 {
-    ssd1680_turn_on_display(cfg);
+    ssd1680_turn_on_display(cfg, cancel_flag);
 }
 
 /* -- epd_4in2 (UC8176) -------------------------------------------- */
 /* TurnOnDisplay: 0x12 (Display Refresh) + delay + busy-wait */
 
 static void
-epd_4in2_post_display(const epd_model_config_t *cfg)
+epd_4in2_post_display(const epd_model_config_t *cfg,
+                      volatile int *cancel_flag)
 {
     epd_send_command(0x12);
     DEV_Delay_ms(100);
     /* UC8176 busy: poll via 0x71 command, active-low */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* -- epd_4in2_v2 (SSD1683) --------------------------------------- */
 /* TurnOnDisplay: 0x22 + 0xF7 + 0x20 + busy-wait */
 
 static void
-epd_4in2_v2_post_display(const epd_model_config_t *cfg)
+epd_4in2_v2_post_display(const epd_model_config_t *cfg,
+                         volatile int *cancel_flag)
 {
     epd_send_command(0x22);
     epd_send_data(0xF7);
     epd_send_command(0x20);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* -- epd_4in26 (SSD1677) ----------------------------------------- */
 /* TurnOnDisplay: 0x22 + 0xF7 + 0x20 + busy-wait */
 
 static void
-epd_4in26_post_display(const epd_model_config_t *cfg)
+epd_4in26_post_display(const epd_model_config_t *cfg,
+                       volatile int *cancel_flag)
 {
     epd_send_command(0x22);
     epd_send_data(0xF7);
     epd_send_command(0x20);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* -- epd_13in3k (SSD1677-like) ------------------------------------ */
 /* TurnOnDisplay: 0x22 + 0xF7 + 0x20 + busy-wait */
 
 static void
-epd_13in3k_post_display(const epd_model_config_t *cfg)
+epd_13in3k_post_display(const epd_model_config_t *cfg,
+                        volatile int *cancel_flag)
 {
     epd_send_command(0x22);
     epd_send_data(0xF7);
     epd_send_command(0x20);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* ================================================================== */
@@ -227,19 +235,21 @@ epd_13in3k_post_display(const epd_model_config_t *cfg)
 
 /* Shared pre_display for color gate-driver models */
 static void
-color_pre_display(const epd_model_config_t *cfg)
+color_pre_display(const epd_model_config_t *cfg,
+                  volatile int *cancel_flag)
 {
     /* Enable charge pump output (0x68 0x01) for models that need it */
     epd_send_command(0x68);
     epd_send_data(0x01);
 
     epd_send_command(0x04);  /* POWER_ON */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* Shared post_display: refresh + power-off */
 static void
-color_post_display(const epd_model_config_t *cfg)
+color_post_display(const epd_model_config_t *cfg,
+                   volatile int *cancel_flag)
 {
     /* Disable charge pump output */
     epd_send_command(0x68);
@@ -247,27 +257,30 @@ color_post_display(const epd_model_config_t *cfg)
 
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
     epd_send_data(0x01);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     epd_send_command(0x02);  /* POWER_OFF */
     epd_send_data(0x00);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* Color models without charge pump control (7in3 family) */
 static void
-color_7in3_pre_display(const epd_model_config_t *cfg)
+color_7in3_pre_display(const epd_model_config_t *cfg,
+                       volatile int *cancel_flag)
 {
     (void)cfg;
+    (void)cancel_flag;
     /* No pre-display needed; power-on happens in post_display */
 }
 
 /* 7in3e: complex TurnOnDisplay with booster re-configuration */
 static void
-epd_7in3e_post_display(const epd_model_config_t *cfg)
+epd_7in3e_post_display(const epd_model_config_t *cfg,
+                       volatile int *cancel_flag)
 {
     epd_send_command(0x04);  /* POWER_ON */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     /* Second booster setting (from vendor source) */
     epd_send_command(0x06);
@@ -278,27 +291,28 @@ epd_7in3e_post_display(const epd_model_config_t *cfg)
 
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
     epd_send_data(0x00);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     epd_send_command(0x02);  /* POWER_OFF */
     epd_send_data(0x00);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* 7in3f / 7in3g: standard color refresh */
 static void
-color_7in3_post_display(const epd_model_config_t *cfg)
+color_7in3_post_display(const epd_model_config_t *cfg,
+                        volatile int *cancel_flag)
 {
     epd_send_command(0x04);  /* POWER_ON */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
     epd_send_data(0x00);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     epd_send_command(0x02);  /* POWER_OFF */
     epd_send_data(0x00);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* ================================================================== */
@@ -312,17 +326,18 @@ color_7in3_post_display(const epd_model_config_t *cfg)
  *           -> busy -> 0x02 (power off) -> busy-low */
 
 static void
-acep_post_display(const epd_model_config_t *cfg)
+acep_post_display(const epd_model_config_t *cfg,
+                  volatile int *cancel_flag)
 {
     epd_send_command(0x04);  /* POWER_ON */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     epd_send_command(0x02);  /* POWER_OFF */
     /* 5in65f uses dual-polarity: wait for busy-low after power-off */
-    epd_wait_busy_low(EPD_BUSY_TIMEOUT_MS);
+    epd_wait_busy_low(EPD_BUSY_TIMEOUT_MS, cancel_flag);
     DEV_Delay_ms(200);
 }
 
@@ -330,14 +345,15 @@ acep_post_display(const epd_model_config_t *cfg)
  * TurnOnDisplay: 0x04 + busy + 0x12 + delay + busy */
 
 static void
-epd_5in83bc_post_display(const epd_model_config_t *cfg)
+epd_5in83bc_post_display(const epd_model_config_t *cfg,
+                         volatile int *cancel_flag)
 {
     epd_send_command(0x04);  /* POWER_ON */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
     DEV_Delay_ms(100);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* ================================================================== */
@@ -367,10 +383,11 @@ epd_2in7_display(const epd_model_config_t *cfg,
 }
 
 static void
-epd_2in7_post_display(const epd_model_config_t *cfg)
+epd_2in7_post_display(const epd_model_config_t *cfg,
+                      volatile int *cancel_flag)
 {
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* -- epd_2in7_v2 (SSD1680-class, dual buffer 0x24/0x26) ----------- */
@@ -394,12 +411,13 @@ epd_2in7_v2_display(const epd_model_config_t *cfg,
 }
 
 static void
-epd_2in7_v2_post_display(const epd_model_config_t *cfg)
+epd_2in7_v2_post_display(const epd_model_config_t *cfg,
+                         volatile int *cancel_flag)
 {
     epd_send_command(0x22);
     epd_send_data(0xF7);
     epd_send_command(0x20);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* -- epd_7in5_v2 (UC8179) ---------------------------------------- */
@@ -434,11 +452,12 @@ epd_7in5_v2_display(const epd_model_config_t *cfg,
 }
 
 static void
-epd_7in5_v2_post_display(const epd_model_config_t *cfg)
+epd_7in5_v2_post_display(const epd_model_config_t *cfg,
+                         volatile int *cancel_flag)
 {
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
     DEV_Delay_ms(100);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* -- epd_7in5bc (UC8159 tri-color) -------------------------------- */
@@ -458,14 +477,15 @@ epd_7in5bc_display(const epd_model_config_t *cfg,
 }
 
 static void
-epd_7in5bc_post_display(const epd_model_config_t *cfg)
+epd_7in5bc_post_display(const epd_model_config_t *cfg,
+                        volatile int *cancel_flag)
 {
     epd_send_command(0x04);  /* POWER_ON */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
     DEV_Delay_ms(100);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* ================================================================== */
@@ -477,16 +497,17 @@ epd_7in5bc_post_display(const epd_model_config_t *cfg)
  * and a non-standard TurnOnDisplay sequence (0x04 + 0x12 + busy). */
 
 static void
-epd_1in02d_post_display(const epd_model_config_t *cfg)
+epd_1in02d_post_display(const epd_model_config_t *cfg,
+                        volatile int *cancel_flag)
 {
     epd_send_command(0x04);  /* POWER_ON */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 
     epd_send_command(0x02);  /* POWER_OFF */
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* -- epd_3in52 (SSD1680-class with UC8176 LUT registers) ---------- */
@@ -494,22 +515,24 @@ epd_1in02d_post_display(const epd_model_config_t *cfg)
  * Same as 4in2 UC8176 pattern */
 
 static void
-epd_3in52_post_display(const epd_model_config_t *cfg)
+epd_3in52_post_display(const epd_model_config_t *cfg,
+                       volatile int *cancel_flag)
 {
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
     DEV_Delay_ms(100);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* -- epd_3in7 (SSD1677-based, 4-level gray) ---------------------- */
 /* Uses command 0x12 for refresh with busy-wait */
 
 static void
-epd_3in7_post_display(const epd_model_config_t *cfg)
+epd_3in7_post_display(const epd_model_config_t *cfg,
+                      volatile int *cancel_flag)
 {
     epd_send_command(0x12);  /* DISPLAY_REFRESH */
     DEV_Delay_ms(100);
-    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+    epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, cancel_flag);
 }
 
 /* ================================================================== */

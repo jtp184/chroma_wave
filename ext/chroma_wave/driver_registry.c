@@ -119,7 +119,8 @@ epd_generic_init(const epd_model_config_t *cfg, uint8_t mode)
                 return EPD_OK;
 
             case SEQ_WAIT_BUSY:
-                rc = epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+                /* Init runs under the GVL, not cancellable */
+                rc = epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, NULL);
                 if (rc != EPD_OK) return rc;
                 break;
 
@@ -135,7 +136,8 @@ epd_generic_init(const epd_model_config_t *cfg, uint8_t mode)
 
             case SEQ_SW_RESET:
                 epd_send_command(0x12);
-                rc = epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS);
+                /* Init runs under the GVL, not cancellable */
+                rc = epd_read_busy(cfg->busy_polarity, EPD_BUSY_TIMEOUT_MS, NULL);
                 if (rc != EPD_OK) return rc;
                 break;
 

@@ -8,12 +8,10 @@ void epd_reset(const epd_model_config_t *cfg);
 void epd_send_command(uint8_t cmd);
 void epd_send_data(uint8_t data);
 void epd_send_data_bulk(const uint8_t *data, size_t len);
-int  epd_read_busy(busy_polarity_t polarity, uint32_t timeout_ms);
-int  epd_wait_busy_high(uint32_t timeout_ms);
-int  epd_wait_busy_low(uint32_t timeout_ms);
-
-/* Global cancel flag: set by display_without_gvl, checked by epd_read_busy */
-extern volatile int *epd_cancel_flag;
+int  epd_read_busy(busy_polarity_t polarity, uint32_t timeout_ms,
+                   volatile int *cancel_flag);
+int  epd_wait_busy_high(uint32_t timeout_ms, volatile int *cancel_flag);
+int  epd_wait_busy_low(uint32_t timeout_ms, volatile int *cancel_flag);
 
 /* Device state enum */
 typedef enum { DEVICE_CLOSED = 0, DEVICE_OPEN = 1 } device_state_t;
