@@ -423,6 +423,111 @@ device_epd_display_dual(VALUE self, VALUE rb_black_fb, VALUE rb_red_fb)
     return Qnil;
 }
 
+/* ---- Regional display without GVL ---- */
+
+/* Arguments passed to display_region_without_gvl (no VALUE fields!) */
+typedef struct {
+    device_t       *dev;
+    const uint8_t  *buf;
+    size_t          buf_len;
+    uint16_t        x;
+    uint16_t        y;
+    uint16_t        w;
+    uint16_t        h;
+    int             result;
+} display_region_args_t;
+
+/* Runs WITHOUT the GVL -- must NOT call any Ruby API functions. */
+static void *
+display_region_without_gvl(void *arg)
+{
+    display_region_args_t *args = (display_region_args_t *)arg;
+    const epd_model_config_t *cfg = args->dev->config;
+    const epd_driver_t *drv = args->dev->driver;
+    volatile int *cancel_flag = &args->dev->cancel;
+
+    /* Pre-display hook (reuse full-screen pre_display) */
+    if (drv && drv->pre_display) {
+        int rc = drv->pre_display(cfg, cancel_flag);
+        if (rc != EPD_OK) { args->result = rc; return NULL; }
+    }
+
+    /* Display region data */
+    if (drv && drv->custom_display_region) {
+        args->result = drv->custom_display_region(cfg, args->buf, args->buf_len,
+                                                   args->x, args->y,
+                                                   args->w, args->h);
+    } else {
+        args->result = epd_generic_display_region(cfg, args->buf, args->buf_len,
+                                                   args->x, args->y,
+                                                   args->w, args->h);
+    }
+
+    /* Post-display-region hook (falls back to post_display if no regional hook) */
+    if (args->result == EPD_OK) {
+        if (drv && drv->post_display_region) {
+            int rc = drv->post_display_region(cfg, cancel_flag);
+            if (rc != EPD_OK) { args->result = rc; }
+        } else if (drv && drv->post_display) {
+            int rc = drv->post_display(cfg, cancel_flag);
+            if (rc != EPD_OK) { args->result = rc; }
+        }
+    }
+
+    return NULL;
+}
+
+/* Unblocking function for regional display */
+static void
+display_region_ubf(void *arg)
+{
+    display_region_args_t *args = (display_region_args_t *)arg;
+    args->dev->cancel = 1;
+}
+
+/* ---- _epd_display_region(fb, x, y, w, h) ---- */
+static VALUE
+device_epd_display_region(VALUE self, VALUE rb_fb, VALUE rb_x,
+                          VALUE rb_y, VALUE rb_w, VALUE rb_h)
+{
+    device_t *dev = device_require_open(self);
+    framebuffer_t *fb;
+    display_region_args_t args;
+
+    TypedData_Get_Struct(rb_fb, framebuffer_t, &framebuffer_type, fb);
+
+    /* Prepare args for non-GVL execution */
+    args.dev     = dev;
+    args.buf     = fb->buffer;
+    args.buf_len = fb->buffer_size;
+    args.x       = (uint16_t)NUM2INT(rb_x);
+    args.y       = (uint16_t)NUM2INT(rb_y);
+    args.w       = (uint16_t)NUM2INT(rb_w);
+    args.h       = (uint16_t)NUM2INT(rb_h);
+    args.result  = EPD_OK;
+
+    /* Reset cancel flag before starting */
+    dev->cancel = 0;
+
+    /* Release GVL so other Ruby threads can run during display */
+    rb_thread_call_without_gvl(display_region_without_gvl, &args,
+                               display_region_ubf, &args);
+    RB_GC_GUARD(rb_fb);
+
+    /* Back under GVL -- safe to raise exceptions */
+    if (args.result == EPD_ERR_TIMEOUT) {
+        rb_raise(rb_eBusyTimeoutError, "busy timeout during regional display");
+    }
+    if (args.result == EPD_ERR_ALLOC) {
+        rb_raise(rb_eDeviceError, "memory allocation failed during regional display");
+    }
+    if (args.result != EPD_OK) {
+        rb_raise(rb_eDeviceError, "EPD regional display failed (rc=%d)", args.result);
+    }
+
+    return Qnil;
+}
+
 /* ---- _epd_sleep ---- */
 static VALUE
 device_epd_sleep(VALUE self)
@@ -519,8 +624,9 @@ Init_device(void)
     rb_define_method(rb_cDevice, "open?",        device_open_p,      0);
     rb_define_method(rb_cDevice, "model_name",   device_model_name,  0);
     rb_define_private_method(rb_cDevice, "_epd_init",         device_epd_init,         1);
-    rb_define_private_method(rb_cDevice, "_epd_display",      device_epd_display,      1);
-    rb_define_private_method(rb_cDevice, "_epd_display_dual", device_epd_display_dual, 2);
+    rb_define_private_method(rb_cDevice, "_epd_display",        device_epd_display,        1);
+    rb_define_private_method(rb_cDevice, "_epd_display_dual",   device_epd_display_dual,   2);
+    rb_define_private_method(rb_cDevice, "_epd_display_region", device_epd_display_region, 5);
     rb_define_private_method(rb_cDevice, "_epd_sleep",        device_epd_sleep,        0);
     rb_define_private_method(rb_cDevice, "_epd_clear",        device_epd_clear,        0);
 }
