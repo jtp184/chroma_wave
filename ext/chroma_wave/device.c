@@ -2,6 +2,7 @@
 #include "driver_registry.h"
 #include "framebuffer.h"
 #include "mock_hal.h"
+#include <ruby/thread.h>
 
 /* ---- Hardware reset sequence ---- */
 void
@@ -45,6 +46,12 @@ epd_send_data_bulk(const uint8_t *data, size_t len)
 }
 
 /* ---- Busy-wait polling ---- */
+
+/* Global cancel flag: set by display_without_gvl, checked by epd_read_busy.
+ * Acceptable as a global because the mock HAL is single-threaded and real
+ * hardware only has one SPI bus. */
+volatile int *epd_cancel_flag = NULL;
+
 int
 epd_read_busy(busy_polarity_t polarity, uint32_t timeout_ms)
 {
@@ -52,6 +59,11 @@ epd_read_busy(busy_polarity_t polarity, uint32_t timeout_ms)
     uint8_t  pin_val;
 
     for (i = 0; i < timeout_ms; i++) {
+        /* Check cancellation flag (set by UBF when thread is interrupted) */
+        if (epd_cancel_flag && *epd_cancel_flag) {
+            return EPD_ERR_TIMEOUT;
+        }
+
         pin_val = DEV_Digital_Read(EPD_BUSY_PIN);
 
         if (polarity == BUSY_ACTIVE_HIGH) {
@@ -200,6 +212,61 @@ device_require_open(VALUE self)
     return dev;
 }
 
+/* ================================================================== */
+/* GVL release helpers for display operations                          */
+/* ================================================================== */
+
+/* Arguments passed to display_without_gvl (no VALUE fields!) */
+typedef struct {
+    device_t       *dev;
+    const uint8_t  *buf;
+    size_t          buf_len;
+    int             result;
+} display_args_t;
+
+/* Runs WITHOUT the GVL -- must NOT call any Ruby API functions. */
+static void *
+display_without_gvl(void *arg)
+{
+    display_args_t *args = (display_args_t *)arg;
+    const epd_model_config_t *cfg = args->dev->config;
+    const epd_driver_t *drv = args->dev->driver;
+
+    /* Install cancel flag so epd_read_busy can check for interruption */
+    epd_cancel_flag = &args->dev->cancel;
+
+    /* Pre-display hook */
+    if (drv && drv->pre_display) {
+        drv->pre_display(cfg);
+    }
+
+    /* Display data */
+    if (drv && drv->custom_display) {
+        args->result = drv->custom_display(cfg, args->buf, args->buf_len);
+    } else {
+        args->result = epd_generic_display(cfg, args->buf, args->buf_len);
+    }
+
+    /* Post-display hook (only if display succeeded) */
+    if (args->result == EPD_OK && drv && drv->post_display) {
+        drv->post_display(cfg);
+    }
+
+    /* Clear cancel flag */
+    epd_cancel_flag = NULL;
+
+    return NULL;
+}
+
+/* Unblocking function: called by Ruby when another thread interrupts us.
+ * Runs in a different thread context -- only simple operations allowed. */
+static void
+display_ubf(void *arg)
+{
+    display_args_t *args = (display_args_t *)arg;
+    args->dev->cancel = 1;  /* volatile write signals busy-wait to abort */
+}
+
 /* ---- _epd_init(mode) ---- */
 static VALUE
 device_epd_init(VALUE self, VALUE rb_mode)
@@ -230,29 +297,29 @@ device_epd_display(VALUE self, VALUE rb_fb)
 {
     device_t *dev = device_require_open(self);
     framebuffer_t *fb;
-    int rc;
+    display_args_t args;
 
     TypedData_Get_Struct(rb_fb, framebuffer_t, &framebuffer_type, fb);
 
-    if (dev->driver && dev->driver->pre_display) {
-        dev->driver->pre_display(dev->config);
-    }
+    /* Prepare args for non-GVL execution */
+    args.dev     = dev;
+    args.buf     = fb->buffer;
+    args.buf_len = fb->buffer_size;
+    args.result  = EPD_OK;
 
-    if (dev->driver && dev->driver->custom_display) {
-        rc = dev->driver->custom_display(dev->config, fb->buffer, fb->buffer_size);
-    } else {
-        rc = epd_generic_display(dev->config, fb->buffer, fb->buffer_size);
-    }
+    /* Reset cancel flag before starting */
+    dev->cancel = 0;
 
-    if (rc == EPD_ERR_TIMEOUT) {
+    /* Release GVL so other Ruby threads can run during display */
+    rb_thread_call_without_gvl(display_without_gvl, &args,
+                               display_ubf, &args);
+
+    /* Back under GVL -- safe to raise exceptions */
+    if (args.result == EPD_ERR_TIMEOUT) {
         rb_raise(rb_eBusyTimeoutError, "busy timeout during display");
     }
-    if (rc != EPD_OK) {
-        rb_raise(rb_eDeviceError, "EPD display failed (rc=%d)", rc);
-    }
-
-    if (dev->driver && dev->driver->post_display) {
-        dev->driver->post_display(dev->config);
+    if (args.result != EPD_OK) {
+        rb_raise(rb_eDeviceError, "EPD display failed (rc=%d)", args.result);
     }
 
     return Qnil;
@@ -295,10 +362,10 @@ static VALUE
 device_epd_clear(VALUE self)
 {
     device_t *dev = device_require_open(self);
+    display_args_t args;
     size_t buf_size;
     uint8_t *buf;
     uint8_t fill;
-    int rc;
 
     /* Calculate buffer size the same way framebuffer does */
     uint16_t width_byte;
@@ -323,27 +390,25 @@ device_epd_clear(VALUE self)
     buf = (uint8_t *)xmalloc(buf_size);
     memset(buf, fill, buf_size);
 
-    if (dev->driver && dev->driver->pre_display) {
-        dev->driver->pre_display(dev->config);
-    }
+    /* Prepare args for non-GVL execution */
+    args.dev     = dev;
+    args.buf     = buf;
+    args.buf_len = buf_size;
+    args.result  = EPD_OK;
+    dev->cancel  = 0;
 
-    if (dev->driver && dev->driver->custom_display) {
-        rc = dev->driver->custom_display(dev->config, buf, buf_size);
-    } else {
-        rc = epd_generic_display(dev->config, buf, buf_size);
-    }
+    /* Release GVL so other Ruby threads can run during clear */
+    rb_thread_call_without_gvl(display_without_gvl, &args,
+                               display_ubf, &args);
 
     xfree(buf);
 
-    if (rc == EPD_ERR_TIMEOUT) {
+    /* Back under GVL -- safe to raise exceptions */
+    if (args.result == EPD_ERR_TIMEOUT) {
         rb_raise(rb_eBusyTimeoutError, "busy timeout during clear");
     }
-    if (rc != EPD_OK) {
-        rb_raise(rb_eDeviceError, "EPD clear failed (rc=%d)", rc);
-    }
-
-    if (dev->driver && dev->driver->post_display) {
-        dev->driver->post_display(dev->config);
+    if (args.result != EPD_OK) {
+        rb_raise(rb_eDeviceError, "EPD clear failed (rc=%d)", args.result);
     }
 
     return Qnil;
