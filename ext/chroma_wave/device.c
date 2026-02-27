@@ -325,24 +325,97 @@ device_epd_display(VALUE self, VALUE rb_fb)
     return Qnil;
 }
 
+/* ---- Dual-buffer display without GVL ---- */
+
+/* Arguments passed to display_dual_without_gvl (no VALUE fields!) */
+typedef struct {
+    device_t       *dev;
+    const uint8_t  *black_buf;
+    size_t          black_len;
+    const uint8_t  *red_buf;
+    size_t          red_len;
+    int             result;
+} display_dual_args_t;
+
+/* Runs WITHOUT the GVL -- must NOT call any Ruby API functions. */
+static void *
+display_dual_without_gvl(void *arg)
+{
+    display_dual_args_t *args = (display_dual_args_t *)arg;
+    const epd_model_config_t *cfg = args->dev->config;
+    const epd_driver_t *drv = args->dev->driver;
+
+    /* Install cancel flag so epd_read_busy can check for interruption */
+    epd_cancel_flag = &args->dev->cancel;
+
+    /* Pre-display hook */
+    if (drv && drv->pre_display) {
+        drv->pre_display(cfg);
+    }
+
+    /* Send black channel via primary display command */
+    epd_send_command(cfg->display_cmd);
+    epd_send_data_bulk(args->black_buf, args->black_len);
+
+    /* Send red/yellow channel via secondary display command */
+    if (cfg->display_cmd_2 != 0x00) {
+        epd_send_command(cfg->display_cmd_2);
+        epd_send_data_bulk(args->red_buf, args->red_len);
+    }
+
+    args->result = EPD_OK;
+
+    /* Post-display hook */
+    if (drv && drv->post_display) {
+        drv->post_display(cfg);
+    }
+
+    /* Clear cancel flag */
+    epd_cancel_flag = NULL;
+
+    return NULL;
+}
+
+/* Unblocking function for dual display */
+static void
+display_dual_ubf(void *arg)
+{
+    display_dual_args_t *args = (display_dual_args_t *)arg;
+    args->dev->cancel = 1;
+}
+
 /* ---- _epd_display_dual(black_fb, red_fb) ---- */
 static VALUE
 device_epd_display_dual(VALUE self, VALUE rb_black_fb, VALUE rb_red_fb)
 {
     device_t *dev = device_require_open(self);
     framebuffer_t *black_fb, *red_fb;
+    display_dual_args_t args;
 
     TypedData_Get_Struct(rb_black_fb, framebuffer_t, &framebuffer_type, black_fb);
     TypedData_Get_Struct(rb_red_fb,   framebuffer_t, &framebuffer_type, red_fb);
 
-    /* Send black channel via primary display command */
-    epd_send_command(dev->config->display_cmd);
-    epd_send_data_bulk(black_fb->buffer, black_fb->buffer_size);
+    /* Prepare args for non-GVL execution */
+    args.dev       = dev;
+    args.black_buf = black_fb->buffer;
+    args.black_len = black_fb->buffer_size;
+    args.red_buf   = red_fb->buffer;
+    args.red_len   = red_fb->buffer_size;
+    args.result    = EPD_OK;
 
-    /* Send red/yellow channel via secondary display command */
-    if (dev->config->display_cmd_2 != 0x00) {
-        epd_send_command(dev->config->display_cmd_2);
-        epd_send_data_bulk(red_fb->buffer, red_fb->buffer_size);
+    /* Reset cancel flag before starting */
+    dev->cancel = 0;
+
+    /* Release GVL so other Ruby threads can run during dual display */
+    rb_thread_call_without_gvl(display_dual_without_gvl, &args,
+                               display_dual_ubf, &args);
+
+    /* Back under GVL -- safe to raise exceptions */
+    if (args.result == EPD_ERR_TIMEOUT) {
+        rb_raise(rb_eBusyTimeoutError, "busy timeout during dual display");
+    }
+    if (args.result != EPD_OK) {
+        rb_raise(rb_eDeviceError, "EPD dual display failed (rc=%d)", args.result);
     }
 
     return Qnil;

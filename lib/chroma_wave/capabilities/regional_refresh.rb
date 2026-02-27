@@ -39,6 +39,8 @@ module ChromaWave
       def validate_region!(x, y, w, h)
         max_w = width
         max_h = height
+        raise ArgumentError, 'region width must be positive' unless w.positive?
+        raise ArgumentError, 'region height must be positive' unless h.positive?
         raise ArgumentError, "region x (#{x}) out of bounds" unless x >= 0 && x < max_w
         raise ArgumentError, "region y (#{y}) out of bounds" unless y >= 0 && y < max_h
         raise ArgumentError, 'region width exceeds display' unless x + w <= max_w

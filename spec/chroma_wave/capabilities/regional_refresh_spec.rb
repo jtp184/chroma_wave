@@ -54,6 +54,22 @@ RSpec.describe ChromaWave::Capabilities::RegionalRefresh do
       display.close
     end
 
+    it 'raises ArgumentError for zero-width region' do
+      display = build_regional_display
+      fb = ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format)
+      expect { display.display_region(fb, x: 0, y: 0, width: 0, height: 10) }
+        .to raise_error(ArgumentError, /region width must be positive/)
+      display.close
+    end
+
+    it 'raises ArgumentError for zero-height region' do
+      display = build_regional_display
+      fb = ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format)
+      expect { display.display_region(fb, x: 0, y: 0, width: 10, height: 0) }
+        .to raise_error(ArgumentError, /region height must be positive/)
+      display.close
+    end
+
     it 'raises FormatMismatchError for wrong format' do
       display = build_regional_display
       wrong_fb = ChromaWave::Framebuffer.new(display.width, display.height, :color4)

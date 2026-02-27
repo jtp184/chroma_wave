@@ -111,7 +111,10 @@ module ChromaWave
     #
     # @return [void]
     def close
-      sleep rescue nil # rubocop:disable Style/RescueModifier -- best-effort sleep before close
+      sleep
+    rescue StandardError
+      nil
+    ensure
       device.close
     end
 

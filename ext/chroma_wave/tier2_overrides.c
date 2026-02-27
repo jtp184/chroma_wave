@@ -410,17 +410,22 @@ epd_7in5_v2_display(const epd_model_config_t *cfg,
                     const uint8_t *buf, size_t len)
 {
     size_t i;
+    uint8_t *inv;
     if (!buf || len == 0) return EPD_ERR_PARAM;
 
     /* Buffer 1: original data */
     epd_send_command(cfg->display_cmd);   /* 0x10 */
     epd_send_data_bulk(buf, len);
 
-    /* Buffer 2: byte-inverted data */
-    epd_send_command(cfg->display_cmd_2); /* 0x13 */
+    /* Buffer 2: byte-inverted copy sent in bulk for performance */
+    inv = (uint8_t *)malloc(len);
+    if (!inv) return EPD_ERR_PARAM;
     for (i = 0; i < len; i++) {
-        epd_send_data((uint8_t)(~buf[i]));
+        inv[i] = (uint8_t)(~buf[i]);
     }
+    epd_send_command(cfg->display_cmd_2); /* 0x13 */
+    epd_send_data_bulk(inv, len);
+    free(inv);
 
     return EPD_OK;
 }
