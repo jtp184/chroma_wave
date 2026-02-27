@@ -197,19 +197,6 @@ module ChromaWave
     #
     # @param canvas [Canvas] source RGBA canvas
     # @param framebuffer [Framebuffer] target framebuffer
-    # Floyd-Steinberg error diffusion dithering.
-    #
-    # Processes pixels left-to-right, top-to-bottom. For each pixel, the
-    # accumulated error is added before finding the nearest palette color.
-    # The remaining quantization error is distributed to neighboring pixels
-    # using the classic 7/16, 3/16, 5/16, 1/16 weights.
-    #
-    # Uses a 2-row ring buffer to minimize memory allocation. The inner loop
-    # works with raw integer r/g/b values and a reusable {RGB} struct to
-    # avoid per-pixel Color object allocation.
-    #
-    # @param canvas [Canvas] source RGBA canvas
-    # @param framebuffer [Framebuffer] target framebuffer
     def quantize_floyd_steinberg(canvas, framebuffer)
       palette = pixel_format.palette
       bytes = canvas.rgba_bytes
