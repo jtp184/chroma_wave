@@ -267,6 +267,45 @@ RSpec.describe ChromaWave::Device do
     end
   end
 
+  describe 'GVL release' do
+    it 'allows other threads to run during display' do
+      config = ChromaWave::Native.model_config(model_name)
+      fb = ChromaWave::Framebuffer.new(config[:width], config[:height], config[:pixel_format])
+
+      described_class.open(model_name) do |dev|
+        dev.send(:_epd_init, ChromaWave::Native::MODE_FULL)
+
+        thread_ran = false
+        thread = Thread.new { thread_ran = true }
+
+        dev.send(:_epd_display, fb)
+        thread.join(1)
+
+        expect(thread_ran).to be true
+      end
+    end
+
+    it 'allows other threads to run during clear' do
+      described_class.open(model_name) do |dev|
+        dev.send(:_epd_init, ChromaWave::Native::MODE_FULL)
+
+        thread_ran = false
+        thread = Thread.new { thread_ran = true }
+
+        dev.send(:_epd_clear)
+        thread.join(1)
+
+        expect(thread_ran).to be true
+      end
+    end
+  end
+
+  describe 'BusyTimeoutError' do
+    it 'is a subclass of DeviceError' do
+      expect(ChromaWave::BusyTimeoutError).to be < ChromaWave::DeviceError
+    end
+  end
+
   describe 'GC safety' do
     it 'handles creating and discarding many devices' do
       expect do
