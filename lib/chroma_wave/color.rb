@@ -64,7 +64,7 @@ module ChromaWave
     #
     # @param background [Color] the background color to composite over
     # @return [Color] the blended result with alpha 255
-    def over(background)
+    def over(background) # rubocop:disable Metrics/AbcSize
       return self if opaque?
       return background if transparent?
 

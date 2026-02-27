@@ -112,5 +112,6 @@ module ChromaWave
     end
 
     prepend PixelFormatBridge
+    include Surface
   end
 end

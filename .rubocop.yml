@@ -19,10 +19,14 @@ Style/Documentation:
     - 'lib/chroma_wave/color.rb'
     - 'lib/chroma_wave/palette.rb'
     - 'lib/chroma_wave/pixel_format.rb'
+    - 'lib/chroma_wave/pen.rb'
     - 'lib/chroma_wave/framebuffer.rb'
+    - 'lib/chroma_wave/canvas.rb'
+    - 'lib/chroma_wave/layer.rb'
 
-# Domain-standard short names: r/g/b/a (color channels), x/y (coordinates),
-# c1/c2 (color comparison). These are universally understood in their contexts.
+# Domain-standard short names used across graphics/geometry code.
+# x0/y0/x1/y1 (line endpoints), xi/yi (midpoint iterators),
+# sa/ea (start/end angles), sw (stroke width), lx/rx (left/right x).
 Naming/MethodParameterName:
   AllowedNames:
     - r
@@ -31,22 +35,62 @@ Naming/MethodParameterName:
     - a
     - x
     - y
+    - w
+    - h
     - c1
     - c2
+    - cx
+    - cy
+    - rx
+    - ry
+    - sx
+    - sy
+    - dx
+    - dy
+    - ox
+    - oy
+    - x0
+    - y0
+    - x1
+    - y1
+    - xi
+    - yi
+    - sa
+    - ea
+    - sw
+    - lx
 
-# Alpha compositing and color distance formulas are inherently math-heavy.
-# Splitting them further obscures the algorithm more than it clarifies.
+# Two drawing methods have irreducible geometric complexity:
+# draw_rounded_rect(x, y, w, h, radius:, pen:) and
+# draw_arc(cx, cy, r, start_angle, end_angle, pen:)
+Metrics/ParameterLists:
+  Max: 6
+
+# Alpha compositing, drawing algorithms, and color distance formulas are
+# inherently math-heavy. Raised from default 17 to accommodate these.
 Metrics/AbcSize:
-  Exclude:
-    - 'lib/chroma_wave/color.rb'
-    - 'lib/chroma_wave/palette.rb'
+  Max: 25
 
-# Hex parsing has two format branches with 3 captures each — inherently 12 lines.
-# Color distance computation iterates entries with distance math — inherently 11 lines.
+# Drawing algorithms and hex parsing have inherent line counts.
+# Raised from default 10 to reduce inline disable noise.
 Metrics/MethodLength:
-  Exclude:
-    - 'lib/chroma_wave/color.rb'
-    - 'lib/chroma_wave/palette.rb'
+  Max: 20
+
+# Primitives groups ~20 related rasterization algorithms in one module.
+Metrics/ModuleLength:
+  Max: 500
+
+# Canvas wraps a single String buffer with RGBA operations, plus
+# an optimized fill_rect, equality, and inspect.
+Metrics/ClassLength:
+  Max: 140
+
+# Scanline and midpoint algorithms have inherent branching.
+Metrics/CyclomaticComplexity:
+  Max: 10
+
+Metrics/PerceivedComplexity:
+  Max: 10
 
 # DriverConfig has 16 fields; tests that construct configs need many lets.
 # The default of 5 is too low for struct-heavy integration tests.
@@ -58,14 +102,13 @@ RSpec/MultipleMemoizedHelpers:
 RSpec/MultipleExpectations:
   Max: 8
 
-# Allow 4-deep nesting for method-within-format-within-bridge specs.
+# Allow 5-deep nesting for drawing primitive specs with shape/mode/edge contexts.
 RSpec/NestedGroups:
-  Max: 4
+  Max: 5
 
-# Compositing and ordering specs naturally need several lines to set up
-# intermediate values and verify multiple channels/entries.
+# Drawing and compositing specs need extra lines for setup and pixel verification.
 RSpec/ExampleLength:
-  Max: 8
+  Max: 10
 
 # LruCache#fetch requires a block (unlike Hash#fetch) — the block form
 # is not redundant, it's the computation that runs on cache miss.

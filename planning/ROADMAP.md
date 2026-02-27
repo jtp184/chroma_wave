@@ -21,12 +21,12 @@ Phase 2: Core Value Types          ✅ COMPLETE (branch: feature/groundwork-phas
   ├── 4. PixelFormat & Palette     ✅
   └── 5. Color                     ✅
           │
-Phase 3: Drawing Architecture      ← depends on Phases 1 & 2
-  ├── 6. Surface protocol
-  ├── 7. Canvas (packed String)
-  ├── 8. Canvas C accelerators
-  ├── 9. Drawing primitives
-  └── 10. Layer
+Phase 3: Drawing Architecture      ✅ COMPLETE (branch: feature/groundwork-phase-3)
+  ├── 6. Surface protocol           ✅
+  ├── 7. Canvas (packed String)     ✅
+  ├── 8. Canvas C accelerators      ✅
+  ├── 9. Drawing primitives         ✅
+  └── 10. Layer                     ✅
           │
 Phase 4: Rendering & Display       ← depends on Phases 1-3
   ├── 11. Renderer (Canvas → Framebuffer)
@@ -204,105 +204,117 @@ Also implemented beyond spec: `#to_hex`, `#opaque?`/`#transparent?` predicates, 
 
 ---
 
-## 🎨 Phase 3: Drawing Architecture
+## 🎨 Phase 3: Drawing Architecture ✅
 
 The Surface protocol and its three implementations: Canvas, Framebuffer (Ruby wrapper), and Layer.
 
-### 6. Define the Surface protocol
+### 6. Define the Surface protocol ✅
 
 A Ruby module that defines the duck-type drawing target. Includers provide `set_pixel`,
 `get_pixel`, `width`, `height`; the module mixes in drawing primitives.
 
-- [ ] Define `Surface` module with required method contract (`set_pixel`, `get_pixel`, `width`, `height`)
-- [ ] Silent clipping on `set_pixel` out-of-bounds writes
-- [ ] Return `nil` on `get_pixel` out-of-bounds reads
-- [ ] Include hooks for drawing primitive mixins (Phase 3, Task 9)
-- [ ] Add `Surface` to Framebuffer's Ruby wrapper (`include Surface`)
-- [ ] Specs for clipping behavior and protocol enforcement
+- [x] Define `Surface` module with required method contract (`set_pixel`, `get_pixel`, `width`, `height`)
+- [x] Silent clipping on `set_pixel` out-of-bounds writes
+- [x] Return `nil` on `get_pixel` out-of-bounds reads
+- [x] Include hooks for drawing primitive mixins (Phase 3, Task 9)
+- [x] Add `Surface` to Framebuffer's Ruby wrapper (`include Surface`)
+- [x] Specs for clipping behavior and protocol enforcement
+
+Also implemented beyond spec: `in_bounds?` predicate, default `clear` and `blit` implementations, `validate_dimensions!` with `MAX_DIMENSION` (4096) cap matching the C extension.
 
 **Files:** `lib/chroma_wave/surface.rb`, `lib/chroma_wave/framebuffer.rb`
 **Refs:** [EXTENSION_STRATEGY.md §3.7](EXTENSION_STRATEGY.md#37-three-layer-drawing-architecture), [API_REFERENCE.md §2](API_REFERENCE.md#2-surface-protocol--implementations)
 **Depends on:** Task 1 (Framebuffer C backing)
-**Acceptance:** Any object including `Surface` and providing the 4 required methods is a valid drawing target.
+**Acceptance:** ✅ Any object including `Surface` and providing the 4 required methods is a valid drawing target.
 
 ---
 
-### 7. Implement Canvas
+### 7. Implement Canvas ✅
 
 RGBA pixel buffer stored as a packed binary String (4 bytes/pixel). Includes `Surface`.
 
-- [ ] Storage: single `String.new("\0" * w * h * 4, encoding: Encoding::BINARY)`
-- [ ] `set_pixel(x, y, color)` — decompose Color into 4 bytes at offset
-- [ ] `get_pixel(x, y)` — lazily materialize Color from 4 bytes (avoid allocation in bulk paths)
-- [ ] `clear(color)` — fill entire buffer (Ruby fallback; C accelerator in Task 8)
-- [ ] Expose `rgba_bytes` for direct byte access by Renderer
-- [ ] `include Surface` for drawing primitive support
-- [ ] Specs for pixel round-trip, bounds clipping, memory footprint (2 GC objects regardless of resolution)
+- [x] Storage: single `String.new("\0" * w * h * 4, encoding: Encoding::BINARY)`
+- [x] `set_pixel(x, y, color)` — decompose Color into 4 bytes at offset
+- [x] `get_pixel(x, y)` — lazily materialize Color from 4 bytes (avoid allocation in bulk paths)
+- [x] `clear(color)` — fill entire buffer (Ruby fallback; C accelerator in Task 8)
+- [x] Expose `rgba_bytes` for direct byte access by Renderer
+- [x] `include Surface` for drawing primitive support
+- [x] Specs for pixel round-trip, bounds clipping, memory footprint (2 GC objects regardless of resolution)
+
+Also implemented beyond spec: `#==`/`#eql?`/`#hash` (value equality), `#inspect`, `initialize_copy` (deep copy for `dup`/`clone`), `#layer` convenience method with block form, optimized `fill_rect` that writes scanline rows directly into the buffer (shadows the Primitives pixel-by-pixel version for Canvas instances).
 
 **Files:** `lib/chroma_wave/canvas.rb`
 **Refs:** [EXTENSION_STRATEGY.md §3.7 "Canvas"](EXTENSION_STRATEGY.md#37-three-layer-drawing-architecture), [API_REFERENCE.md §2](API_REFERENCE.md#2-surface-protocol--implementations)
 **Depends on:** Tasks 5, 6
-**Acceptance:** 800x480 Canvas uses ~1.5MB. `get_pixel`/`set_pixel` round-trips correctly. Only 2 GC objects (Canvas + String).
+**Acceptance:** ✅ 800x480 Canvas uses ~1.5MB. `get_pixel`/`set_pixel` round-trips correctly. Only 2 GC objects (Canvas + String).
 
 ---
 
-### 8. Canvas C accelerators
+### 8. Canvas C accelerators ✅
 
-~80 lines of C that accelerate three Canvas hot paths. All three have Ruby fallbacks.
+~170 lines of C that accelerate three Canvas hot paths. All three have Ruby fallbacks.
 
-- [ ] `_canvas_clear(rgba_string, r, g, b, a)` — bulk memset of packed RGBA
-- [ ] `_canvas_blit_alpha(dst_string, src_string, dx, dy, sw, sh, dw, dh)` — alpha-composited blit
-- [ ] `_canvas_load_rgba(dst_string, src_bytes, x, y, w, h, dw)` — bulk load from external RGBA data
-- [ ] All operate on `RSTRING_PTR` of Canvas's String buffer (Canvas owns data, C processes it)
-- [ ] Graceful fallback: if C extension unavailable, Ruby methods work (just slower)
-- [ ] Specs comparing C-accelerated vs Ruby fallback output for correctness
+- [x] `_canvas_clear(rgba_string, r, g, b, a)` — bulk memset of packed RGBA
+- [x] `_canvas_blit_alpha(dst_string, src_string, dx, dy, sw, sh, dw, dh)` — alpha-composited blit
+- [x] `_canvas_load_rgba(dst_string, src_bytes, x, y, w, h, dw)` — bulk load from external RGBA data
+- [x] All operate on `RSTRING_PTR` of Canvas's String buffer (Canvas owns data, C processes it)
+- [x] Graceful fallback: if C extension unavailable, Ruby methods work (just slower)
+- [x] Specs comparing C-accelerated vs Ruby fallback output for correctness
+
+All three C methods include `Check_Type`, bounds checking, and `EPD_MAX_DIMENSION` guards. Alpha compositing uses `(s*a + d*(255-a) + 127) / 255` for correct rounding. Canvas detects C methods via `respond_to?(:_canvas_clear, true)`.
 
 **Files:** `ext/chroma_wave/canvas.c`
 **Refs:** [EXTENSION_STRATEGY.md §2.2](EXTENSION_STRATEGY.md#22-responsibility-matrix)
 **Depends on:** Task 7 (Canvas Ruby implementation)
-**Acceptance:** C accelerators produce byte-identical output to Ruby fallbacks. Canvas detects and prefers C when available.
+**Acceptance:** ✅ C accelerators produce byte-identical output to Ruby fallbacks. Canvas detects and prefers C when available.
 
 ---
 
-### 9. Drawing primitives
+### 9. Drawing primitives ✅
 
 Bresenham/midpoint algorithms as `Surface` mixin methods. All work on any Surface (Canvas,
 Framebuffer, Layer).
 
-- [ ] `draw_line(x0, y0, x1, y1, color:, stroke_width: 1)`
-- [ ] `draw_polyline(points, color:, stroke_width: 1)`
-- [ ] `draw_rect(x, y, w, h, color:, stroke_width: 1, fill: nil)`
-- [ ] `draw_rounded_rect(x, y, w, h, radius:, color:, stroke_width: 1, fill: nil)`
-- [ ] `draw_circle(cx, cy, r, color:, stroke_width: 1, fill: nil)`
-- [ ] `draw_ellipse(cx, cy, rx, ry, color:, stroke_width: 1, fill: nil)`
-- [ ] `draw_arc(cx, cy, r, start_angle, end_angle, color:, stroke_width: 1)`
-- [ ] `draw_polygon(points, color:, stroke_width: 1, fill: nil)`
-- [ ] `flood_fill(x, y, color:)`
-- [ ] Specs for each primitive on a test Canvas, including edge cases (zero-size, single pixel, clipping)
+- [x] `draw_line(x0, y0, x1, y1, pen:)`
+- [x] `draw_polyline(points, pen:, closed:)`
+- [x] `draw_rect(x, y, w, h, pen:)`
+- [x] `draw_rounded_rect(x, y, w, h, radius:, pen:)`
+- [x] `draw_circle(cx, cy, r, pen:)`
+- [x] `draw_ellipse(cx, cy, rx, ry, pen:)`
+- [x] `draw_arc(cx, cy, r, start_angle, end_angle, pen:)`
+- [x] `draw_polygon(points, pen:)`
+- [x] `flood_fill(x, y, color:)`
+- [x] Specs for each primitive on a test Canvas, including edge cases (zero-size, single pixel, clipping)
 
-**Files:** `lib/chroma_wave/drawing/primitives.rb`
+The original `color:`/`stroke_width:`/`fill:` keyword arguments were replaced with a single `pen:` keyword accepting a `Pen` value object. `Pen` is built on `Data.define(:stroke, :fill, :stroke_width)` for structural equality, immutability, and pattern matching. Factory methods: `Pen.stroke(color, width:)`, `Pen.fill(color)`.
+
+Also implemented beyond spec: thick line via perpendicular offset, annulus optimization for thick circle/ellipse strokes, scanline flood fill with O(height) stack, `draw_rounded_rect` with corner arcs.
+
+**Files:** `lib/chroma_wave/drawing/primitives.rb`, `lib/chroma_wave/pen.rb`
 **Refs:** [CONTENT_PIPELINE.md](CONTENT_PIPELINE.md), [API_REFERENCE.md §2](API_REFERENCE.md#2-surface-protocol--implementations)
 **Depends on:** Task 6 (Surface protocol)
-**Acceptance:** All primitives render correctly. `stroke_width` and `fill` work. Clipping is silent.
+**Acceptance:** ✅ All primitives render correctly. Stroke and fill work via `Pen`. Clipping is silent. Verified on Canvas, Layer, and Framebuffer.
 
 ---
 
-### 10. Layer
+### 10. Layer ✅
 
 Clipped, offset sub-region of a parent Surface. Foundation for widget-based UI composition.
 
-- [ ] `Layer.new(parent:, x:, y:, width:, height:)` — wraps any Surface
-- [ ] `set_pixel` translates local coords → parent coords, delegates to parent
-- [ ] `get_pixel` translates and delegates; returns `nil` for out-of-bounds
-- [ ] Layers compose: Layer of a Layer works correctly (additive offset)
-- [ ] No bounds validation against parent (intentional — see [§3.7](EXTENSION_STRATEGY.md#37-three-layer-drawing-architecture))
-- [ ] `include Surface` for drawing primitive support
-- [ ] Specs for nested layers, coordinate translation, out-of-bounds behavior
+- [x] `Layer.new(parent:, x:, y:, width:, height:)` — wraps any Surface
+- [x] `set_pixel` translates local coords → parent coords, delegates to parent
+- [x] `get_pixel` translates and delegates; returns `nil` for out-of-bounds
+- [x] Layers compose: Layer of a Layer works correctly (additive offset)
+- [x] No bounds validation against parent (intentional — see [§3.7](EXTENSION_STRATEGY.md#37-three-layer-drawing-architecture))
+- [x] `include Surface` for drawing primitive support
+- [x] Specs for nested layers, coordinate translation, out-of-bounds behavior
+
+Also implemented beyond spec: `#inspect`, dimension validation via `Surface#validate_dimensions!`, tested with both Canvas and Framebuffer parents.
 
 **Files:** `lib/chroma_wave/layer.rb`
 **Refs:** [EXTENSION_STRATEGY.md §3.7 "Layer"](EXTENSION_STRATEGY.md#37-three-layer-drawing-architecture), [API_REFERENCE.md §2](API_REFERENCE.md#2-surface-protocol--implementations)
 **Depends on:** Task 6 (Surface protocol)
-**Acceptance:** Nested layers translate coordinates correctly. Drawing on a Layer clips to its bounds while delegating to the parent's pixel storage.
+**Acceptance:** ✅ Nested layers translate coordinates correctly. Drawing on a Layer clips to its bounds while delegating to the parent's pixel storage.
 
 ---
 
