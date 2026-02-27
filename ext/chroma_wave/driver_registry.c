@@ -4,23 +4,12 @@
 #include "driver_configs_generated.h"
 
 /* ------------------------------------------------------------------ */
-/* Tier 2 stub overrides                                               */
-/* Phase 1: all stubs simply delegate to the generic implementation.   */
-/* Real overrides will be added per-model in a future phase.           */
+/* Tier 2 overrides -- wired by tier2_overrides.c                      */
 /* ------------------------------------------------------------------ */
 
-static int
-tier2_stub_init(const epd_model_config_t *cfg, uint8_t mode)
-{
-    return epd_generic_init(cfg, mode);
-}
-
-static int
-tier2_stub_display(const epd_model_config_t *cfg,
-                   const uint8_t *buf, size_t len)
-{
-    return epd_generic_display(cfg, buf, len);
-}
+/* Defined in tier2_overrides.c */
+extern void tier2_register_overrides(epd_driver_t *drivers, size_t count,
+                                     const char **names);
 
 /* Names of models that need Tier 2 overrides */
 static const char *tier2_model_names[] = {
@@ -56,7 +45,8 @@ static const char *tier2_model_names[] = {
 static epd_driver_t tier2_drivers[TIER2_COUNT];
 static int tier2_initialized = 0;
 
-/* Resolve tier2 driver .config pointers from model names */
+/* Resolve tier2 driver .config pointers from model names and wire
+ * real per-model overrides from tier2_overrides.c. */
 static void
 tier2_resolve_configs(void)
 {
@@ -65,11 +55,14 @@ tier2_resolve_configs(void)
 
     for (i = 0; i < TIER2_COUNT; i++) {
         tier2_drivers[i].config         = epd_find_config(tier2_model_names[i]);
-        tier2_drivers[i].custom_init    = tier2_stub_init;
-        tier2_drivers[i].custom_display = tier2_stub_display;
+        tier2_drivers[i].custom_init    = NULL;
+        tier2_drivers[i].custom_display = NULL;
         tier2_drivers[i].pre_display    = NULL;
         tier2_drivers[i].post_display   = NULL;
     }
+
+    /* Wire real per-model overrides */
+    tier2_register_overrides(tier2_drivers, TIER2_COUNT, tier2_model_names);
     tier2_initialized = 1;
 }
 
