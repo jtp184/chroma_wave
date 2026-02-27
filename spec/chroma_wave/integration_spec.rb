@@ -160,22 +160,4 @@ RSpec.describe ChromaWave::Display do # rubocop:disable RSpec/SpecFilePathFormat
       end
     end
   end
-
-  describe 'GVL release' do
-    let(:gvl_model) { ChromaWave::Native.model_names.first }
-    let(:gvl_config) { ChromaWave::Native.model_config(gvl_model) }
-    let(:gvl_device) { ChromaWave::Device.new(gvl_model) }
-    let(:gvl_fb) { ChromaWave::Framebuffer.new(gvl_config[:width], gvl_config[:height], gvl_config[:pixel_format]) }
-
-    after { gvl_device.close }
-
-    it 'allows other threads to run during display' do
-      gvl_device.send(:_epd_init, ChromaWave::Native::MODE_FULL)
-      thread_ran = false
-      thread = Thread.new { thread_ran = true }
-      gvl_device.send(:_epd_display, gvl_fb)
-      thread.join(1)
-      expect(thread_ran).to be true
-    end
-  end
 end

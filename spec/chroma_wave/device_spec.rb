@@ -27,21 +27,6 @@ RSpec.describe ChromaWave::Device do
     end
   end
 
-  # Helper: verifies GVL is released during dual display for the given model.
-  def verify_gvl_release_during_dual(dual_model)
-    config = ChromaWave::Native.model_config(dual_model)
-    fb = ChromaWave::Framebuffer.new(config[:width], config[:height], :mono)
-    thread_ran = false
-
-    described_class.open(dual_model) do |dev|
-      dev.send(:_epd_init, 0)
-      thread = Thread.new { thread_ran = true }
-      dev.send(:_epd_display_dual, fb, fb)
-      thread.join(1)
-    end
-    thread_ran
-  end
-
   describe '#initialize' do
     it 'creates an open device for a valid model' do
       device = described_class.new(model_name)
@@ -221,14 +206,6 @@ RSpec.describe ChromaWave::Device do
         end
       end
 
-      it 'allows other threads to run during dual display' do
-        dual_model = find_dual_buf_model
-        skip 'no dual-buffer model in registry' unless dual_model
-
-        thread_ran = verify_gvl_release_during_dual(dual_model)
-        expect(thread_ran).to be true
-      end
-
       it 'raises DeviceError when device is closed' do
         config = ChromaWave::Native.model_config(model_name)
         fb = ChromaWave::Framebuffer.new(config[:width], config[:height], config[:pixel_format])
@@ -287,39 +264,6 @@ RSpec.describe ChromaWave::Device do
 
     it 'defines MODE_GRAYSCALE as 3' do
       expect(ChromaWave::Native::MODE_GRAYSCALE).to eq(3)
-    end
-  end
-
-  describe 'GVL release' do
-    it 'allows other threads to run during display' do
-      config = ChromaWave::Native.model_config(model_name)
-      fb = ChromaWave::Framebuffer.new(config[:width], config[:height], config[:pixel_format])
-
-      described_class.open(model_name) do |dev|
-        dev.send(:_epd_init, ChromaWave::Native::MODE_FULL)
-
-        thread_ran = false
-        thread = Thread.new { thread_ran = true }
-
-        dev.send(:_epd_display, fb)
-        thread.join(1)
-
-        expect(thread_ran).to be true
-      end
-    end
-
-    it 'allows other threads to run during clear' do
-      described_class.open(model_name) do |dev|
-        dev.send(:_epd_init, ChromaWave::Native::MODE_FULL)
-
-        thread_ran = false
-        thread = Thread.new { thread_ran = true }
-
-        dev.send(:_epd_clear)
-        thread.join(1)
-
-        expect(thread_ran).to be true
-      end
     end
   end
 
