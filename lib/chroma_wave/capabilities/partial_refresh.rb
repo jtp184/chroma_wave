@@ -5,8 +5,19 @@ module ChromaWave
     # Adds partial-refresh display mode to a Display subclass.
     #
     # Partial refresh avoids the full screen flash, enabling fast updates
-    # for small changes. Requires a base image to be displayed first via
-    # {#display_base}, then subsequent updates via {#display_partial}.
+    # for small changes. The recommended workflow is:
+    #
+    # 1. Display a base image via {#display_base} (uses full refresh).
+    # 2. Update the display via {#display_partial} (uses partial refresh).
+    #
+    # On V2+ models, the vendor recommends displaying a base image before
+    # the first partial update; otherwise the first few seconds may show
+    # artifacts. Partial init is self-contained and does not require a
+    # prior full-mode init.
+    #
+    # @example Partial refresh workflow
+    #   display.display_base(base_fb)      # full refresh, sets base image
+    #   display.display_partial(updated_fb) # fast partial update
     module PartialRefresh
       # Initializes the display for partial refresh mode.
       #

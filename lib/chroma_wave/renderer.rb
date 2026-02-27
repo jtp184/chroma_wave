@@ -378,6 +378,8 @@ module ChromaWave
       when :red, :yellow
         black_fb.set_pixel(x, y, :white)
         red_fb.set_pixel(x, y, :black)
+      else
+        raise ArgumentError, "unexpected COLOR4 palette color: #{name.inspect}"
       end
     end
   end

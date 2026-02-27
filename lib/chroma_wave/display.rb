@@ -100,6 +100,8 @@ module ChromaWave
     #
     # @return [self]
     def deep_sleep
+      return self unless @initialized
+
       synchronize_device { device.send(:_epd_sleep) }
       @initialized = false
       @current_mode = nil

@@ -437,8 +437,8 @@ clear_width_byte(uint16_t width, pixel_format_t fmt)
     case PIXEL_FORMAT_GRAY4:  return (uint16_t)((width + 3) / 4);
     case PIXEL_FORMAT_COLOR4:
     case PIXEL_FORMAT_COLOR7: return (uint16_t)((width + 1) / 2);
+    default:                  return (uint16_t)((width + 7) / 8);
     }
-    return (uint16_t)((width + 7) / 8); /* fallback */
 }
 
 /* Returns the fill byte that represents "all-white" for the given format.
@@ -458,8 +458,8 @@ clear_fill_byte(pixel_format_t fmt)
     case PIXEL_FORMAT_GRAY4:  return 0xFF;
     case PIXEL_FORMAT_COLOR4: return 0x11;
     case PIXEL_FORMAT_COLOR7: return 0x11;
+    default:                  return 0xFF;
     }
-    return 0xFF; /* fallback */
 }
 
 /* ---- _epd_clear ---- */
