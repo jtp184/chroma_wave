@@ -417,7 +417,10 @@ epd_7in5_v2_display(const epd_model_config_t *cfg,
     epd_send_command(cfg->display_cmd);   /* 0x10 */
     epd_send_data_bulk(buf, len);
 
-    /* Buffer 2: byte-inverted copy sent in bulk for performance */
+    /* Buffer 2: byte-inverted copy sent in bulk for performance.
+     * malloc/free intentional: this runs without the GVL where xmalloc
+     * could trigger GC unsafely.  Allocation is bounded by display
+     * resolution (~480 KB max for 7.5" panel). */
     inv = (uint8_t *)malloc(len);
     if (!inv) return EPD_ERR_PARAM;
     for (i = 0; i < len; i++) {
