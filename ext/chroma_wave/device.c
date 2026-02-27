@@ -231,7 +231,8 @@ display_without_gvl(void *arg)
 
     /* Pre-display hook */
     if (drv && drv->pre_display) {
-        drv->pre_display(cfg, cancel_flag);
+        int rc = drv->pre_display(cfg, cancel_flag);
+        if (rc != EPD_OK) { args->result = rc; return NULL; }
     }
 
     /* Display data */
@@ -243,7 +244,8 @@ display_without_gvl(void *arg)
 
     /* Post-display hook (only if display succeeded) */
     if (args->result == EPD_OK && drv && drv->post_display) {
-        drv->post_display(cfg, cancel_flag);
+        int rc = drv->post_display(cfg, cancel_flag);
+        if (rc != EPD_OK) { args->result = rc; }
     }
 
     return NULL;
@@ -304,6 +306,7 @@ device_epd_display(VALUE self, VALUE rb_fb)
     /* Release GVL so other Ruby threads can run during display */
     rb_thread_call_without_gvl(display_without_gvl, &args,
                                display_ubf, &args);
+    RB_GC_GUARD(rb_fb);
 
     /* Back under GVL -- safe to raise exceptions */
     if (args.result == EPD_ERR_TIMEOUT) {
@@ -342,7 +345,8 @@ display_dual_without_gvl(void *arg)
 
     /* Pre-display hook */
     if (drv && drv->pre_display) {
-        drv->pre_display(cfg, cancel_flag);
+        int rc = drv->pre_display(cfg, cancel_flag);
+        if (rc != EPD_OK) { args->result = rc; return NULL; }
     }
 
     /* Send black channel via primary display command */
@@ -365,7 +369,8 @@ display_dual_without_gvl(void *arg)
 
     /* Post-display hook */
     if (drv && drv->post_display) {
-        drv->post_display(cfg, cancel_flag);
+        int rc = drv->post_display(cfg, cancel_flag);
+        if (rc != EPD_OK) { args->result = rc; }
     }
 
     return NULL;
@@ -404,6 +409,8 @@ device_epd_display_dual(VALUE self, VALUE rb_black_fb, VALUE rb_red_fb)
     /* Release GVL so other Ruby threads can run during dual display */
     rb_thread_call_without_gvl(display_dual_without_gvl, &args,
                                display_dual_ubf, &args);
+    RB_GC_GUARD(rb_black_fb);
+    RB_GC_GUARD(rb_red_fb);
 
     /* Back under GVL -- safe to raise exceptions */
     if (args.result == EPD_ERR_TIMEOUT) {
