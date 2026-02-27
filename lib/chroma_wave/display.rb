@@ -112,7 +112,7 @@ module ChromaWave
     # @return [void]
     def close
       deep_sleep
-    rescue StandardError
+    rescue DeviceError
       nil
     ensure
       device.close
