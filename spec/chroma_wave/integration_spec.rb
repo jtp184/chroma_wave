@@ -77,6 +77,27 @@ RSpec.describe ChromaWave::Display do # rubocop:disable RSpec/SpecFilePathFormat
       end
     end
 
+    context 'with a display supporting regional refresh' do
+      let(:model) do
+        model_names.find do |n|
+          ChromaWave::Native.model_config(n)[:capabilities].include?(:regional)
+        end
+      end
+
+      it 'supports regional refresh via display_region' do
+        skip 'no regional-refresh model available' unless model
+
+        config = ChromaWave::Native.model_config(model)
+        display = described_class.new(model: model)
+        fb = ChromaWave::Framebuffer.new(config[:width], config[:height], config[:pixel_format])
+
+        expect(display).to respond_to(:display_region)
+        expect { display.display_region(fb, x: 0, y: 0, width: 16, height: 16) }
+          .not_to raise_error
+        display.close
+      end
+    end
+
     context 'with a display supporting partial refresh' do
       let(:model) do
         model_names.find do |n|

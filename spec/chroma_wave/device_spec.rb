@@ -216,6 +216,26 @@ RSpec.describe ChromaWave::Device do
       end
     end
 
+    describe '#_epd_display_region' do
+      it 'sends a region of a framebuffer to the display' do
+        config = ChromaWave::Native.model_config(model_name)
+        fb = ChromaWave::Framebuffer.new(config[:width], config[:height], config[:pixel_format])
+        described_class.open(model_name) do |dev|
+          dev.send(:_epd_init, 0)
+          expect { dev.send(:_epd_display_region, fb, 0, 0, 16, 16) }.not_to raise_error
+        end
+      end
+
+      it 'raises DeviceError when device is closed' do
+        config = ChromaWave::Native.model_config(model_name)
+        fb = ChromaWave::Framebuffer.new(config[:width], config[:height], config[:pixel_format])
+        device = described_class.new(model_name)
+        device.close
+        expect { device.send(:_epd_display_region, fb, 0, 0, 16, 16) }
+          .to raise_error(ChromaWave::DeviceError, /closed/)
+      end
+    end
+
     describe '#_epd_sleep' do
       it 'puts the display to sleep' do
         described_class.open(model_name) do |dev|
