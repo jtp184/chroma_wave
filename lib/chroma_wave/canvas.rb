@@ -124,6 +124,24 @@ module ChromaWave
       buffer.dup.freeze
     end
 
+    # Returns true if +other+ is a Canvas with the same dimensions and pixels.
+    #
+    # @param other [Object] the object to compare
+    # @return [Boolean]
+    def ==(other)
+      other.is_a?(Canvas) &&
+        width == other.width &&
+        height == other.height &&
+        buffer == other.send(:buffer)
+    end
+
+    # Returns a human-readable description of the canvas.
+    #
+    # @return [String]
+    def inspect
+      "#<#{self.class} #{width}x#{height}>"
+    end
+
     # Creates a {Layer} scoped to a rectangular sub-region of this canvas.
     #
     # If a block is given, yields the layer and returns self for chaining.
@@ -134,10 +152,10 @@ module ChromaWave
     # @param height [Integer] sub-region height
     # @yield [Layer] the created layer (optional)
     # @return [Layer, self] the layer, or self if a block was given
-    def layer(x:, y:, width:, height:, &block)
+    def layer(x:, y:, width:, height:)
       l = Layer.new(parent: self, x: x, y: y, width: width, height: height)
-      if block
-        block.call(l)
+      if block_given?
+        yield l
         self
       else
         l
@@ -155,6 +173,33 @@ module ChromaWave
     # @return [Integer] byte offset into the buffer
     def pixel_offset(x, y)
       ((y * width) + x) * BYTES_PER_PIXEL
+    end
+
+    # Optimized fill_rect that writes scanline rows directly into the buffer.
+    #
+    # Clips the rectangle to canvas bounds, then writes one memcpy-style
+    # row per scanline instead of per-pixel set_pixel calls.
+    #
+    # @param x [Integer] top-left x
+    # @param y [Integer] top-left y
+    # @param w [Integer] width
+    # @param h [Integer] height
+    # @param color [Object] fill color
+    def fill_rect(x, y, w, h, color)
+      # Clip to canvas bounds
+      x0 = [x, 0].max
+      y0 = [y, 0].max
+      x1 = [x + w, width].min
+      y1 = [y + h, height].min
+      return if x0 >= x1 || y0 >= y1
+
+      stamp = color.to_rgba_bytes
+      row = stamp * (x1 - x0)
+
+      (y0...y1).each do |row_y|
+        offset = pixel_offset(x0, row_y)
+        buffer[offset, row.bytesize] = row
+      end
     end
 
     # Ruby fallback for clear.

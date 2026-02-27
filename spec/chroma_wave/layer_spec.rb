@@ -14,6 +14,33 @@ RSpec.describe ChromaWave::Layer do
       expect(layer.width).to eq(10)
       expect(layer.height).to eq(5)
     end
+
+    it 'raises ArgumentError for zero width' do
+      expect { described_class.new(parent: canvas, x: 0, y: 0, width: 0, height: 5) }
+        .to raise_error(ArgumentError, /width/)
+    end
+
+    it 'raises ArgumentError for negative width' do
+      expect { described_class.new(parent: canvas, x: 0, y: 0, width: -1, height: 5) }
+        .to raise_error(ArgumentError, /width/)
+    end
+
+    it 'raises ArgumentError for zero height' do
+      expect { described_class.new(parent: canvas, x: 0, y: 0, width: 5, height: 0) }
+        .to raise_error(ArgumentError, /height/)
+    end
+
+    it 'raises ArgumentError for negative height' do
+      expect { described_class.new(parent: canvas, x: 0, y: 0, width: 5, height: -1) }
+        .to raise_error(ArgumentError, /height/)
+    end
+  end
+
+  describe '#inspect' do
+    it 'includes class name, dimensions, and offset' do
+      layer = described_class.new(parent: canvas, x: 3, y: 7, width: 10, height: 5)
+      expect(layer.inspect).to eq('#<ChromaWave::Layer 10x5 at (3,7)>')
+    end
   end
 
   describe 'coordinate translation' do

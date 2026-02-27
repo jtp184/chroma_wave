@@ -24,11 +24,19 @@ module ChromaWave
     # @param width [Integer] layer width in pixels
     # @param height [Integer] layer height in pixels
     def initialize(parent:, x:, y:, width:, height:)
+      validate_dimensions!(width, height)
       @parent   = parent
       @offset_x = x
       @offset_y = y
       @width    = width
       @height   = height
+    end
+
+    # Returns a human-readable description of the layer.
+    #
+    # @return [String]
+    def inspect
+      "#<#{self.class} #{width}x#{height} at (#{offset_x},#{offset_y})>"
     end
 
     # Sets the pixel at local (x, y) on the parent surface.
@@ -60,5 +68,15 @@ module ChromaWave
     private
 
     attr_reader :parent, :offset_x, :offset_y
+
+    # Validates that dimensions are positive integers.
+    #
+    # @param w [Object] width to validate
+    # @param h [Object] height to validate
+    # @raise [ArgumentError] if either is not a positive integer
+    def validate_dimensions!(w, h)
+      raise ArgumentError, 'width must be a positive Integer' unless w.is_a?(Integer) && w.positive?
+      raise ArgumentError, 'height must be a positive Integer' unless h.is_a?(Integer) && h.positive?
+    end
   end
 end

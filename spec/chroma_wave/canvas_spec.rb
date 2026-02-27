@@ -235,6 +235,39 @@ RSpec.describe ChromaWave::Canvas do
     end
   end
 
+  describe '#inspect' do
+    it 'includes class name and dimensions' do
+      canvas = described_class.new(width: 200, height: 100)
+      expect(canvas.inspect).to eq('#<ChromaWave::Canvas 200x100>')
+    end
+  end
+
+  describe '#==' do
+    it 'returns true for canvases with identical content' do
+      a = described_class.new(width: 5, height: 5, background: red)
+      b = described_class.new(width: 5, height: 5, background: red)
+      expect(a).to eq(b)
+    end
+
+    it 'returns false for different dimensions' do
+      a = described_class.new(width: 5, height: 5)
+      b = described_class.new(width: 5, height: 6)
+      expect(a).not_to eq(b)
+    end
+
+    it 'returns false for different pixel content' do
+      a = described_class.new(width: 5, height: 5)
+      b = described_class.new(width: 5, height: 5)
+      b.set_pixel(0, 0, red)
+      expect(a).not_to eq(b)
+    end
+
+    it 'returns false for non-Canvas objects' do
+      canvas = described_class.new(width: 5, height: 5)
+      expect(canvas).not_to eq('not a canvas')
+    end
+  end
+
   describe 'memory efficiency' do
     it 'uses a single buffer String (minimal GC objects)' do
       # The key invariant: the buffer is a single String, not an array of pixels
