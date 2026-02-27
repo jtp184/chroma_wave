@@ -59,7 +59,8 @@ module ChromaWave
         partial: 'EPD_CAP_PARTIAL',
         fast: 'EPD_CAP_FAST',
         grayscale: 'EPD_CAP_GRAYSCALE',
-        dual_buf: 'EPD_CAP_DUAL_BUF'
+        dual_buf: 'EPD_CAP_DUAL_BUF',
+        regional: 'EPD_CAP_REGIONAL'
       }.freeze
 
       # Display data command bytes used to identify primary/secondary write commands.
