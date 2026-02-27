@@ -13,6 +13,7 @@ extern void tier2_register_overrides(epd_driver_t *drivers, size_t count,
 
 /* Names of models that need Tier 2 overrides */
 static const char *tier2_model_names[] = {
+    "epd_13in3b",
     "epd_13in3k",
     "epd_1in02d",
     "epd_1in54",
@@ -23,6 +24,7 @@ static const char *tier2_model_names[] = {
     "epd_2in7",
     "epd_2in7_v2",
     "epd_2in9",
+    "epd_2in9b_v4",
     "epd_3in0g",
     "epd_3in52",
     "epd_3in7",
@@ -32,11 +34,13 @@ static const char *tier2_model_names[] = {
     "epd_4in2_v2",
     "epd_4in37g",
     "epd_5in65f",
+    "epd_5in83_v2",
     "epd_5in83bc",
     "epd_7in3e",
     "epd_7in3f",
     "epd_7in3g",
     "epd_7in5_v2",
+    "epd_7in5b_v2",
     "epd_7in5bc"
 };
 
@@ -54,11 +58,13 @@ tier2_resolve_configs(void)
     if (tier2_initialized) return;
 
     for (i = 0; i < TIER2_COUNT; i++) {
-        tier2_drivers[i].config         = epd_find_config(tier2_model_names[i]);
-        tier2_drivers[i].custom_init    = NULL;
-        tier2_drivers[i].custom_display = NULL;
-        tier2_drivers[i].pre_display    = NULL;
-        tier2_drivers[i].post_display   = NULL;
+        tier2_drivers[i].config                = epd_find_config(tier2_model_names[i]);
+        tier2_drivers[i].custom_init           = NULL;
+        tier2_drivers[i].custom_display        = NULL;
+        tier2_drivers[i].pre_display           = NULL;
+        tier2_drivers[i].post_display          = NULL;
+        tier2_drivers[i].custom_display_region = NULL;
+        tier2_drivers[i].post_display_region   = NULL;
     }
 
     /* Wire real per-model overrides */
@@ -211,6 +217,96 @@ epd_generic_display(const epd_model_config_t *cfg,
      * Tier 2 overrides handle the actual second-buffer data when needed. */
     if (cfg->display_cmd_2 != 0x00) {
         epd_send_command(cfg->display_cmd_2);
+    }
+
+    return EPD_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* Generic regional display (SSD1680 / SSD1677)                        */
+/*                                                                     */
+/* Sets RAM address window and cursor to the sub-rectangle, then       */
+/* sends only the region pixel data (row-by-row extraction from the    */
+/* full framebuffer).                                                   */
+/*                                                                     */
+/* SSD1680 (width <= 256): 1-byte X (byte-indexed), 0x44/0x4E         */
+/* SSD1677 (width > 256):  2-byte X (pixel-indexed), 0x44/0x4E        */
+/* ------------------------------------------------------------------ */
+
+int
+epd_generic_display_region(const epd_model_config_t *cfg,
+                           const uint8_t *buf, size_t buf_len,
+                           uint16_t x, uint16_t y,
+                           uint16_t w, uint16_t h)
+{
+    uint16_t full_width_bytes = (uint16_t)((cfg->width + 7) / 8);
+    uint16_t x_byte_start = (uint16_t)(x / 8);
+    uint16_t x_byte_end   = (uint16_t)((x + w - 1) / 8);
+    uint16_t region_width_bytes = (uint16_t)(x_byte_end - x_byte_start + 1);
+    uint16_t y_end = (uint16_t)(y + h - 1);
+    uint16_t row;
+
+    if (!buf || buf_len == 0) return EPD_ERR_PARAM;
+    if (buf_len < (size_t)full_width_bytes * cfg->height) return EPD_ERR_PARAM;
+
+    if (cfg->width > 256) {
+        /* SSD1677: 2-byte X addresses in pixel units */
+        uint16_t x_px_start = (uint16_t)(x_byte_start * 8);
+        uint16_t x_px_end   = (uint16_t)(x_byte_end * 8 + 7);
+
+        /* Set RAM X address window (0x44) */
+        epd_send_command(0x44);
+        epd_send_data((uint8_t)(x_px_start & 0xFF));
+        epd_send_data((uint8_t)(x_px_start >> 8));
+        epd_send_data((uint8_t)(x_px_end & 0xFF));
+        epd_send_data((uint8_t)(x_px_end >> 8));
+
+        /* Set RAM Y address window (0x45) */
+        epd_send_command(0x45);
+        epd_send_data((uint8_t)(y & 0xFF));
+        epd_send_data((uint8_t)(y >> 8));
+        epd_send_data((uint8_t)(y_end & 0xFF));
+        epd_send_data((uint8_t)(y_end >> 8));
+
+        /* Set RAM X cursor (0x4E) */
+        epd_send_command(0x4E);
+        epd_send_data((uint8_t)(x_px_start & 0xFF));
+        epd_send_data((uint8_t)(x_px_start >> 8));
+
+        /* Set RAM Y cursor (0x4F) */
+        epd_send_command(0x4F);
+        epd_send_data((uint8_t)(y & 0xFF));
+        epd_send_data((uint8_t)(y >> 8));
+    } else {
+        /* SSD1680: 1-byte X addresses in byte units */
+
+        /* Set RAM X address window (0x44) */
+        epd_send_command(0x44);
+        epd_send_data((uint8_t)x_byte_start);
+        epd_send_data((uint8_t)x_byte_end);
+
+        /* Set RAM Y address window (0x45) */
+        epd_send_command(0x45);
+        epd_send_data((uint8_t)(y & 0xFF));
+        epd_send_data((uint8_t)(y >> 8));
+        epd_send_data((uint8_t)(y_end & 0xFF));
+        epd_send_data((uint8_t)(y_end >> 8));
+
+        /* Set RAM X cursor (0x4E) */
+        epd_send_command(0x4E);
+        epd_send_data((uint8_t)x_byte_start);
+
+        /* Set RAM Y cursor (0x4F) */
+        epd_send_command(0x4F);
+        epd_send_data((uint8_t)(y & 0xFF));
+        epd_send_data((uint8_t)(y >> 8));
+    }
+
+    /* Send only region pixel data, row by row */
+    epd_send_command(cfg->display_cmd);
+    for (row = 0; row < h; row++) {
+        size_t offset = (size_t)(y + row) * full_width_bytes + x_byte_start;
+        epd_send_data_bulk(buf + offset, region_width_bytes);
     }
 
     return EPD_OK;
