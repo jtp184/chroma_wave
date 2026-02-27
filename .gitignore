@@ -12,6 +12,7 @@
 *.o
 *.a
 mkmf.log
+ext/chroma_wave/Makefile
 
 # rspec failure tracking
 .rspec_status
