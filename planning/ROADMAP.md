@@ -351,7 +351,7 @@ Composable Ruby modules that wrap private C methods for optional display feature
 - [x] `Capabilities::FastRefresh` — `init_fast`, `display_fast`
 - [x] `Capabilities::GrayscaleMode` — `init_grayscale`, `display_grayscale`
 - [x] `Capabilities::DualBuffer` — overrides `show` to split Canvas into 2 mono FBs via Renderer, `show_raw` for power users
-- [x] `Capabilities::RegionalRefresh` — `display_region(fb, x:, y:, width:, height:)` with bounds validation
+- [x] `Capabilities::RegionalRefresh` — `display_region(fb, x:, y:, width:, height:)` with bounds validation, real windowed display via `_epd_display_region` C bridge (SSD1680/SSD1677 generic + UC8179 overrides), auto byte-alignment, 5 qualifying models
 - [x] Base `Display#show` accepts Canvas (auto-rendered) or Framebuffer (power-user)
 - [x] Model registry: auto-build subclasses from C config capability bitfields at gem load time
 - [x] `Display.new(model: :symbol)` factory with did-you-mean on typos
@@ -369,19 +369,20 @@ Also implemented: `Display.open(model:)` block form with auto-close, `Display.mo
 
 ### 13. Compile all drivers (Tier 2 overrides) ✅
 
-Real per-model overrides for all 25 Tier 2 models, organized by category: LUT-based (7), color displays (8), power-managed (3), dual-buffer (4), non-standard (3).
+Real per-model overrides for all 29 Tier 2 models, organized by category: LUT-based (7), color displays (8), power-managed (3), dual-buffer (4), non-standard (3), regional refresh (5).
 
 - [x] LUT-based models: epd_1in54, epd_2in13, epd_2in9, epd_4in2, epd_4in2_v2, epd_4in26, epd_13in3k — custom LUT loading in `custom_init`
 - [x] Color displays: epd_1in64g, epd_2in15g, epd_2in36g, epd_3in0g, epd_4in37g, epd_7in3e, epd_7in3f, epd_7in3g — multi-color controller init sequences
 - [x] Power-managed: epd_4in01f, epd_5in65f, epd_5in83bc — pre/post display power cycling, dual-polarity busy-wait
 - [x] Dual-buffer: epd_2in7, epd_2in7_v2, epd_7in5_v2, epd_7in5bc — `custom_display` with dual buffer send, epd_7in5_v2 buffer inversion
 - [x] Non-standard: epd_1in02d, epd_3in52, epd_3in7 — unusual command sequences
+- [x] Regional refresh: epd_2in7_v2, epd_2in9b_v4 (SSD1680), epd_13in3b (SSD1677), epd_5in83_v2, epd_7in5b_v2 (UC8179) — windowed display update overrides
 - [x] `tier2_register_overrides()` wires all overrides into the driver registry
 
 **Files:** `ext/chroma_wave/tier2_overrides.c`, `ext/chroma_wave/driver_registry.c`
 **Refs:** [EXTENSION_STRATEGY.md §1.2](EXTENSION_STRATEGY.md#12-what-we-must-abstract)
 **Depends on:** Tasks 2, 3
-**Acceptance:** ✅ All 25 Tier 2 models have real overrides. All 70+ models accessible at runtime via registry.
+**Acceptance:** ✅ All 29 Tier 2 models have real overrides (including 5 regional refresh). All 70+ models accessible at runtime via registry.
 
 ---
 
