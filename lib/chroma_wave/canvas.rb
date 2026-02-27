@@ -262,15 +262,5 @@ module ChromaWave
         buffer[dst_offset, copy_len] = bytes.byteslice(src_offset, copy_len)
       end
     end
-
-    # Validates that dimensions are positive integers.
-    #
-    # @param w [Object] width to validate
-    # @param h [Object] height to validate
-    # @raise [ArgumentError] if either is not a positive integer
-    def validate_dimensions!(w, h)
-      raise ArgumentError, 'width must be a positive Integer' unless w.is_a?(Integer) && w.positive?
-      raise ArgumentError, 'height must be a positive Integer' unless h.is_a?(Integer) && h.positive?
-    end
   end
 end
