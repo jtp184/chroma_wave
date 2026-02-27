@@ -346,6 +346,12 @@ display_dual_without_gvl(void *arg)
     epd_send_command(cfg->display_cmd);
     epd_send_data_bulk(args->black_buf, args->black_len);
 
+    /* Check cancellation between buffer sends */
+    if (cancel_flag && *cancel_flag) {
+        args->result = EPD_ERR_TIMEOUT;
+        return NULL;
+    }
+
     /* Send red/yellow channel via secondary display command */
     if (cfg->display_cmd_2 != 0x00) {
         epd_send_command(cfg->display_cmd_2);
