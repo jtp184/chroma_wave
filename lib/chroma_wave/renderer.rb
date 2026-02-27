@@ -159,7 +159,8 @@ module ChromaWave
     # Threshold quantization: simple nearest-color mapping with no error diffusion.
     #
     # Reads raw RGBA bytes from the canvas and maps each pixel to the nearest
-    # palette color using the palette's redmean distance calculation.
+    # palette color using the palette's redmean distance calculation. Uses a
+    # reusable {RGB} struct to avoid per-pixel Color allocation.
     #
     # @param canvas [Canvas] source RGBA canvas
     # @param framebuffer [Framebuffer] target framebuffer
@@ -167,16 +168,15 @@ module ChromaWave
       palette = pixel_format.palette
       bytes = canvas.rgba_bytes
       width = canvas.width
+      pixel = RGB.new(0, 0, 0)
 
       canvas.height.times do |y|
         width.times do |x|
           offset = ((y * width) + x) * BYTES_PER_PIXEL
-          color = Color.new(
-            r: bytes.getbyte(offset),
-            g: bytes.getbyte(offset + 1),
-            b: bytes.getbyte(offset + 2)
-          )
-          framebuffer.set_pixel(x, y, palette.nearest_color(color))
+          pixel.r = bytes.getbyte(offset)
+          pixel.g = bytes.getbyte(offset + 1)
+          pixel.b = bytes.getbyte(offset + 2)
+          framebuffer.set_pixel(x, y, palette.nearest_color(pixel))
         end
       end
     end
@@ -312,32 +312,30 @@ module ChromaWave
       bytes = canvas.rgba_bytes
       width = canvas.width
       spread = 256.0 / palette.size
+      pixel = RGB.new(0, 0, 0)
 
       canvas.height.times do |y|
         width.times do |x|
-          color = bayer_adjusted_color(bytes, x, y, width, spread)
-          framebuffer.set_pixel(x, y, palette.nearest_color(color))
+          offset = ((y * width) + x) * BYTES_PER_PIXEL
+          threshold = (BAYER_4X4[y % 4][x % 4] - 0.5) * spread
+          bayer_adjust_pixel!(pixel, bytes, offset, threshold)
+          framebuffer.set_pixel(x, y, palette.nearest_color(pixel))
         end
       end
     end
 
-    # Builds a Bayer-threshold-adjusted color for ordered dithering.
+    # Fills a reusable {RGB} struct with Bayer-threshold-adjusted values for ordered dithering.
     #
+    # Mutates +pixel+ in place to avoid per-pixel Color allocation.
+    #
+    # @param pixel [RGB] the struct to fill (mutated)
     # @param bytes [String] raw RGBA canvas bytes
-    # @param x [Integer] pixel x coordinate
-    # @param y [Integer] pixel y coordinate
-    # @param width [Integer] canvas width
-    # @param spread [Float] threshold scaling factor
-    # @return [Color] the adjusted color clamped to 0..255
-    def bayer_adjusted_color(bytes, x, y, width, spread)
-      offset = ((y * width) + x) * BYTES_PER_PIXEL
-      threshold = (BAYER_4X4[y % 4][x % 4] - 0.5) * spread
-
-      Color.new(
-        r: (bytes.getbyte(offset) + threshold).round.clamp(0, 255),
-        g: (bytes.getbyte(offset + 1) + threshold).round.clamp(0, 255),
-        b: (bytes.getbyte(offset + 2) + threshold).round.clamp(0, 255)
-      )
+    # @param offset [Integer] byte offset into the canvas buffer
+    # @param threshold [Float] Bayer threshold value scaled by spread
+    def bayer_adjust_pixel!(pixel, bytes, offset, threshold)
+      pixel.r = (bytes.getbyte(offset) + threshold).round.clamp(0, 255)
+      pixel.g = (bytes.getbyte(offset + 1) + threshold).round.clamp(0, 255)
+      pixel.b = (bytes.getbyte(offset + 2) + threshold).round.clamp(0, 255)
     end
 
     # Splits a Canvas into two MONO Framebuffers for dual-buffer COLOR4 displays.
@@ -354,16 +352,15 @@ module ChromaWave
       palette = pixel_format.palette
       bytes = canvas.rgba_bytes
       width = canvas.width
+      pixel = RGB.new(0, 0, 0)
 
       canvas.height.times do |y|
         width.times do |x|
           offset = ((y * width) + x) * BYTES_PER_PIXEL
-          color = Color.new(
-            r: bytes.getbyte(offset),
-            g: bytes.getbyte(offset + 1),
-            b: bytes.getbyte(offset + 2)
-          )
-          route_dual_pixel(palette.nearest_color(color), black_fb, red_fb, x, y)
+          pixel.r = bytes.getbyte(offset)
+          pixel.g = bytes.getbyte(offset + 1)
+          pixel.b = bytes.getbyte(offset + 2)
+          route_dual_pixel(palette.nearest_color(pixel), black_fb, red_fb, x, y)
         end
       end
     end
