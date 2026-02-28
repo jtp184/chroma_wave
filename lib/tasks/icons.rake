@@ -17,7 +17,7 @@ namespace :icons do
       hash[name.tr('-', '_')] = codepoint
     end
 
-    lines = glyphs.sort.map { |name, cp| "      #{name}: 0x#{cp.to_s(16).upcase}" }
+    lines = glyphs.sort.map { |name, cp| "      #{name.to_sym.inspect} => 0x#{cp.to_s(16).upcase}" }
 
     content = <<~RUBY
       # frozen_string_literal: true

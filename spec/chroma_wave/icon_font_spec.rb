@@ -61,6 +61,26 @@ RSpec.describe ChromaWave::IconFont do
     end
   end
 
+  describe 'icons:generate glyph line format' do
+    it 'produces valid Ruby symbol syntax for normal names' do
+      name = 'arrow_left'
+      line = "#{name.to_sym.inspect} => 0xE001"
+      expect(line).to eq(':arrow_left => 0xE001')
+    end
+
+    it 'produces quoted symbol syntax for digit-prefixed names' do
+      name = '3d_box'
+      line = "#{name.to_sym.inspect} => 0xE002"
+      expect(line).to eq(':"3d_box" => 0xE002')
+    end
+
+    it 'produces quoted symbol syntax for hyphenated names' do
+      name = 'arrow-left'
+      line = "#{name.to_sym.inspect} => 0xE003"
+      expect(line).to eq(':"arrow-left" => 0xE003')
+    end
+  end
+
   describe '#glyph_map' do
     subject(:icons) { described_class.lucide(size: 16) }
 
