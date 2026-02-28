@@ -15,12 +15,17 @@ module ChromaWave
       # Fully opaque pixels (alpha 255) are set directly for performance.
       #
       # @param text [String] the text to render
-      # @param x [Integer] left edge for :left alignment, center for :center
+      # @param x [Integer] left edge of the alignment box.
+      #   For +align: :left+, text starts at this x coordinate.
+      #   For +align: :center+ or +:right+, text is offset within the
+      #   box of width +max_width+ starting at this x coordinate.
       # @param y [Integer] top of the first line (not baseline)
       # @param font [Font] loaded Font instance
       # @param color [Color] text color (alpha channel ignored — glyph alpha used)
-      # @param align [:left, :center, :right] horizontal alignment
-      # @param max_width [Integer, nil] maximum width before word wrapping
+      # @param align [:left, :center, :right] horizontal alignment within the
+      #   alignment box (requires +max_width+ for +:center+ and +:right+)
+      # @param max_width [Integer, nil] width of the alignment box; also used
+      #   for word wrapping
       # @param line_spacing [Float] multiplier for line height (default 1.2)
       # @return [self]
       def draw_text(text, x:, y:, font:, color:, align: :left, max_width: nil, line_spacing: 1.2) # rubocop:disable Metrics/ParameterLists
@@ -119,10 +124,15 @@ module ChromaWave
 
       # General source-over blend for semi-transparent backgrounds.
       #
+      # RGB channels are weighted by computed Porter-Duff alpha for
+      # correctness, but the output alpha is clamped to 255 (opaque)
+      # to match the C accelerator (+_canvas_blit_glyph+) and
+      # +Color#over+ semantics.
+      #
       # @param foreground [Color] foreground color
       # @param alpha [Integer] foreground alpha (0..255)
       # @param background [Color] background color
-      # @return [Color] composited result
+      # @return [Color] composited result (always opaque)
       def blend_over_general(foreground, alpha, background) # rubocop:disable Metrics/AbcSize
         a_fg = alpha / 255.0
         a_bg = background.a / 255.0
@@ -135,8 +145,7 @@ module ChromaWave
         Color.new(
           r: ((foreground.r * w_fg) + (background.r * inv)).round,
           g: ((foreground.g * w_fg) + (background.g * inv)).round,
-          b: ((foreground.b * w_fg) + (background.b * inv)).round,
-          a: (a_out * 255).round
+          b: ((foreground.b * w_fg) + (background.b * inv)).round
         )
       end
 
