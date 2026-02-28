@@ -28,6 +28,20 @@ RSpec.describe ChromaWave::Font do
       end
     end
 
+    context 'with zero size' do
+      it 'raises ArgumentError' do
+        expect { described_class.new(font_path, size: 0) }
+          .to raise_error(ArgumentError, /positive/)
+      end
+    end
+
+    context 'with negative size' do
+      it 'raises ArgumentError' do
+        expect { described_class.new(font_path, size: -1) }
+          .to raise_error(ArgumentError, /positive/)
+      end
+    end
+
     context 'without FreeType' do
       before do
         allow_any_instance_of(described_class) # rubocop:disable RSpec/AnyInstance
@@ -109,6 +123,22 @@ RSpec.describe ChromaWave::Font do
       short = font.measure('Hi')
       long = font.measure('Hello World')
       expect(long.width).to be > short.width
+    end
+
+    it 'returns the widest line width for multi-line text' do
+      single = font.measure('Hello World')
+      multi = font.measure("Hi\nHello World")
+      expect(multi.width).to eq(single.width)
+    end
+
+    it 'returns multi-line height for text with newlines' do
+      multi = font.measure("A\nB\nC")
+      expect(multi.height).to eq(font.line_height * 3)
+    end
+
+    it 'counts a trailing newline as an extra line' do
+      trailing = font.measure("Hello\n")
+      expect(trailing.height).to eq(font.line_height * 2)
     end
   end
 

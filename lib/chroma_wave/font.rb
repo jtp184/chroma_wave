@@ -61,6 +61,9 @@ module ChromaWave
 
     # Measures the pixel dimensions of rendered text.
     #
+    # Handles multi-line text (explicit +\n+ characters): returns the
+    # width of the widest line and the total height of all lines.
+    #
     # @note Kerning is not applied — each glyph advance is summed
     #   independently. This is sufficient for e-paper displays but
     #   may overestimate width for tightly-kerned pairs like "AV".
@@ -68,12 +71,11 @@ module ChromaWave
     # @param text [String] the text to measure
     # @return [TextMetrics] width, height, ascent, and descent
     def measure(text)
-      w = 0
-      text.each_codepoint do |cp|
-        m = _ft_glyph_metrics(cp)
-        w += m[:advance_x]
-      end
-      TextMetrics.new(width: w, height: line_height, ascent: ascent, descent: descent)
+      lines = text.split("\n", -1)
+      widest = lines.map { |line| measure_line_width(line) }.max || 0
+      total_height = line_height * lines.length
+
+      TextMetrics.new(width: widest, height: total_height, ascent: ascent, descent: descent)
     end
 
     # Iterates over each glyph in the text, yielding positioned glyph data.
@@ -156,6 +158,18 @@ module ChromaWave
 
     private
 
+    # Sums glyph advance widths for a single line of text.
+    #
+    # @param line [String] a single line (no newlines)
+    # @return [Integer] total advance width in pixels
+    def measure_line_width(line)
+      w = 0
+      line.each_codepoint do |cp|
+        w += _ft_glyph_metrics(cp)[:advance_x]
+      end
+      w
+    end
+
     # Raises DependencyError when FreeType is not compiled in.
     #
     # @raise [DependencyError]
@@ -204,7 +218,10 @@ module ChromaWave
     #
     # @return [Array<Array(String, String)>] pairs of [normalized_stem, path]
     def font_candidates
-      # Fast path — avoid Mutex overhead when cache is warm
+      # Fast path — avoid Mutex overhead when cache is warm.
+      # The unsynchronized read is safe on MRI (GIL guarantees atomic
+      # reference reads). On JRuby/TruffleRuby, remove this fast path
+      # and always go through the mutex.
       cache = self.class.send(:font_cache)
       return cache if cache
 

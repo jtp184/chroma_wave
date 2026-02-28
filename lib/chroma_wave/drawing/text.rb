@@ -93,16 +93,41 @@ module ChromaWave
       # Source-over alpha composites a foreground color at a given alpha
       # onto a background color.
       #
+      # Uses an integer-only fast path when the background is opaque
+      # (the common case for e-paper canvases) to avoid floating-point
+      # arithmetic and per-channel validation overhead.
+      #
       # @param foreground [Color] foreground color (RGB channels used)
       # @param alpha [Integer] foreground alpha (0..255)
       # @param background [Color] background color (RGBA)
       # @return [Color] composited result with correct alpha
-      def blend_over(foreground, alpha, background) # rubocop:disable Metrics/AbcSize
+      def blend_over(foreground, alpha, background)
+        if background.opaque?
+          # Fast path: opaque background (a_out = 1.0, result is always opaque).
+          # Integer math: blended = (fg * alpha + bg * (255 - alpha)) / 255
+          inv = 255 - alpha
+          Color.new(
+            r: ((foreground.r * alpha) + (background.r * inv)) / 255,
+            g: ((foreground.g * alpha) + (background.g * inv)) / 255,
+            b: ((foreground.b * alpha) + (background.b * inv)) / 255
+          )
+        else
+          blend_over_general(foreground, alpha, background)
+        end
+      end
+
+      # General source-over blend for semi-transparent backgrounds.
+      #
+      # @param foreground [Color] foreground color
+      # @param alpha [Integer] foreground alpha (0..255)
+      # @param background [Color] background color
+      # @return [Color] composited result
+      def blend_over_general(foreground, alpha, background) # rubocop:disable Metrics/AbcSize
         a_fg = alpha / 255.0
         a_bg = background.a / 255.0
         a_out = a_fg + (a_bg * (1.0 - a_fg))
 
-        return Color.new(r: 0, g: 0, b: 0, a: 0) if a_out.zero?
+        return Color::TRANSPARENT if a_out.zero?
 
         inv = a_bg * (1.0 - a_fg) / a_out
         w_fg = a_fg / a_out
@@ -135,7 +160,7 @@ module ChromaWave
       # @param max_width [Integer] maximum line width in pixels
       # @return [Array<String>] wrapped lines
       def wrap_paragraph(paragraph, font, max_width)
-        words = paragraph.split(/\s+/)
+        words = paragraph.split(/\s+/).reject(&:empty?)
         return [''] if words.empty?
 
         lines = []

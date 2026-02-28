@@ -24,7 +24,13 @@ ft_library_cleanup(VALUE _unused)
     }
 }
 
-/* Lazily initialize the global FT_Library on first use */
+/* Lazily initialize the global FT_Library on first use.
+ *
+ * Not synchronized — if two threads race on the very first Font.new,
+ * both may call FT_Init_FreeType and one handle will leak.  This is
+ * acceptable for an e-paper gem that creates fonts during setup, not
+ * under concurrent pressure.  A rb_mutex_lock guard could be added
+ * here if truly concurrent initialization becomes a requirement. */
 static void
 ft_ensure_library(void)
 {
