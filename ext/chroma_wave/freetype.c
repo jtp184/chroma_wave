@@ -226,11 +226,20 @@ ft_render_glyph(VALUE self, VALUE rb_codepoint)
     rb_enc_associate(rb_bitmap, rb_ascii8bit_encoding());
     uint8_t *dst = (uint8_t *)RSTRING_PTR(rb_bitmap);
 
-    if (buf_size > 0) {
+    if (buf_size > 0 && h > 0) {
         int pitch = bmp->pitch;
-        const uint8_t *src = bmp->buffer;
+        /* FreeType allows negative pitch (bottom-up rows).  Use the
+         * signed pitch directly so each row steps in the correct
+         * direction through the source buffer. */
+        const uint8_t *src_row = bmp->buffer;
+        if (pitch < 0) {
+            /* buffer points to the last logical row; first logical
+             * row is (h-1) * abs(pitch) bytes forward. */
+            src_row += (ptrdiff_t)(h - 1) * (-pitch);
+        }
         for (unsigned int row = 0; row < h; row++) {
-            memcpy(dst + (size_t)row * w, src + (size_t)row * pitch, w);
+            memcpy(dst + (size_t)row * w, src_row, w);
+            src_row += pitch;
         }
     }
 
