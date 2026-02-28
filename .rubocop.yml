@@ -10,6 +10,8 @@ AllCops:
     - 'lib/chroma_wave/icon_font/lucide_glyphs.rb'
     # Rake-compiler staging directory mirrors source; not separately linted.
     - 'tmp/**/*'
+    # CI vendored gems — not our code.
+    - 'vendor/**/*'
 
 Style/StringLiterals:
   EnforcedStyle: single_quotes
