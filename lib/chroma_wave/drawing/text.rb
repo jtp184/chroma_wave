@@ -23,7 +23,7 @@ module ChromaWave
       # @param line_spacing [Float] multiplier for line height (default 1.2)
       # @return [self]
       def draw_text(text, x:, y:, font:, color:, align: :left, max_width: nil, line_spacing: 1.2) # rubocop:disable Metrics/ParameterLists
-        lines = max_width ? word_wrap(text, font, max_width) : [text]
+        lines = max_width ? word_wrap(text, font, max_width) : text.split("\n", -1)
         line_h = (font.line_height * line_spacing).round
 
         lines.each_with_index do |line, i|
@@ -54,7 +54,8 @@ module ChromaWave
       #
       # For each pixel in the glyph bitmap, if the alpha value is > 0,
       # the pixel is composited using source-over blending. Fully opaque
-      # pixels (alpha 255) skip compositing for performance.
+      # pixels (alpha 255) skip compositing for performance. Anti-aliased
+      # pixels are blended inline to avoid per-pixel Color allocations.
       #
       # @param glyph [Hash] glyph data from Font#each_glyph
       # @param base_x [Integer] line start x
@@ -81,25 +82,59 @@ module ChromaWave
             if alpha == 255
               set_pixel(px, py, color)
             else
-              fg = Color.new(r: color.r, g: color.g, b: color.b, a: alpha)
               bg = get_pixel(px, py)
-              set_pixel(px, py, fg.over(bg)) if bg
+              set_pixel(px, py, blend_over(color, alpha, bg)) if bg
             end
           end
         end
       end
 
+      # Source-over alpha composites a foreground color at a given alpha
+      # onto a background color.
+      #
+      # @param foreground [Color] foreground color (RGB channels used)
+      # @param alpha [Integer] foreground alpha (0..255)
+      # @param background [Color] background color (RGBA)
+      # @return [Color] composited result with correct alpha
+      def blend_over(foreground, alpha, background) # rubocop:disable Metrics/AbcSize
+        a_fg = alpha / 255.0
+        a_bg = background.a / 255.0
+        a_out = a_fg + (a_bg * (1.0 - a_fg))
+
+        return Color.new(r: 0, g: 0, b: 0, a: 0) if a_out.zero?
+
+        inv = a_bg * (1.0 - a_fg) / a_out
+        w_fg = a_fg / a_out
+        Color.new(
+          r: ((foreground.r * w_fg) + (background.r * inv)).round,
+          g: ((foreground.g * w_fg) + (background.g * inv)).round,
+          b: ((foreground.b * w_fg) + (background.b * inv)).round,
+          a: (a_out * 255).round
+        )
+      end
+
       # Breaks text into lines that fit within max_width pixels.
       #
-      # Uses greedy word-boundary wrapping. Words that exceed max_width
-      # on their own are placed on their own line without breaking.
+      # Respects explicit newlines (+\n+) first, then applies greedy
+      # word-boundary wrapping within each paragraph. Words that exceed
+      # max_width on their own are placed on their own line without breaking.
       #
       # @param text [String] text to wrap
       # @param font [Font] loaded Font for measurement
       # @param max_width [Integer] maximum line width in pixels
       # @return [Array<String>] wrapped lines
       def word_wrap(text, font, max_width)
-        words = text.split(/\s+/)
+        text.split("\n", -1).flat_map { |paragraph| wrap_paragraph(paragraph, font, max_width) }
+      end
+
+      # Wraps a single paragraph (no embedded newlines) to max_width.
+      #
+      # @param paragraph [String] a single line of text
+      # @param font [Font] loaded Font for measurement
+      # @param max_width [Integer] maximum line width in pixels
+      # @return [Array<String>] wrapped lines
+      def wrap_paragraph(paragraph, font, max_width)
+        words = paragraph.split(/\s+/)
         return [''] if words.empty?
 
         lines = []
@@ -139,4 +174,6 @@ module ChromaWave
   end
 end
 
+# Mixed in at load time — requires surface.rb to be loaded first.
+# See require order in lib/chroma_wave.rb.
 ChromaWave::Surface.include(ChromaWave::Drawing::Text)

@@ -103,16 +103,23 @@ module ChromaWave
       vips_image.write_to_memory
     end
 
-    private
-
-    attr_reader :vips_image
-
+    # Wraps a pre-processed Vips::Image.
+    #
+    # Prefer {.load} or {.from_buffer} for typical use — they handle
+    # format detection and RGBA normalization automatically.  Use this
+    # constructor only when you already have a +Vips::Image+ in RGBA
+    # uint8 format (e.g. after manual vips pipeline processing).
+    #
     # @param vips_image [Vips::Image] RGBA uint8 vips image
     def initialize(vips_image)
       @vips_image = vips_image
       @width = vips_image.width
       @height = vips_image.height
     end
+
+    private
+
+    attr_reader :vips_image
 
     # Lazily requires ruby-vips, raising DependencyError if not installed.
     #
@@ -147,6 +154,6 @@ module ChromaWave
       end
     end
 
-    private_class_method :new, :require_vips!, :ensure_rgba
+    private_class_method :require_vips!, :ensure_rgba
   end
 end

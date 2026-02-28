@@ -30,6 +30,18 @@ RSpec.describe ChromaWave::Drawing::Text do
       end
     end
 
+    context 'with explicit newlines' do
+      it 'renders text on separate lines without max_width' do
+        canvas.draw_text("Top\nBottom", x: 0, y: 0, font: font, color: black)
+        expect(has_lower_pixel?(canvas, font.line_height + 5)).to be(true)
+      end
+
+      it 'respects newlines within word-wrapped text' do
+        canvas.draw_text("A\nB", x: 0, y: 0, font: font, color: black, max_width: 200)
+        expect(has_lower_pixel?(canvas, font.line_height + 5)).to be(true)
+      end
+    end
+
     context 'with center alignment' do
       it 'centers text within max_width' do
         left_x = draw_and_find_first_x(:left)

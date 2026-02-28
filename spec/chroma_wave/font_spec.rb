@@ -43,6 +43,17 @@ RSpec.describe ChromaWave::Font do
     end
   end
 
+  describe '.clear_font_cache!' do
+    it 'clears the cached font candidates' do
+      # Warm the cache by discovering a font by name
+      described_class.new('dejavu-sans', size: 16)
+      expect(described_class.instance_variable_get(:@font_cache)).not_to be_nil
+
+      described_class.clear_font_cache!
+      expect(described_class.instance_variable_get(:@font_cache)).to be_nil
+    end
+  end
+
   describe '.default' do
     subject(:font) { described_class.default(size: 20) }
 

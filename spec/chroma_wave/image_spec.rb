@@ -71,11 +71,32 @@ RSpec.describe ChromaWave::Image do
   end
 
   describe '#resize' do
-    let(:vips_img) { double(width: 100, height: 50) }
-    let(:image) { described_class.send(:new, vips_img) }
-
     it 'requires width or height' do
+      vips_img = double(width: 100, height: 50)
+      image = described_class.new(vips_img)
       expect { image.resize }.to raise_error(ArgumentError, /width or height required/)
+    end
+
+    context 'when ruby-vips is available', if: VIPS_AVAILABLE do
+      let(:image) { described_class.load(fixture_path) }
+
+      it 'resizes by width preserving aspect ratio' do
+        resized = image.resize(width: 4)
+        expect(resized.width).to eq(4)
+        expect(resized.height).to eq(4)
+      end
+
+      it 'resizes by height preserving aspect ratio' do
+        resized = image.resize(height: 4)
+        expect(resized.width).to eq(4)
+        expect(resized.height).to eq(4)
+      end
+
+      it 'resizes by both dimensions (may stretch)' do
+        resized = image.resize(width: 6, height: 4)
+        expect(resized.width).to eq(6)
+        expect(resized.height).to eq(4)
+      end
     end
   end
 
@@ -105,7 +126,7 @@ RSpec.describe ChromaWave::Image do
 
       # At least one pixel in the 2x2 region should differ from the default white
       drawn_pixels = (0...2).flat_map { |x| (0...2).map { |y| canvas.get_pixel(x, y) } }
-      expect(drawn_pixels).not_to all(eq(ChromaWave::Color::WHITE))
+      expect(drawn_pixels.any? { |p| p != ChromaWave::Color::WHITE }).to be(true)
     end
   end
 

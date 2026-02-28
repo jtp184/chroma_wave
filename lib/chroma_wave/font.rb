@@ -32,6 +32,9 @@ module ChromaWave
     # Glob pattern for TrueType files.
     TTF_GLOB = '**/*.{ttf,TTF}'
 
+    # Mutex protecting the class-level font discovery cache.
+    FONT_CACHE_MUTEX = Mutex.new
+
     attr_reader :path, :size
 
     # Loads a font from a file path or discovers it by name.
@@ -51,6 +54,10 @@ module ChromaWave
 
     # Measures the pixel dimensions of rendered text.
     #
+    # @note Kerning is not applied — each glyph advance is summed
+    #   independently. This is sufficient for e-paper displays but
+    #   may overestimate width for tightly-kerned pairs like "AV".
+    #
     # @param text [String] the text to measure
     # @return [TextMetrics] width, height, ascent, and descent
     def measure(text)
@@ -63,6 +70,8 @@ module ChromaWave
     end
 
     # Iterates over each glyph in the text, yielding positioned glyph data.
+    #
+    # @note Kerning is not applied between glyphs.
     #
     # Each yielded hash contains:
     # - +:bitmap+ — grayscale alpha String (1 byte/pixel)
@@ -129,6 +138,15 @@ module ChromaWave
       new(File.join(DATA_DIR, 'fonts', 'dejavu-sans.ttf'), size: size)
     end
 
+    # Clears the font discovery cache.
+    #
+    # Call this after installing new fonts to pick up changes.
+    #
+    # @return [void]
+    def self.clear_font_cache!
+      FONT_CACHE_MUTEX.synchronize { @font_cache = nil }
+    end
+
     private
 
     # Raises DependencyError when FreeType is not compiled in.
@@ -156,20 +174,41 @@ module ChromaWave
 
     # Searches bundled and system font directories for a matching font.
     #
+    # Results are cached at the class level. Call {.clear_font_cache!}
+    # to pick up newly installed fonts.
+    #
     # Checks the gem's +data/fonts/+ first, then system dirs.
     # Tries exact stem match, then case-insensitive partial match.
     #
     # @param name [String] font name to search for
     # @return [String, nil] absolute path or nil
     def discover_font(name)
-      search_dirs = [File.join(DATA_DIR, 'fonts')] + FONT_DIRS.map { |d| File.expand_path(d) }
       stem = normalize_name(name)
-
-      candidates = collect_font_candidates(search_dirs)
+      candidates = font_candidates
 
       # Exact match first, then fuzzy partial match
       candidates.find { |s, _| s == stem }&.last ||
         candidates.find { |s, _| s.include?(stem) }&.last
+    end
+
+    # Returns cached font candidates, building the cache on first call.
+    #
+    # Thread-safe via {FONT_CACHE_MUTEX}.
+    #
+    # @return [Array<Array(String, String)>] pairs of [normalized_stem, path]
+    def font_candidates
+      # Fast path — avoid Mutex overhead when cache is warm
+      cache = self.class.instance_variable_get(:@font_cache)
+      return cache if cache
+
+      FONT_CACHE_MUTEX.synchronize do
+        self.class.instance_variable_get(:@font_cache) || begin
+          search_dirs = [File.join(DATA_DIR, 'fonts')] + FONT_DIRS.map { |d| File.expand_path(d) }
+          result = collect_font_candidates(search_dirs)
+          self.class.instance_variable_set(:@font_cache, result)
+          result
+        end
+      end
     end
 
     # Collects font paths and their normalized stems from search directories.
