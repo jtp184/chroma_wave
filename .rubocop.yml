@@ -88,9 +88,9 @@ Metrics/ModuleLength:
   Max: 500
 
 # Canvas wraps a single String buffer with RGBA operations, plus
-# an optimized fill_rect, equality, and inspect.
+# optimized fill_rect, equality, inspect, and C-accelerated render_glyph.
 Metrics/ClassLength:
-  Max: 140
+  Max: 150
 
 # Scanline and midpoint algorithms have inherent branching.
 Metrics/CyclomaticComplexity:

@@ -85,6 +85,23 @@ RSpec.describe ChromaWave::Drawing::Text do
     end
   end
 
+  describe 'C accelerator equivalence' do
+    it 'produces identical pixels via C and Ruby paths' do
+      ruby_canvas = ChromaWave::Canvas.new(width: 200, height: 50)
+      c_canvas    = ChromaWave::Canvas.new(width: 200, height: 50)
+
+      # Force Ruby fallback on ruby_canvas by stubbing the C method check
+      allow(ruby_canvas).to receive(:respond_to?).and_call_original
+      allow(ruby_canvas).to receive(:respond_to?)
+        .with(:_canvas_blit_glyph, true).and_return(false)
+
+      ruby_canvas.draw_text('Hello', x: 5, y: 5, font: font, color: black)
+      c_canvas.draw_text('Hello', x: 5, y: 5, font: font, color: black)
+
+      expect(c_canvas).to eq(ruby_canvas)
+    end
+  end
+
   private
 
   def draw_and_find_first_x(align)

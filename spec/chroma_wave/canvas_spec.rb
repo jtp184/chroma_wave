@@ -314,6 +314,53 @@ RSpec.describe ChromaWave::Canvas do
     end
   end
 
+  describe '#_canvas_blit_glyph (C accelerator)' do
+    subject(:canvas) { described_class.new(width: 20, height: 20, background: white) }
+
+    it 'writes foreground color for fully opaque pixel' do
+      bitmap = "\xFF".b # 1x1, alpha 255
+      canvas.send(:_canvas_blit_glyph, canvas.send(:buffer), bitmap,
+                  5, 5, 1, 1, 20, 20, 0, 0, 0)
+      expect(canvas.get_pixel(5, 5)).to eq(black)
+    end
+
+    it 'skips fully transparent pixel' do
+      bitmap = "\x00".b # 1x1, alpha 0
+      canvas.send(:_canvas_blit_glyph, canvas.send(:buffer), bitmap,
+                  5, 5, 1, 1, 20, 20, 0, 0, 0)
+      expect(canvas.get_pixel(5, 5)).to eq(white)
+    end
+
+    it 'blends for partial alpha' do
+      bitmap = "\x80".b # 1x1, alpha 128
+      canvas.send(:_canvas_blit_glyph, canvas.send(:buffer), bitmap,
+                  5, 5, 1, 1, 20, 20, 0, 0, 0)
+      pixel = canvas.get_pixel(5, 5)
+      expect(pixel.r).to be_between(1, 254)
+      expect(pixel.a).to eq(255)
+    end
+
+    it 'clips out-of-bounds positions silently' do
+      bitmap = "\xFF".b
+      expect do
+        canvas.send(:_canvas_blit_glyph, canvas.send(:buffer), bitmap,
+                    -1, -1, 1, 1, 20, 20, 255, 0, 0)
+      end.not_to raise_error
+      # The pixel was placed at (-1,-1), so (0,0) should still be white
+      expect(canvas.get_pixel(0, 0)).to eq(white)
+    end
+
+    it 'handles a multi-pixel glyph bitmap' do
+      # 3x2 bitmap with varying alpha values
+      bitmap = "\xFF\x80\x00\x00\x80\xFF".b
+      canvas.send(:_canvas_blit_glyph, canvas.send(:buffer), bitmap,
+                  2, 3, 3, 2, 20, 20, 255, 0, 0)
+      expect(canvas.get_pixel(2, 3)).to eq(red) # alpha 255 → pure red
+      expect(canvas.get_pixel(4, 3)).to eq(white) # alpha 0 → unchanged
+      expect(canvas.get_pixel(3, 3).g).to be_between(1, 254) # blended
+    end
+  end
+
   describe 'memory efficiency' do
     it 'uses a single buffer String (minimal GC objects)' do
       # The key invariant: the buffer is a single String, not an array of pixels

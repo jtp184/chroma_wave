@@ -197,11 +197,7 @@ module ChromaWave
       @buffer = source.raw_buffer.dup
     end
 
-    # Computes the byte offset for pixel (x, y).
-    #
-    # @param x [Integer] x coordinate
-    # @param y [Integer] y coordinate
-    # @return [Integer] byte offset into the buffer
+    # Byte offset for pixel (x, y) in the RGBA buffer.
     def pixel_offset(x, y)
       ((y * width) + x) * BYTES_PER_PIXEL
     end
@@ -230,6 +226,21 @@ module ChromaWave
       (y0...y1).each do |row_y|
         offset = pixel_offset(x0, row_y)
         buffer[offset, row.bytesize] = row
+      end
+    end
+
+    # C-accelerated glyph compositing. Blends directly into the RGBA
+    # buffer with integer alpha math, avoiding per-pixel Color allocation.
+    # Falls back to the pure-Ruby path when the C method is unavailable.
+    def render_glyph(glyph, base_x, base_y, color)
+      if respond_to?(:_canvas_blit_glyph, true)
+        _canvas_blit_glyph(buffer, glyph[:bitmap],
+                           base_x + glyph[:x], base_y + glyph[:y],
+                           glyph[:width], glyph[:height],
+                           width, height,
+                           color.r, color.g, color.b)
+      else
+        super
       end
     end
 
