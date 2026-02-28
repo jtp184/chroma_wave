@@ -2,11 +2,12 @@
 
 module ChromaWave
   module Drawing
-    # Text drawing mixin for {Surface} implementations.
+    # Text drawing mixin for {Canvas} and {Layer}.
     #
     # Provides +draw_text+ with word wrapping, alignment, and anti-aliased
-    # glyph rendering via alpha compositing. Mixed into Surface alongside
-    # {Drawing::Primitives}.
+    # glyph rendering via alpha compositing. Included only into Color-based
+    # surfaces (Canvas, Layer), not into Framebuffer whose +get_pixel+
+    # returns palette symbols.
     module Text
       # Draws text onto the surface with optional word wrapping and alignment.
       #
@@ -207,6 +208,5 @@ module ChromaWave
   end
 end
 
-# Mixed in at load time — requires surface.rb to be loaded first.
-# See require order in lib/chroma_wave.rb.
-ChromaWave::Surface.include(ChromaWave::Drawing::Text)
+# Included into Canvas and Layer by lib/chroma_wave.rb after both classes
+# are defined. Not included into Framebuffer (palette-based get_pixel).

@@ -6,6 +6,22 @@ RSpec.describe ChromaWave::Drawing::Text do
   let(:black) { ChromaWave::Color::BLACK }
   let(:white) { ChromaWave::Color::WHITE }
 
+  describe 'module inclusion' do
+    it 'is included in Canvas' do
+      expect(ChromaWave::Canvas.new(width: 10, height: 10)).to respond_to(:draw_text)
+    end
+
+    it 'is included in Layer' do
+      layer = ChromaWave::Canvas.new(width: 20, height: 20).layer(x: 0, y: 0, width: 10, height: 10)
+      expect(layer).to respond_to(:draw_text)
+    end
+
+    it 'is NOT included in Framebuffer' do
+      fb = ChromaWave::Framebuffer.new(16, 8, :mono)
+      expect(fb).not_to respond_to(:draw_text)
+    end
+  end
+
   describe '#draw_text' do
     it 'renders text pixels onto the canvas' do
       canvas.draw_text('Hello', x: 5, y: 5, font: font, color: black)
