@@ -187,7 +187,8 @@ module ChromaWave
     # @return [String] absolute path to a .ttf file
     # @raise [ArgumentError] if the font cannot be found
     def resolve_path(path_or_name)
-      return File.expand_path(path_or_name) if File.exist?(path_or_name)
+      expanded = File.expand_path(path_or_name)
+      return expanded if File.exist?(expanded)
 
       discover_font(path_or_name) ||
         raise(ArgumentError, "font not found: #{path_or_name.inspect}")
