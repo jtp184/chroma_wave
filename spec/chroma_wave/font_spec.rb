@@ -172,8 +172,8 @@ RSpec.describe ChromaWave::Font do
       font.each_glyph('ABCDEFabcdefgxyz0123') do |glyph|
         expected = glyph[:width] * glyph[:height]
         expect(glyph[:bitmap].bytesize).to eq(expected),
-          "glyph bitmap bytesize #{glyph[:bitmap].bytesize} != #{expected} " \
-          "(#{glyph[:width]}x#{glyph[:height]})"
+                                           "glyph bitmap bytesize #{glyph[:bitmap].bytesize} != #{expected} " \
+                                           "(#{glyph[:width]}x#{glyph[:height]})"
       end
     end
   end
