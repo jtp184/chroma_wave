@@ -17,7 +17,7 @@ namespace :icons do
       hash[name.tr('-', '_')] = codepoint
     end
 
-    lines = glyphs.sort.map { |name, cp| "    #{name}: 0x#{cp.to_s(16).upcase}" }
+    lines = glyphs.sort.map { |name, cp| "      #{name}: 0x#{cp.to_s(16).upcase}" }
 
     content = <<~RUBY
       # frozen_string_literal: true
@@ -26,7 +26,7 @@ namespace :icons do
       # Do not edit by hand.
 
       module ChromaWave
-        module IconFont
+        class IconFont < Font
           LUCIDE_GLYPHS = {
       #{lines.join(",\n")}
           }.freeze
