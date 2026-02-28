@@ -21,7 +21,7 @@ module ChromaWave
     # @param size [Integer] pixel size for rendering
     # @param glyph_map [Hash{Symbol => Integer}] name-to-codepoint map
     def initialize(path_or_name, size:, glyph_map: {})
-      @glyph_map = glyph_map.freeze
+      @glyph_map = glyph_map.dup.freeze
       super(path_or_name, size: size)
     end
 
