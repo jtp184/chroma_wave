@@ -35,6 +35,13 @@ module ChromaWave
     # Mutex protecting the class-level font discovery cache.
     FONT_CACHE_MUTEX = Mutex.new
 
+    # @!visibility private
+    class << self
+      private
+
+      attr_accessor :font_cache
+    end
+
     attr_reader :path, :size
 
     # Loads a font from a file path or discovers it by name.
@@ -144,7 +151,7 @@ module ChromaWave
     #
     # @return [void]
     def self.clear_font_cache!
-      FONT_CACHE_MUTEX.synchronize { @font_cache = nil }
+      FONT_CACHE_MUTEX.synchronize { self.font_cache = nil }
     end
 
     private
@@ -198,14 +205,14 @@ module ChromaWave
     # @return [Array<Array(String, String)>] pairs of [normalized_stem, path]
     def font_candidates
       # Fast path — avoid Mutex overhead when cache is warm
-      cache = self.class.instance_variable_get(:@font_cache)
+      cache = self.class.send(:font_cache)
       return cache if cache
 
       FONT_CACHE_MUTEX.synchronize do
-        self.class.instance_variable_get(:@font_cache) || begin
+        self.class.send(:font_cache) || begin
           search_dirs = [File.join(DATA_DIR, 'fonts')] + FONT_DIRS.map { |d| File.expand_path(d) }
           result = collect_font_candidates(search_dirs)
-          self.class.instance_variable_set(:@font_cache, result)
+          self.class.send(:font_cache=, result)
           result
         end
       end

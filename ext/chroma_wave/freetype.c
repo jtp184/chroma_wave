@@ -5,6 +5,10 @@ VALUE rb_cFont;
 
 #ifndef NO_FREETYPE
 
+/* ---- Cached symbol IDs for glyph hash keys ---- */
+
+static ID id_bitmap, id_width, id_height, id_bearing_x, id_bearing_y, id_advance_x;
+
 /* ---- FT_Library singleton ---- */
 
 static FT_Library ft_library = NULL;
@@ -225,12 +229,12 @@ ft_render_glyph(VALUE self, VALUE rb_codepoint)
     }
 
     VALUE result = rb_hash_new();
-    rb_hash_aset(result, ID2SYM(rb_intern("bitmap")),    rb_bitmap);
-    rb_hash_aset(result, ID2SYM(rb_intern("width")),     UINT2NUM(w));
-    rb_hash_aset(result, ID2SYM(rb_intern("height")),    UINT2NUM(h));
-    rb_hash_aset(result, ID2SYM(rb_intern("bearing_x")), INT2NUM(slot->bitmap_left));
-    rb_hash_aset(result, ID2SYM(rb_intern("bearing_y")), INT2NUM(slot->bitmap_top));
-    rb_hash_aset(result, ID2SYM(rb_intern("advance_x")), INT2NUM(slot->advance.x >> 6));
+    rb_hash_aset(result, ID2SYM(id_bitmap),    rb_bitmap);
+    rb_hash_aset(result, ID2SYM(id_width),     UINT2NUM(w));
+    rb_hash_aset(result, ID2SYM(id_height),    UINT2NUM(h));
+    rb_hash_aset(result, ID2SYM(id_bearing_x), INT2NUM(slot->bitmap_left));
+    rb_hash_aset(result, ID2SYM(id_bearing_y), INT2NUM(slot->bitmap_top));
+    rb_hash_aset(result, ID2SYM(id_advance_x), INT2NUM(slot->advance.x >> 6));
 
     return result;
 }
@@ -268,11 +272,11 @@ ft_glyph_metrics(VALUE self, VALUE rb_codepoint)
     FT_Glyph_Metrics *m = &face_data->face->glyph->metrics;
 
     VALUE result = rb_hash_new();
-    rb_hash_aset(result, ID2SYM(rb_intern("advance_x")), INT2NUM(m->horiAdvance >> 6));
-    rb_hash_aset(result, ID2SYM(rb_intern("bearing_x")), INT2NUM(m->horiBearingX >> 6));
-    rb_hash_aset(result, ID2SYM(rb_intern("bearing_y")), INT2NUM(m->horiBearingY >> 6));
-    rb_hash_aset(result, ID2SYM(rb_intern("width")),     INT2NUM(m->width >> 6));
-    rb_hash_aset(result, ID2SYM(rb_intern("height")),    INT2NUM(m->height >> 6));
+    rb_hash_aset(result, ID2SYM(id_advance_x), INT2NUM(m->horiAdvance >> 6));
+    rb_hash_aset(result, ID2SYM(id_bearing_x), INT2NUM(m->horiBearingX >> 6));
+    rb_hash_aset(result, ID2SYM(id_bearing_y), INT2NUM(m->horiBearingY >> 6));
+    rb_hash_aset(result, ID2SYM(id_width),     INT2NUM(m->width >> 6));
+    rb_hash_aset(result, ID2SYM(id_height),    INT2NUM(m->height >> 6));
 
     return result;
 }
@@ -327,6 +331,13 @@ Init_freetype(void)
     rb_cFont = rb_define_class_under(rb_mChromaWave, "Font", rb_cObject);
 
 #ifndef NO_FREETYPE
+    id_bitmap    = rb_intern("bitmap");
+    id_width     = rb_intern("width");
+    id_height    = rb_intern("height");
+    id_bearing_x = rb_intern("bearing_x");
+    id_bearing_y = rb_intern("bearing_y");
+    id_advance_x = rb_intern("advance_x");
+
     rb_define_alloc_func(rb_cFont, font_alloc);
 
     rb_define_private_method(rb_cFont, "_ft_load_face",     ft_load_face,     2);

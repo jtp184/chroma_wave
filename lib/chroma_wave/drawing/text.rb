@@ -76,6 +76,7 @@ module ChromaWave
             px = gx + col
             next if px.negative? || px >= width
 
+            # Bitmap is packed (stride == width) by ft_render_glyph in freetype.c
             alpha = bitmap.getbyte((row * gw) + col)
             next if alpha.zero?
 
@@ -167,7 +168,7 @@ module ChromaWave
         case align
         when :center then x + ((max_width - line_w) / 2)
         when :right  then x + (max_width - line_w)
-        else x
+        else raise ArgumentError, "unknown align: #{align.inspect} (expected :left, :center, or :right)"
         end
       end
     end
