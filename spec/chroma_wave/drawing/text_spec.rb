@@ -1,0 +1,89 @@
+# frozen_string_literal: true
+
+RSpec.describe ChromaWave::Drawing::Text do
+  let(:font) { ChromaWave::Font.default(size: 14) }
+  let(:canvas) { ChromaWave::Canvas.new(width: 200, height: 100) }
+  let(:black) { ChromaWave::Color::BLACK }
+  let(:white) { ChromaWave::Color::WHITE }
+
+  describe '#draw_text' do
+    it 'renders text pixels onto the canvas' do
+      canvas.draw_text('Hello', x: 5, y: 5, font: font, color: black)
+      expect(count_non_white(canvas)).to be_positive
+    end
+
+    it 'returns self for chaining' do
+      result = canvas.draw_text('Hi', x: 0, y: 0, font: font, color: black)
+      expect(result).to be(canvas)
+    end
+
+    it 'renders anti-aliased pixels (not just black and white)' do
+      canvas.draw_text('Hello', x: 5, y: 5, font: font, color: black)
+      expect(has_grey_pixel?(canvas)).to be(true)
+    end
+
+    context 'with word wrapping' do
+      it 'wraps text across multiple lines' do
+        canvas.draw_text('The quick brown fox jumps over the lazy dog',
+                         x: 0, y: 0, font: font, color: black, max_width: 100)
+        expect(has_lower_pixel?(canvas, font.line_height + 5)).to be(true)
+      end
+    end
+
+    context 'with center alignment' do
+      it 'centers text within max_width' do
+        left_x = draw_and_find_first_x(:left)
+        center_x = draw_and_find_first_x(:center)
+        expect(center_x).to be > left_x
+      end
+    end
+
+    context 'with right alignment' do
+      it 'right-aligns text within max_width' do
+        left_x = draw_and_find_first_x(:left)
+        right_x = draw_and_find_first_x(:right)
+        expect(right_x).to be > left_x
+      end
+    end
+  end
+
+  private
+
+  def count_non_white(cvs)
+    count = 0
+    cvs.width.times { |x| cvs.height.times { |y| count += 1 unless cvs.get_pixel(x, y) == white } }
+    count
+  end
+
+  def has_grey_pixel?(cvs)
+    cvs.width.times do |x|
+      cvs.height.times do |y|
+        pixel = cvs.get_pixel(x, y)
+        return true unless pixel == white || pixel == black
+      end
+    end
+    false
+  end
+
+  def has_lower_pixel?(cvs, min_y)
+    cvs.width.times do |x|
+      (min_y...cvs.height).each { |y| return true unless cvs.get_pixel(x, y) == white }
+    end
+    false
+  end
+
+  def first_non_white_x(cvs)
+    cvs.width.times do |x|
+      cvs.height.times { |y| return x unless cvs.get_pixel(x, y) == white }
+    end
+    cvs.width
+  end
+
+  def draw_and_find_first_x(align)
+    cvs = ChromaWave::Canvas.new(width: 200, height: 30)
+    cvs.draw_text('Hi',
+                  x: 0, y: 0, font: font, color: black,
+                  align: align, max_width: 200)
+    first_non_white_x(cvs)
+  end
+end

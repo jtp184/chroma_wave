@@ -18,6 +18,8 @@ require_relative 'chroma_wave/surface'      # Surface before Framebuffer (includ
 require_relative 'chroma_wave/framebuffer'  # Reopens C class, prepends bridge, includes Surface
 require_relative 'chroma_wave/canvas'       # RGBA pixel buffer, includes Surface
 require_relative 'chroma_wave/layer'        # Clipped sub-region, includes Surface
+require_relative 'chroma_wave/text_metrics' # TextMetrics value type (used by Font#measure)
+require_relative 'chroma_wave/font'         # Font loading, glyph measurement (requires Surface)
 require_relative 'chroma_wave/image'        # Optional vips-backed image loading
 require_relative 'chroma_wave/device'       # Reopens C class, adds Mutex + open/close lifecycle
 require_relative 'chroma_wave/dither'       # Dithering strategies (loaded before Renderer)
