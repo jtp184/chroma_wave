@@ -87,16 +87,4 @@ RSpec.describe ChromaWave::Font do # rubocop:disable RSpec/SpecFilePathFormat --
       display.close
     end
   end
-
-  private
-
-  def count_non_white(canvas)
-    count = 0
-    canvas.width.times do |x|
-      canvas.height.times do |y|
-        count += 1 unless canvas.get_pixel(x, y) == ChromaWave::Color::WHITE
-      end
-    end
-    count
-  end
 end

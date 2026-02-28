@@ -39,10 +39,12 @@ module ChromaWave
       new(ensure_rgba(vips_image))
     end
 
-    # Returns a resized copy of this image preserving aspect ratio.
+    # Returns a resized copy of this image.
     #
     # When only one dimension is given, the other is calculated to
-    # preserve the original aspect ratio.
+    # preserve the original aspect ratio. When both are given, the
+    # image is stretched to exactly those dimensions (aspect ratio
+    # is not preserved).
     #
     # @param width [Integer, nil] target width
     # @param height [Integer, nil] target height

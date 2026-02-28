@@ -49,36 +49,6 @@ RSpec.describe ChromaWave::Drawing::Text do
 
   private
 
-  def count_non_white(cvs)
-    count = 0
-    cvs.width.times { |x| cvs.height.times { |y| count += 1 unless cvs.get_pixel(x, y) == white } }
-    count
-  end
-
-  def has_grey_pixel?(cvs)
-    cvs.width.times do |x|
-      cvs.height.times do |y|
-        pixel = cvs.get_pixel(x, y)
-        return true unless pixel == white || pixel == black
-      end
-    end
-    false
-  end
-
-  def has_lower_pixel?(cvs, min_y)
-    cvs.width.times do |x|
-      (min_y...cvs.height).each { |y| return true unless cvs.get_pixel(x, y) == white }
-    end
-    false
-  end
-
-  def first_non_white_x(cvs)
-    cvs.width.times do |x|
-      cvs.height.times { |y| return x unless cvs.get_pixel(x, y) == white }
-    end
-    cvs.width
-  end
-
   def draw_and_find_first_x(align)
     cvs = ChromaWave::Canvas.new(width: 200, height: 30)
     cvs.draw_text('Hi',

@@ -170,6 +170,10 @@ ft_load_face(VALUE self, VALUE rb_path, VALUE rb_size)
  *
  * Renders a glyph and returns its bitmap and metrics.
  *
+ * When the codepoint has no mapping in the font, FreeType renders the
+ * .notdef glyph (typically a box or blank) — callers that need to detect
+ * missing glyphs should check for glyph index 0 via _ft_glyph_metrics.
+ *
  * Returns Hash with keys:
  *   :bitmap    — ASCII-8BIT String (1 byte per pixel, grayscale alpha 0–255)
  *   :width     — Integer (bitmap width in pixels)
@@ -235,6 +239,9 @@ ft_render_glyph(VALUE self, VALUE rb_codepoint)
  * _ft_glyph_metrics(codepoint) → Hash
  *
  * Returns glyph metrics without rendering.
+ *
+ * When the codepoint has no mapping in the font, metrics for the .notdef
+ * glyph (index 0) are returned.
  *
  * Returns Hash with keys:
  *   :advance_x — Integer (horizontal advance)
