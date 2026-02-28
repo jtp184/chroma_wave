@@ -155,6 +155,10 @@ module ChromaWave
 
       # Wraps a single paragraph (no embedded newlines) to max_width.
       #
+      # Leading/trailing whitespace is stripped and internal runs of
+      # whitespace are collapsed to a single space. This is intentional —
+      # e-paper text rendering has no use for preserved whitespace runs.
+      #
       # @param paragraph [String] a single line of text
       # @param font [Font] loaded Font for measurement
       # @param max_width [Integer] maximum line width in pixels
@@ -186,8 +190,11 @@ module ChromaWave
       # @param align [Symbol] :left, :center, or :right
       # @param max_width [Integer, nil] area width for alignment
       # @return [Integer] adjusted x position
+      # @raise [ArgumentError] if align is not :left and max_width is nil
       def compute_text_x(line, x, font, align, max_width)
-        return x if align == :left || max_width.nil?
+        return x if align == :left
+
+        raise ArgumentError, "max_width is required for #{align.inspect} alignment" if max_width.nil?
 
         line_w = font.measure(line).width
         case align

@@ -48,6 +48,11 @@ RSpec.describe ChromaWave::Drawing::Text do
         center_x = draw_and_find_first_x(:center)
         expect(center_x).to be > left_x
       end
+
+      it 'raises ArgumentError without max_width' do
+        expect { canvas.draw_text('Hi', x: 0, y: 0, font: font, color: black, align: :center) }
+          .to raise_error(ArgumentError, /max_width is required/)
+      end
     end
 
     context 'with right alignment' do
@@ -55,6 +60,11 @@ RSpec.describe ChromaWave::Drawing::Text do
         left_x = draw_and_find_first_x(:left)
         right_x = draw_and_find_first_x(:right)
         expect(right_x).to be > left_x
+      end
+
+      it 'raises ArgumentError without max_width' do
+        expect { canvas.draw_text('Hi', x: 0, y: 0, font: font, color: black, align: :right) }
+          .to raise_error(ArgumentError, /max_width is required/)
       end
     end
   end
