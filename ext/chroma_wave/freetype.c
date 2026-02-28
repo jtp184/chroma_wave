@@ -56,7 +56,15 @@ font_face_free(void *ptr)
 static size_t
 font_face_memsize(const void *ptr)
 {
-    return sizeof(cw_font_face_t);
+    const cw_font_face_t *face_data = ptr;
+    size_t size = sizeof(cw_font_face_t);
+
+    /* Include the parsed font file size so Ruby's GC has better
+     * pressure estimates. FT_Face holds 50KB-2MB of parsed data. */
+    if (face_data->face && face_data->face->stream)
+        size += face_data->face->stream->size;
+
+    return size;
 }
 
 const rb_data_type_t font_face_type = {
@@ -93,6 +101,17 @@ get_face_data(VALUE self)
         rb_raise(rb_eChromaWaveError, "font face not loaded (call _ft_load_face first)");
     }
     return face_data;
+}
+
+/* Validate and convert a Ruby Integer to a non-negative codepoint.
+ * NUM2ULONG silently accepts negatives, so we guard explicitly. */
+static FT_ULong
+codepoint_from_value(VALUE rb_codepoint)
+{
+    if (FIXNUM_P(rb_codepoint) && FIX2LONG(rb_codepoint) < 0) {
+        rb_raise(rb_eArgError, "codepoint must be non-negative");
+    }
+    return NUM2ULONG(rb_codepoint);
 }
 
 /* ---- Private C methods on ChromaWave::Font ---- */
@@ -163,7 +182,7 @@ static VALUE
 ft_render_glyph(VALUE self, VALUE rb_codepoint)
 {
     cw_font_face_t *face_data = get_face_data(self);
-    FT_ULong codepoint = NUM2ULONG(rb_codepoint);
+    FT_ULong codepoint = codepoint_from_value(rb_codepoint);
 
     FT_UInt glyph_index = FT_Get_Char_Index(face_data->face, codepoint);
 
@@ -228,7 +247,7 @@ static VALUE
 ft_glyph_metrics(VALUE self, VALUE rb_codepoint)
 {
     cw_font_face_t *face_data = get_face_data(self);
-    FT_ULong codepoint = NUM2ULONG(rb_codepoint);
+    FT_ULong codepoint = codepoint_from_value(rb_codepoint);
 
     FT_UInt glyph_index = FT_Get_Char_Index(face_data->face, codepoint);
 

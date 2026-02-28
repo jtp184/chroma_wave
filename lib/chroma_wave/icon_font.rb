@@ -43,7 +43,7 @@ module ChromaWave
     #
     # @return [Array<Symbol>]
     def icon_names
-      glyph_map.keys.sort
+      @icon_names ||= glyph_map.keys.sort.freeze
     end
 
     # Measures a named icon.
