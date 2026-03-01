@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require 'fileutils'
+require 'tmpdir'
+
 RSpec.describe ChromaWave::MockDevice do
   let(:model) { :epd_2in13_v4 }
   let(:config) { ChromaWave::Native.model_config(model.to_s) }
@@ -384,26 +387,15 @@ RSpec.describe ChromaWave::MockDevice do
 
   describe '#save_png' do
     it 'creates a PNG file with correct dimensions' do
-      require 'tempfile'
       mock = described_class.new(model: model)
-      canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
-      canvas.set_pixel(10, 20, ChromaWave::Color::BLACK)
-      mock.show(canvas)
-
-      Dir::Tmpname.create(['chroma_wave_test', '.png']) do |path|
-        mock.save_png(path)
-        expect(File.exist?(path)).to be true
-
-        require 'vips'
-        img = ::Vips::Image.new_from_file(path)
-        expect(img.width).to eq(mock.width)
-        expect(img.height).to eq(mock.height)
-        expect(img.bands).to eq(3)
-      ensure
-        File.delete(path) if File.exist?(path)
-      end
-
-      mock.close
+      mock.show(make_canvas(mock))
+      path = File.join(Dir.tmpdir, "chroma_wave_test_#{Process.pid}.png")
+      mock.save_png(path)
+      expect(File.exist?(path)).to be true
+      verify_png_dimensions(path, mock.width, mock.height)
+    ensure
+      FileUtils.rm_f(path)
+      mock&.close
     end
 
     it 'raises without a prior show' do
@@ -500,5 +492,13 @@ RSpec.describe ChromaWave::MockDevice do
     w = mock&.width || 122
     h = mock&.height || 250
     ChromaWave::Canvas.new(width: w, height: h)
+  end
+
+  def verify_png_dimensions(path, expected_width, expected_height)
+    require 'vips'
+    img = Vips::Image.new_from_file(path)
+    expect(img.width).to eq(expected_width)
+    expect(img.height).to eq(expected_height)
+    expect(img.bands).to eq(3)
   end
 end

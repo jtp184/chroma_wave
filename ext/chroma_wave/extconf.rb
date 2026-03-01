@@ -25,13 +25,14 @@ append_cflags('-Wno-unused-parameter')
 # rubocop:disable Style/GlobalVars -- mkmf convention for preprocessor defines
 
 BACKENDS = {
-  'lgpio'    => { header: 'lgpio.h',    lib: 'lgpio',    func: 'lgGpiochipOpen',  defines: %w[USE_LGPIO_LIB RPI] },
-  'bcm2835'  => { header: 'bcm2835.h',  lib: 'bcm2835',  func: 'bcm2835_init',    defines: %w[USE_BCM2835_LIB RPI] },
-  'wiringpi' => { header: 'wiringPi.h', lib: 'wiringPi', func: 'wiringPiSetup',   defines: %w[USE_WIRINGPI_LIB RPI] },
-  'devlib'   => { header: 'gpiod.h',    lib: 'gpiod',    func: 'gpiod_chip_open', defines: %w[USE_DEV_LIB RPI] }
+  'lgpio' => { header: 'lgpio.h', lib: 'lgpio', func: 'lgGpiochipOpen', defines: %w[USE_LGPIO_LIB RPI] },
+  'bcm2835' => { header: 'bcm2835.h', lib: 'bcm2835', func: 'bcm2835_init', defines: %w[USE_BCM2835_LIB RPI] },
+  'wiringpi' => { header: 'wiringPi.h', lib: 'wiringPi', func: 'wiringPiSetup', defines: %w[USE_WIRINGPI_LIB RPI] },
+  'devlib' => { header: 'gpiod.h', lib: 'gpiod', func: 'gpiod_chip_open', defines: %w[USE_DEV_LIB RPI] }
 }.freeze
 
 BACKEND_PRIORITY = %w[lgpio bcm2835 wiringpi devlib].freeze
+VALID_BACKENDS = (BACKEND_PRIORITY + ['mock']).freeze
 
 # Checks whether the Waveshare vendor HAL header is available.
 # Real backends need DEV_Config.h to compile — without it, the C code
@@ -64,6 +65,37 @@ def apply_backend!(name)
   message "NOTE: Building with #{name} backend\n"
 end
 
+# Applies the mock backend with an informational message.
+#
+# @param reason [String] human-readable reason for mock selection
+def apply_mock!(reason)
+  $defs << '-DEPD_MOCK_BACKEND'
+  message "NOTE: #{reason}\n"
+end
+
+# Validates and applies an explicit backend override.
+#
+# @param override [String] the requested backend name
+# @return [void]
+def apply_override!(override)
+  unless BACKENDS.key?(override)
+    abort "ERROR: Unknown EPD backend '#{override}'. Valid options: #{VALID_BACKENDS.join(', ')}"
+  end
+
+  spec = BACKENDS[override]
+  unless vendor_hal_available?
+    abort "ERROR: EPD backend '#{override}' requested but vendor HAL (DEV_Config.h) not found. " \
+          'Provide the Waveshare library include path via --with-epd-backend-include=DIR.'
+  end
+
+  unless have_header(spec[:header]) && have_library(spec[:lib], spec[:func])
+    abort "ERROR: EPD backend '#{override}' requested but #{spec[:lib]} library not found. " \
+          "Install #{spec[:lib]} development headers and retry."
+  end
+
+  apply_backend!(override)
+end
+
 # Selects the GPIO/SPI backend: override > auto-detect > mock fallback.
 #
 # @return [void]
@@ -73,33 +105,16 @@ def select_backend!
   if override
     override = override.to_s.downcase
     if override == 'mock'
-      $defs << '-DEPD_MOCK_BACKEND'
-      message "NOTE: Building with mock HAL backend (forced via --with-epd-backend)\n"
-      return
+      apply_mock!('Building with mock HAL backend (forced via --with-epd-backend)')
+    else
+      apply_override!(override)
     end
-
-    abort "ERROR: Unknown EPD backend '#{override}'. " \
-          "Valid options: #{(BACKEND_PRIORITY + ['mock']).join(', ')}" unless BACKENDS.key?(override)
-
-    spec = BACKENDS[override]
-    unless vendor_hal_available?
-      abort "ERROR: EPD backend '#{override}' requested but vendor HAL (DEV_Config.h) not found. " \
-            'Provide the Waveshare library include path via --with-epd-backend-include=DIR.'
-    end
-
-    unless have_header(spec[:header]) && have_library(spec[:lib], spec[:func])
-      abort "ERROR: EPD backend '#{override}' requested but #{spec[:lib]} library not found. " \
-            "Install #{spec[:lib]} development headers and retry."
-    end
-
-    apply_backend!(override)
   else
     detected = detect_backend
     if detected
       apply_backend!(detected)
     else
-      $defs << '-DEPD_MOCK_BACKEND'
-      message "NOTE: No GPIO/SPI library found — building with mock HAL backend\n"
+      apply_mock!('No GPIO/SPI library found — building with mock HAL backend')
     end
   end
 end

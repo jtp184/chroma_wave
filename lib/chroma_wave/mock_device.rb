@@ -76,7 +76,7 @@ module ChromaWave
       # @param name [String] model name
       # @param config [Hash] model configuration from Native
       # @return [Class] a MockDevice subclass
-      def build_mock_class(name, config)
+      def build_mock_class(_name, config)
         caps = config[:capabilities] || []
         klass = Class.new(self)
 
@@ -175,7 +175,7 @@ module ChromaWave
     # @param model_name [Symbol, String] the model identifier
     # @param config [Hash] the model configuration from Native
     # @param busy_duration [Numeric] simulated refresh delay in seconds
-    def initialize(model_name:, config:, busy_duration: 0)
+    def initialize(model_name:, config:, busy_duration: 0) # rubocop:disable Lint/MissingSuper -- intentionally avoids Display#initialize which creates a real C Device
       @model = model_name.to_sym
       @width = config[:width]
       @height = config[:height]
@@ -195,12 +195,11 @@ module ChromaWave
 
     # Records an operation to the thread-safe log.
     #
-    # @param entry [Hash] the operation entry
+    # @param entry [Hash] the operation entry (accepts Hash or keyword args)
     # @return [void]
-    def record_operation(entry)
-      @operations_mutex.synchronize do
-        @operations_log << entry.merge(timestamp: Time.now)
-      end
+    def record_operation(entry = nil, **kwargs)
+      data = (entry || kwargs).merge(timestamp: Time.now)
+      @operations_mutex.synchronize { @operations_log << data }
     end
 
     # Stores a dup of the framebuffer for later inspection.
@@ -236,14 +235,14 @@ module ChromaWave
     # @param fb [Framebuffer] the framebuffer to export
     # @param path [String] output file path
     # @return [void]
-    def write_png(fb, path)
-      w = fb.width
-      h = fb.height
+    def write_png(framebuffer, path)
+      w = framebuffer.width
+      h = framebuffer.height
       buf = String.new(encoding: Encoding::BINARY, capacity: w * h * 3)
 
       h.times do |y|
         w.times do |x|
-          color_name = fb.get_pixel(x, y)
+          color_name = framebuffer.get_pixel(x, y)
           color = Color.from_name(color_name)
           buf << color.r.chr(Encoding::BINARY)
           buf << color.g.chr(Encoding::BINARY)
@@ -281,7 +280,7 @@ module ChromaWave
       # @return [void]
       def close
         @open = false
-        @mock_device.send(:record_operation, { op: :close })
+        @mock_device.send(:record_operation, op: :close)
       end
 
       # Returns whether the device is open.
@@ -299,11 +298,10 @@ module ChromaWave
       # @return [void]
       def _epd_init(mode)
         mode_name = mode_to_sym(mode)
-        @mock_device.send(:record_operation, {
-          op: :init,
-          model: @mock_device.model,
-          mode: mode_name
-        })
+        @mock_device.send(
+          :record_operation,
+          op: :init, model: @mock_device.model, mode: mode_name
+        )
       end
 
       # Stub for single-buffer display — logs buffer size and stores framebuffer.
@@ -312,10 +310,10 @@ module ChromaWave
       # @return [void]
       def _epd_display(framebuffer)
         @mock_device.send(:store_framebuffer, framebuffer)
-        @mock_device.send(:record_operation, {
-          op: :show,
-          buffer_bytes: framebuffer.bytes.bytesize
-        })
+        @mock_device.send(
+          :record_operation,
+          op: :show, buffer_bytes: framebuffer.bytes.bytesize
+        )
         @mock_device.send(:simulate_busy)
       end
 
@@ -326,11 +324,12 @@ module ChromaWave
       # @return [void]
       def _epd_display_dual(black_fb, red_fb)
         @mock_device.send(:store_framebuffer, black_fb)
-        @mock_device.send(:record_operation, {
+        @mock_device.send(
+          :record_operation,
           op: :show_dual,
           black_bytes: black_fb.bytes.bytesize,
           red_bytes: red_fb.bytes.bytesize
-        })
+        )
         @mock_device.send(:simulate_busy)
       end
 
@@ -344,10 +343,10 @@ module ChromaWave
       # @return [void]
       def _epd_display_region(framebuffer, x, y, width, height)
         @mock_device.send(:store_framebuffer, framebuffer)
-        @mock_device.send(:record_operation, {
-          op: :show_region,
-          x: x, y: y, width: width, height: height
-        })
+        @mock_device.send(
+          :record_operation,
+          op: :show_region, x: x, y: y, width: width, height: height
+        )
         @mock_device.send(:simulate_busy)
       end
 
@@ -355,7 +354,7 @@ module ChromaWave
       #
       # @return [void]
       def _epd_clear
-        @mock_device.send(:record_operation, { op: :clear, color: :white })
+        @mock_device.send(:record_operation, op: :clear, color: :white)
         @mock_device.send(:simulate_busy)
       end
 
@@ -363,7 +362,7 @@ module ChromaWave
       #
       # @return [void]
       def _epd_sleep
-        @mock_device.send(:record_operation, { op: :sleep })
+        @mock_device.send(:record_operation, op: :sleep)
       end
 
       # Converts a numeric init mode to a symbol name.
