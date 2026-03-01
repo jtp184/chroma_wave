@@ -3,13 +3,21 @@
 Ruby C bindings for Waveshare e-paper displays. Draw with a clean, idiomatic API. Render text, icons, and images. Drive 70+ display models from a single gem.
 
 ```ruby
-display = ChromaWave::Display.open(model: :epd_2in13_v4) do |display|
-  canvas = ChromaWave::Canvas.new(width: display.width, height: display.height)
+ChromaWave::Display.open(model: :epd_2in13_v4) do |display|
+  ChromaWave::Canvas.new(width: display.width, height: display.height).tap do |canvas|
+    canvas.draw_rect(
+      10, 10, 100, 50,
+      color: Color::BLACK,
+      fill: true
+    )
 
-  canvas.draw_rect(10, 10, 100, 50, color: Color::BLACK, fill: true)
-  canvas.draw_text("Hello, e-paper!", x: 20, y: 20, font: Font.new("DejaVuSans", size: 16), color: Color::WHITE)
-
-  display.show(canvas)
+    canvas.draw_text(
+      "Hello, e-paper!",
+      x: 20, y: 20,
+      font: Font.new("DejaVuSans", size: 16),
+      color: Color::WHITE
+    )
+  end.then { |canvas| display.show(canvas) }
 end
 ```
 
