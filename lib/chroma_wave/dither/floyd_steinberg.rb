@@ -103,19 +103,24 @@ module ChromaWave
 
       # Distributes quantization error to neighboring pixels.
       #
+      # Computes per-channel error as separate numeric variables to avoid
+      # allocating a temporary 3-element Array on every pixel.
+      #
       # @param current [Array<Array<Float>>] current row error buffer
       # @param next_row [Array<Array<Float>>] next row error buffer
       # @param x [Integer] current pixel x coordinate
       # @param width [Integer] row width
       # @param adjusted [RGB] the error-adjusted input pixel
       # @param nearest_rgb [Array<Integer>] [r, g, b] of the quantized palette color
-      def distribute(current, next_row, x, width, adjusted, nearest_rgb)
-        error = [adjusted.r - nearest_rgb[0], adjusted.g - nearest_rgb[1], adjusted.b - nearest_rgb[2]]
+      def distribute(current, next_row, x, width, adjusted, nearest_rgb) # rubocop:disable Metrics/ParameterLists
+        er = adjusted.r - nearest_rgb[0]
+        eg = adjusted.g - nearest_rgb[1]
+        eb = adjusted.b - nearest_rgb[2]
 
-        add_error(current, x + 1, width, error, FS_RIGHT)
-        add_error(next_row, x - 1, width, error, FS_BELOW_LEFT)
-        add_error(next_row, x, width, error, FS_BELOW)
-        add_error(next_row, x + 1, width, error, FS_BELOW_RIGHT)
+        add_error(current, x + 1, width, er, eg, eb, FS_RIGHT)
+        add_error(next_row, x - 1, width, er, eg, eb, FS_BELOW_LEFT)
+        add_error(next_row, x, width, er, eg, eb, FS_BELOW)
+        add_error(next_row, x + 1, width, er, eg, eb, FS_BELOW_RIGHT)
       end
 
       # Adds a weighted error to a single pixel in an error buffer row.
@@ -123,15 +128,17 @@ module ChromaWave
       # @param row [Array<Array<Float>>] error buffer row
       # @param x [Integer] target pixel x coordinate
       # @param width [Integer] row width (for bounds check)
-      # @param error [Array<Numeric>] [r, g, b] quantization error
+      # @param er [Numeric] red channel quantization error
+      # @param eg [Numeric] green channel quantization error
+      # @param eb [Numeric] blue channel quantization error
       # @param weight [Float] distribution weight
-      def add_error(row, x, width, error, weight)
+      def add_error(row, x, width, er, eg, eb, weight) # rubocop:disable Metrics/ParameterLists
         return unless x >= 0 && x < width
 
         cell = row[x]
-        cell[0] += error[0] * weight
-        cell[1] += error[1] * weight
-        cell[2] += error[2] * weight
+        cell[0] += er * weight
+        cell[1] += eg * weight
+        cell[2] += eb * weight
       end
     end
   end
