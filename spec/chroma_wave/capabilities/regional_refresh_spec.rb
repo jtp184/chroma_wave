@@ -17,7 +17,7 @@ RSpec.describe ChromaWave::Capabilities::RegionalRefresh do
 
   context 'with a real regional model' do
     let(:model) { find_regional_model }
-    let(:display) { ChromaWave::Display.new(model: model) }
+    let(:display) { ChromaWave::MockDevice.new(model: model) }
     let(:fb) { ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format) }
 
     before { skip 'no regional model available' unless model }
@@ -46,7 +46,7 @@ RSpec.describe ChromaWave::Capabilities::RegionalRefresh do
     # For models without :regional, we manually extend to test validation logic
     let(:model) { :epd_2in13_v4 }
     let(:display) do
-      d = ChromaWave::Display.new(model: model)
+      d = ChromaWave::MockDevice.new(model: model)
       d.singleton_class.include(described_class)
       d
     end
@@ -95,7 +95,7 @@ RSpec.describe ChromaWave::Capabilities::RegionalRefresh do
 
   describe '#align_x_to_byte_boundary (via display_region)' do
     let(:model) { find_regional_model }
-    let(:display) { ChromaWave::Display.new(model: model) }
+    let(:display) { ChromaWave::MockDevice.new(model: model) }
     let(:fb) { ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format) }
 
     before { skip 'no regional model available' unless model }
@@ -121,7 +121,7 @@ RSpec.describe ChromaWave::Capabilities::RegionalRefresh do
     it 'is not included on models without :regional' do
       non_regional = find_non_regional_model
       skip 'all models are regional' unless non_regional
-      display = ChromaWave::Display.new(model: non_regional)
+      display = ChromaWave::MockDevice.new(model: non_regional)
       expect(display).not_to respond_to(:display_region)
       display.close
     end
@@ -129,7 +129,7 @@ RSpec.describe ChromaWave::Capabilities::RegionalRefresh do
     it 'is included on models with :regional' do
       regional = find_regional_model
       skip 'no regional model available' unless regional
-      display = ChromaWave::Display.new(model: regional)
+      display = ChromaWave::MockDevice.new(model: regional)
       expect(display).to respond_to(:display_region)
       expect(display).to be_a(described_class)
       display.close
