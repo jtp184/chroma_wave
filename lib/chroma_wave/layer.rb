@@ -68,5 +68,33 @@ module ChromaWave
     private
 
     attr_reader :parent, :offset_x, :offset_y
+
+    # Alpha-composites a glyph bitmap via the parent's C accelerator when possible.
+    #
+    # Delegates to +parent.blit_glyph+ with translated coordinates when the
+    # entire glyph fits within Layer bounds. Falls back to the per-pixel Ruby
+    # path for partial-overlap glyphs or when the parent lacks +blit_glyph+.
+    #
+    # @param glyph [Hash] glyph data from Font#each_glyph
+    # @param base_x [Integer] line start x in local coordinates
+    # @param base_y [Integer] line start y in local coordinates
+    # @param color [Color] text foreground color
+    def render_glyph(glyph, base_x, base_y, color)
+      return super unless parent.respond_to?(:blit_glyph)
+
+      gx = base_x + glyph[:x]
+      gy = base_y + glyph[:y]
+      gw = glyph[:width]
+      gh = glyph[:height]
+
+      if gx >= 0 && gy >= 0 && (gx + gw) <= width && (gy + gh) <= height &&
+         parent.blit_glyph(glyph[:bitmap],
+                           x: offset_x + gx, y: offset_y + gy,
+                           width: gw, height: gh, color: color)
+        return
+      end
+
+      super
+    end
   end
 end

@@ -361,6 +361,36 @@ RSpec.describe ChromaWave::Canvas do
     end
   end
 
+  describe '#blit_glyph' do
+    subject(:canvas) { described_class.new(width: 20, height: 20, background: white) }
+
+    it 'returns true with C accelerator and writes correct pixels' do
+      bitmap = "\xFF".b # 1x1 fully opaque
+      result = canvas.blit_glyph(bitmap, x: 5, y: 5, width: 1, height: 1, color: black)
+      expect(result).to be(true)
+      expect(canvas.get_pixel(5, 5)).to eq(black)
+    end
+
+    it 'blends semi-transparent pixels' do
+      bitmap = "\x80".b # 1x1 alpha 128
+      canvas.blit_glyph(bitmap, x: 3, y: 3, width: 1, height: 1, color: black)
+      pixel = canvas.get_pixel(3, 3)
+      expect(pixel.r).to be_between(1, 254)
+      expect(pixel.a).to eq(255)
+    end
+
+    it 'returns false when C accelerator is unavailable' do
+      stubbed = described_class.new(width: 10, height: 10, background: white)
+      allow(stubbed).to receive(:respond_to?).and_call_original
+      allow(stubbed).to receive(:respond_to?)
+        .with(:_canvas_blit_glyph, true).and_return(false)
+
+      bitmap = "\xFF".b
+      result = stubbed.blit_glyph(bitmap, x: 0, y: 0, width: 1, height: 1, color: black)
+      expect(result).to be(false)
+    end
+  end
+
   describe 'memory efficiency' do
     it 'uses a single buffer String (minimal GC objects)' do
       # The key invariant: the buffer is a single String, not an array of pixels

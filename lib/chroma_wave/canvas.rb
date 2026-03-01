@@ -176,6 +176,28 @@ module ChromaWave
       end
     end
 
+    # Composites a glyph bitmap directly into the RGBA buffer via the C accelerator.
+    #
+    # Wraps the private +_canvas_blit_glyph+ C method in a public, keyword-arg
+    # interface. Returns +true+ if the C path was used, +false+ if unavailable
+    # so callers can fall back gracefully.
+    #
+    # @param bitmap [String] grayscale alpha bitmap (1 byte/pixel)
+    # @param x [Integer] destination x in canvas coordinates
+    # @param y [Integer] destination y in canvas coordinates
+    # @param width [Integer] glyph bitmap width
+    # @param height [Integer] glyph bitmap height
+    # @param color [Color] foreground color for the glyph
+    # @return [Boolean] true if C accelerator was used, false otherwise
+    def blit_glyph(bitmap, x:, y:, width:, height:, color:) # rubocop:disable Naming/PredicateMethod
+      return false unless respond_to?(:_canvas_blit_glyph, true)
+
+      _canvas_blit_glyph(buffer, bitmap, x, y, width, height,
+                         self.width, self.height,
+                         color.r, color.g, color.b)
+      true
+    end
+
     protected
 
     # Exposes the internal buffer for same-class peer comparison in {#==}.

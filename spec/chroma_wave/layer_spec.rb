@@ -153,6 +153,54 @@ RSpec.describe ChromaWave::Layer do
     end
   end
 
+  describe 'C-accelerated text rendering' do
+    let(:font) { ChromaWave::Font.default(size: 14) }
+
+    it 'produces identical output to direct Canvas rendering' do
+      direct = ChromaWave::Canvas.new(width: 200, height: 50, background: white)
+      direct.draw_text('Hello', x: 10, y: 5, font: font, color: black)
+
+      via_layer = ChromaWave::Canvas.new(width: 200, height: 50, background: white)
+      layer = via_layer.layer(x: 0, y: 0, width: 200, height: 50)
+      layer.draw_text('Hello', x: 10, y: 5, font: font, color: black)
+
+      expect(via_layer).to eq(direct)
+    end
+
+    it 'clips text correctly near Layer edge' do
+      canvas_direct = ChromaWave::Canvas.new(width: 100, height: 50, background: white)
+      layer = canvas_direct.layer(x: 10, y: 5, width: 80, height: 30)
+      layer.draw_text('Hello', x: 0, y: 0, font: font, color: black)
+
+      # No pixels should bleed outside the layer region
+      100.times do |x|
+        50.times do |y|
+          next if x.between?(10, 89) && y.between?(5, 34)
+
+          expect(canvas_direct.get_pixel(x, y))
+            .to eq(white), "pixel at (#{x},#{y}) outside layer was modified"
+        end
+      end
+    end
+
+    it 'does not crash when glyphs partially overlap Layer bounds' do
+      canvas_direct = ChromaWave::Canvas.new(width: 100, height: 50, background: white)
+      layer = canvas_direct.layer(x: 5, y: 5, width: 30, height: 20)
+      expect { layer.draw_text('Hello World!', x: 0, y: 0, font: font, color: black) }
+        .not_to raise_error
+    end
+
+    it 'falls back to Ruby when parent lacks blit_glyph' do
+      stub_parent = ChromaWave::Canvas.new(width: 100, height: 50, background: white)
+      allow(stub_parent).to receive(:respond_to?).and_call_original
+      allow(stub_parent).to receive(:respond_to?).with(:blit_glyph).and_return(false)
+
+      layer = described_class.new(parent: stub_parent, x: 0, y: 0, width: 100, height: 50)
+      layer.draw_text('Hi', x: 5, y: 5, font: font, color: black)
+      expect(count_non_white(stub_parent)).to be_positive
+    end
+  end
+
   describe 'works with Framebuffer parent' do
     let(:fb) { ChromaWave::Framebuffer.new(16, 8, :mono) }
 
