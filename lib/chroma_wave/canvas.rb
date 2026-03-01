@@ -212,23 +212,6 @@ module ChromaWave
       @buffer
     end
 
-    private
-
-    attr_reader :buffer
-
-    # Deep-copies the pixel buffer so dup/clone get independent data.
-    #
-    # @param source [Canvas] the canvas being copied
-    def initialize_copy(source)
-      super
-      @buffer = source.raw_buffer.dup
-    end
-
-    # Byte offset for pixel (x, y) in the RGBA buffer.
-    def pixel_offset(x, y)
-      ((y * width) + x) * BYTES_PER_PIXEL
-    end
-
     # Optimized fill_rect that writes scanline rows directly into the buffer.
     #
     # Clips the rectangle to canvas bounds, then writes one memcpy-style
@@ -257,6 +240,23 @@ module ChromaWave
         offset = pixel_offset(x0, row_y)
         buffer[offset, row.bytesize] = row
       end
+    end
+
+    private
+
+    attr_reader :buffer
+
+    # Deep-copies the pixel buffer so dup/clone get independent data.
+    #
+    # @param source [Canvas] the canvas being copied
+    def initialize_copy(source)
+      super
+      @buffer = source.raw_buffer.dup
+    end
+
+    # Byte offset for pixel (x, y) in the RGBA buffer.
+    def pixel_offset(x, y)
+      ((y * width) + x) * BYTES_PER_PIXEL
     end
 
     # C-accelerated glyph compositing. Blends directly into the RGBA
