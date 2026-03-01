@@ -290,7 +290,8 @@ static void
 init_ubf(void *arg)
 {
     init_args_t *args = (init_args_t *)arg;
-    args->dev->cancel = 1;  /* volatile write signals busy-wait to abort */
+    /* Signal cancellation; only code that polls dev->cancel will react. */
+    args->dev->cancel = 1;
 }
 
 /* ---- _epd_init(mode) ---- */

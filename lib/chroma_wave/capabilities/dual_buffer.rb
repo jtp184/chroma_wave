@@ -50,7 +50,7 @@ module ChromaWave
         if pixel_format == PixelFormat::COLOR4 && color != :white
           ensure_initialized!
           pixel_format.palette.index_of(color) # validate; raises KeyError
-          black_val, red_val = renderer.send(:route_for_color, color)
+          black_val, red_val = renderer.route_for_color(color)
           black_fb = Framebuffer.new(width, height, PixelFormat::MONO).tap { |fb| fb.clear(black_val) }
           red_fb   = Framebuffer.new(width, height, PixelFormat::MONO).tap { |fb| fb.clear(red_val) }
           synchronize_device { device.send(:_epd_display_dual, black_fb, red_fb) }

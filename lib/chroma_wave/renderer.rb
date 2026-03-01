@@ -79,6 +79,15 @@ module ChromaWave
       yellow: %i[white black].freeze
     }.freeze
 
+    # Returns the [black_value, red_value] pair for a given COLOR4 color name.
+    #
+    # @param name [Symbol] the COLOR4 palette color name
+    # @return [Array(Symbol, Symbol)] black and red plane values
+    # @raise [KeyError] if the name is not a recognized COLOR4 color
+    def route_for_color(name)
+      COLOR4_ROUTES.fetch(name)
+    end
+
     private
 
     attr_reader :strategy
@@ -200,15 +209,6 @@ module ChromaWave
         palette = PixelFormat::COLOR4.palette
         palette.map { |name| route_for_color(name).freeze }.freeze
       end
-    end
-
-    # Returns the [black_value, red_value] pair for a given COLOR4 color name.
-    #
-    # @param name [Symbol] the COLOR4 palette color name
-    # @return [Array(Symbol, Symbol)] black and red plane values
-    # @raise [KeyError] if the name is not a recognized COLOR4 color
-    def route_for_color(name)
-      COLOR4_ROUTES.fetch(name)
     end
   end
 end

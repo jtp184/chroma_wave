@@ -49,7 +49,7 @@ ft_init_once_func(void)
 /* Lazily initialize the global FT_Library on first use.
  *
  * Thread-safe via pthread_once — no data races, no DCLP.
- * Works correctly on multi-runtime runtimes (JRuby/TruffleRuby)
+ * Works correctly on multi-threaded runtimes (JRuby/TruffleRuby)
  * that run without a GIL. */
 static void
 ft_ensure_library(void)
