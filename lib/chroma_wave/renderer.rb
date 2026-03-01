@@ -70,8 +70,8 @@ module ChromaWave
 
     # Maps each COLOR4 palette color to its [black_plane, red_plane] values.
     #
-    # Callers must validate the color against the palette before calling
-    # {#route_for_color} (e.g. via {Palette#index_of} which raises +KeyError+).
+    # Used by {#route_for_color}, which will raise +KeyError+ if given a name
+    # that is not present in this mapping.
     COLOR4_ROUTES = {
       black: %i[black white].freeze,
       white: %i[white white].freeze,

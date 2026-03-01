@@ -221,10 +221,10 @@ module ChromaWave
     # @param y [Integer] top-left y
     # @param w [Integer] width
     # @param h [Integer] height
-    # @param color [Color] fill color
+    # @param color [#to_rgba_bytes] fill color (any object responding to +to_rgba_bytes+)
     # @raise [TypeError] if +color+ does not respond to +to_rgba_bytes+
     def fill_rect(x, y, w, h, color)
-      raise TypeError, "expected Color, got #{color.class}" unless color.respond_to?(:to_rgba_bytes)
+      raise TypeError, "#{color.class} does not respond to #to_rgba_bytes" unless color.respond_to?(:to_rgba_bytes)
 
       # Clip to canvas bounds
       x0 = [x, 0].max
