@@ -28,5 +28,44 @@ RSpec.describe ChromaWave::Capabilities::DualBuffer do
       red_fb   = ChromaWave::Framebuffer.new(display.width, display.height, :mono)
       expect(display.show_raw(black_fb, red_fb)).to eq(display)
     end
+
+    it 'raises TypeError when black_fb is not a Framebuffer' do
+      red_fb = ChromaWave::Framebuffer.new(display.width, display.height, :mono)
+      expect { display.show_raw('not a framebuffer', red_fb) }
+        .to raise_error(TypeError, /expected Framebuffer/)
+    end
+
+    it 'raises TypeError when red_fb is not a Framebuffer' do
+      black_fb = ChromaWave::Framebuffer.new(display.width, display.height, :mono)
+      expect { display.show_raw(black_fb, 42) }
+        .to raise_error(TypeError, /expected Framebuffer/)
+    end
+
+    it 'raises FormatMismatchError when black_fb is not MONO' do
+      black_fb = ChromaWave::Framebuffer.new(display.width, display.height, :color4)
+      red_fb   = ChromaWave::Framebuffer.new(display.width, display.height, :mono)
+      expect { display.show_raw(black_fb, red_fb) }
+        .to raise_error(ChromaWave::FormatMismatchError, /expected MONO/)
+    end
+
+    it 'raises FormatMismatchError when red_fb is not MONO' do
+      black_fb = ChromaWave::Framebuffer.new(display.width, display.height, :mono)
+      red_fb   = ChromaWave::Framebuffer.new(display.width, display.height, :color4)
+      expect { display.show_raw(black_fb, red_fb) }
+        .to raise_error(ChromaWave::FormatMismatchError, /expected MONO/)
+    end
+
+    it 'raises ArgumentError when dimensions do not match' do
+      black_fb = ChromaWave::Framebuffer.new(10, 10, :mono)
+      red_fb   = ChromaWave::Framebuffer.new(10, 10, :mono)
+      expect { display.show_raw(black_fb, red_fb) }
+        .to raise_error(ArgumentError, /dimensions must match/)
+    end
+  end
+
+  describe '#show with non-Canvas non-Framebuffer' do
+    it 'raises TypeError for invalid argument' do
+      expect { display.show('not a canvas') }.to raise_error(TypeError)
+    end
   end
 end

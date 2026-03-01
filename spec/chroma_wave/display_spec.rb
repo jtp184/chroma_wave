@@ -138,6 +138,12 @@ RSpec.describe ChromaWave::Display do
         expect { display.show(canvas) }.not_to raise_error
       end
     end
+
+    it 'raises TypeError for invalid argument' do
+      described_class.open(model: model) do |display|
+        expect { display.show('not a canvas') }.to raise_error(TypeError)
+      end
+    end
   end
 
   describe '#clear' do

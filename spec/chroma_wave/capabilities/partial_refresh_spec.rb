@@ -47,5 +47,73 @@ RSpec.describe ChromaWave::Capabilities::PartialRefresh do
       expect { display.display_base(wrong_fb) }
         .to raise_error(ChromaWave::FormatMismatchError)
     end
+
+    it 'auto-initializes full mode before displaying base' do
+      fb = make_framebuffer(display)
+      display.display_base(fb)
+      # display_base calls ensure_initialized! which inits full mode
+      init_ops = display.operations(:init)
+      expect(init_ops.first[:mode]).to eq(:full)
+    end
+  end
+
+  describe 'mode transition from full to partial' do
+    it 'transitions from full to partial mode' do
+      fb = make_framebuffer(display)
+      display.show(make_canvas(display)) # init full mode
+      display.display_partial(fb)
+
+      init_ops = display.operations(:init)
+      expect(init_ops.map { |o| o[:mode] }).to eq(%i[full partial])
+    end
+
+    it 'skips re-init when already in partial mode' do
+      fb = make_framebuffer(display)
+      display.display_partial(fb) # auto-inits partial
+      display.clear_operations!
+      display.display_partial(fb) # should not re-init
+
+      expect(display.operations(:init)).to be_empty
+    end
+  end
+
+  describe 'mode transition from partial to full' do
+    it 're-initializes full mode after partial via show' do
+      fb = make_framebuffer(display)
+      display.display_partial(fb)  # init partial
+      display.deep_sleep           # reset mode
+      display.show(make_canvas(display)) # re-init as full
+
+      init_ops = display.operations(:init)
+      expect(init_ops.map { |o| o[:mode] }).to eq(%i[partial full])
+    end
+  end
+
+  describe 'mode transition from partial to fast' do
+    it 'transitions from partial to fast mode' do
+      fb = make_framebuffer(display)
+      display.display_partial(fb) # init partial
+      display.display_fast(fb)    # switch to fast
+
+      init_ops = display.operations(:init)
+      expect(init_ops.map { |o| o[:mode] }).to eq(%i[partial fast])
+    end
+  end
+
+  describe 'mode transition from fast to partial' do
+    it 'transitions from fast to partial mode' do
+      fb = make_framebuffer(display)
+      display.display_fast(fb)    # init fast
+      display.display_partial(fb) # switch to partial
+
+      init_ops = display.operations(:init)
+      expect(init_ops.map { |o| o[:mode] }).to eq(%i[fast partial])
+    end
+  end
+
+  private
+
+  def make_canvas(display)
+    ChromaWave::Canvas.new(width: display.width, height: display.height)
   end
 end
