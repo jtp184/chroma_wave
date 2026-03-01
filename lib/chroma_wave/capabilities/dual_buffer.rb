@@ -36,6 +36,28 @@ module ChromaWave
         end
       end
 
+      # Clears the display to a solid color, handling both planes.
+      #
+      # For COLOR4 displays, builds two MONO framebuffers with the correct
+      # per-plane values (via {Renderer#route_for_color}) and sends both
+      # planes. For non-COLOR4 displays, falls back to the base
+      # {Display#clear}.
+      #
+      # @param color [Symbol] palette color name (e.g. +:black+, +:white+, +:red+)
+      # @return [self]
+      def clear(color: :white)
+        if pixel_format == PixelFormat::COLOR4 && color != :white
+          ensure_initialized!
+          black_val, red_val = renderer.send(:route_for_color, color)
+          black_fb = Framebuffer.new(width, height, PixelFormat::MONO).tap { |fb| fb.clear(black_val) }
+          red_fb   = Framebuffer.new(width, height, PixelFormat::MONO).tap { |fb| fb.clear(red_val) }
+          synchronize_device { device.send(:_epd_display_dual, black_fb, red_fb) }
+          self
+        else
+          super
+        end
+      end
+
       # Sends pre-rendered dual framebuffers directly to the display.
       #
       # Both framebuffers must be MONO format with dimensions matching
