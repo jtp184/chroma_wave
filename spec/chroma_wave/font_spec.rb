@@ -43,15 +43,14 @@ RSpec.describe ChromaWave::Font do
     end
 
     context 'without FreeType' do
-      before do
-        allow_any_instance_of(described_class) # rubocop:disable RSpec/AnyInstance
-          .to receive(:respond_to?).and_call_original
-        allow_any_instance_of(described_class) # rubocop:disable RSpec/AnyInstance
-          .to receive(:respond_to?).with(:_ft_load_face, true).and_return(false)
+      let(:font_class_without_ft) do
+        Class.new(described_class) do
+          undef_method :_ft_load_face
+        end
       end
 
       it 'raises DependencyError' do
-        expect { described_class.new(font_path, size: 16) }
+        expect { font_class_without_ft.new(font_path, size: 16) }
           .to raise_error(ChromaWave::DependencyError, /FreeType/)
       end
     end

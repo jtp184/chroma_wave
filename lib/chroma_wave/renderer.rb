@@ -120,43 +120,62 @@ module ChromaWave
 
     # Splits a pre-quantized COLOR4 Framebuffer into two MONO planes.
     #
-    # Reads each pixel's palette name from the quantized framebuffer
-    # and routes it to the appropriate MONO plane:
-    # - +:black+ -- black plane gets 0 (black), red plane gets 1 (white)
-    # - +:white+ -- black plane gets 1 (white), red plane gets 1 (white)
-    # - +:red+ or +:yellow+ -- black plane gets 1 (white), red plane gets 0 (black)
+    # Reads the raw packed bytes from the COLOR4 framebuffer and extracts
+    # nibbles directly, avoiding per-pixel get_pixel/symbol resolution
+    # overhead. Uses a pre-built routing table mapping each 4-bit color
+    # index to [black_value, red_value] pairs:
+    #
+    # - index 0 (:black)  -- black_fb=:black, red_fb=:white
+    # - index 1 (:white)  -- black_fb=:white, red_fb=:white
+    # - index 2 (:yellow) -- black_fb=:white, red_fb=:black
+    # - index 3 (:red)    -- black_fb=:white, red_fb=:black
     #
     # @param color_fb [Framebuffer] COLOR4 framebuffer (already quantized)
     # @param black_fb [Framebuffer] MONO framebuffer for the black plane
     # @param red_fb [Framebuffer] MONO framebuffer for the red plane
     def split_channels_from_fb(color_fb, black_fb, red_fb)
+      raw = color_fb.bytes
+      width = color_fb.width
+      route = build_dual_route_table
+
       color_fb.height.times do |y|
-        color_fb.width.times do |x|
-          route_dual_pixel(color_fb.get_pixel(x, y), black_fb, red_fb, x, y)
+        width.times do |x|
+          byte_idx = (x / 2) + (y * ((width + 1) / 2))
+          nibble = if x.even?
+                     (raw.getbyte(byte_idx) >> 4) & 0x0F
+                   else
+                     raw.getbyte(byte_idx) & 0x0F
+                   end
+
+          black_val, red_val = route[nibble]
+          black_fb.set_pixel(x, y, black_val)
+          red_fb.set_pixel(x, y, red_val)
         end
       end
     end
 
-    # Routes a single quantized pixel to the appropriate dual-buffer planes.
+    # Builds a routing table mapping COLOR4 palette indices to dual-buffer values.
     #
-    # @param name [Symbol] the quantized palette color name
-    # @param black_fb [Framebuffer] black plane framebuffer
-    # @param red_fb [Framebuffer] red plane framebuffer
-    # @param x [Integer] pixel x coordinate
-    # @param y [Integer] pixel y coordinate
-    def route_dual_pixel(name, black_fb, red_fb, x, y)
+    # Each entry is a frozen [black_value, red_value] pair of symbols suitable
+    # for passing to MONO framebuffer set_pixel.
+    #
+    # @return [Array<Array(Symbol, Symbol)>] indexed by COLOR4 palette integer
+    def build_dual_route_table
+      palette = PixelFormat::COLOR4.palette
+      palette.map { |name| route_for_color(name).freeze }.freeze
+    end
+
+    # Returns the [black_value, red_value] pair for a given COLOR4 color name.
+    #
+    # @param name [Symbol] the COLOR4 palette color name
+    # @return [Array(Symbol, Symbol)] black and red plane values
+    # @raise [ArgumentError] if the name is not a recognized COLOR4 color
+    def route_for_color(name)
       case name
-      when :black
-        black_fb.set_pixel(x, y, :black)
-        red_fb.set_pixel(x, y, :white)
-      when :white
-        black_fb.set_pixel(x, y, :white)
-        red_fb.set_pixel(x, y, :white)
-      when :red, :yellow
-        black_fb.set_pixel(x, y, :white)
-        red_fb.set_pixel(x, y, :black)
-      else
-        raise ArgumentError, "unexpected COLOR4 palette color: #{name.inspect}"
+      when :black         then %i[black white]
+      when :white         then %i[white white]
+      when :red, :yellow  then %i[white black]
+      else raise ArgumentError, "unexpected COLOR4 palette color: #{name.inspect}"
       end
     end
   end

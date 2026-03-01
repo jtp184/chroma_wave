@@ -1,6 +1,17 @@
 #include "chroma_wave.h"
 #include "ruby/encoding.h"
 
+/* ---- Helper: validate 0..255 color channel ---- */
+static inline uint8_t
+cw_channel_value(VALUE rb_val, const char *name)
+{
+    int v = NUM2INT(rb_val);
+    if (v < 0 || v > 255) {
+        rb_raise(rb_eArgError, "%s must be 0..255, got %d", name, v);
+    }
+    return (uint8_t)v;
+}
+
 VALUE rb_cCanvas;
 
 /* ---- _canvas_clear(buf, r, g, b, a) ---- */
@@ -15,10 +26,14 @@ canvas_clear(VALUE self, VALUE rb_buf, VALUE rb_r, VALUE rb_g, VALUE rb_b, VALUE
     uint8_t *buf = (uint8_t *)RSTRING_PTR(rb_buf);
     long len     = RSTRING_LEN(rb_buf);
 
-    uint8_t r = (uint8_t)(NUM2INT(rb_r) & 0xFF);
-    uint8_t g = (uint8_t)(NUM2INT(rb_g) & 0xFF);
-    uint8_t b = (uint8_t)(NUM2INT(rb_b) & 0xFF);
-    uint8_t a = (uint8_t)(NUM2INT(rb_a) & 0xFF);
+    if (len % 4 != 0) {
+        rb_raise(rb_eArgError, "buffer length must be a multiple of 4 (got %ld)", len);
+    }
+
+    uint8_t r = cw_channel_value(rb_r, "red");
+    uint8_t g = cw_channel_value(rb_g, "green");
+    uint8_t b = cw_channel_value(rb_b, "blue");
+    uint8_t a = cw_channel_value(rb_a, "alpha");
 
     uint8_t stamp[4] = { r, g, b, a };
 
@@ -197,9 +212,9 @@ canvas_blit_glyph(VALUE self,
     int dw = NUM2INT(rb_dw);
     int dh = NUM2INT(rb_dh);
 
-    uint8_t fr = (uint8_t)(NUM2INT(rb_r) & 0xFF);
-    uint8_t fg = (uint8_t)(NUM2INT(rb_g) & 0xFF);
-    uint8_t fb = (uint8_t)(NUM2INT(rb_b) & 0xFF);
+    uint8_t fr = cw_channel_value(rb_r, "red");
+    uint8_t fg = cw_channel_value(rb_g, "green");
+    uint8_t fb = cw_channel_value(rb_b, "blue");
 
     if (gw <= 0 || gh <= 0 || dw <= 0 || dh <= 0) return Qnil;
 

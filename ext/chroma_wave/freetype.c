@@ -1,5 +1,6 @@
 #include "freetype.h"
 #include "ruby/encoding.h"
+#include <pthread.h>
 
 VALUE rb_cFont;
 
@@ -12,6 +13,10 @@ static ID id_bitmap, id_width, id_height, id_bearing_x, id_bearing_y, id_advance
 /* ---- FT_Library singleton ---- */
 
 static FT_Library ft_library = NULL;
+
+/* pthread mutex protecting ft_library initialization.
+ * Statically initialized — no setup needed, no cleanup needed. */
+static pthread_mutex_t ft_init_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* Cleanup callback registered via rb_set_end_proc */
 static void
@@ -26,24 +31,26 @@ ft_library_cleanup(VALUE _unused)
 
 /* Lazily initialize the global FT_Library on first use.
  *
- * Not synchronized — if two threads race on the very first Font.new,
- * both may call FT_Init_FreeType and one handle will leak.  This is
- * acceptable for an e-paper gem that creates fonts during setup, not
- * under concurrent pressure.  A rb_mutex_lock guard could be added
- * here if truly concurrent initialization becomes a requirement. */
+ * Thread-safe via pthread_mutex_t for multi-runtime safety
+ * (JRuby/TruffleRuby run without a GIL). */
 static void
 ft_ensure_library(void)
 {
-    if (ft_library) return;
+    if (ft_library) return;  /* Fast path — safe after init is visible */
 
-    FT_Error err = FT_Init_FreeType(&ft_library);
-    if (err) {
-        ft_library = NULL;
-        rb_raise(rb_eChromaWaveError,
-                 "FreeType initialization failed (FT error %d)", err);
+    pthread_mutex_lock(&ft_init_lock);
+    if (!ft_library) {
+        FT_Error err = FT_Init_FreeType(&ft_library);
+        if (err) {
+            ft_library = NULL;
+            pthread_mutex_unlock(&ft_init_lock);
+            rb_raise(rb_eChromaWaveError,
+                     "FreeType initialization failed (FT error %d)", err);
+        }
+
+        rb_set_end_proc(ft_library_cleanup, Qnil);
     }
-
-    rb_set_end_proc(ft_library_cleanup, Qnil);
+    pthread_mutex_unlock(&ft_init_lock);
 }
 
 /* ---- TypedData for cw_font_face_t ---- */

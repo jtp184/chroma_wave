@@ -11,11 +11,7 @@ module ChromaWave
       #
       # @return [self]
       def init_grayscale
-        synchronize_device do
-          device.send(:_epd_init, Native::MODE_GRAYSCALE)
-          @current_mode = :grayscale
-          @initialized = true
-        end
+        synchronize_device { _init_grayscale_mode }
         self
       end
 
@@ -28,9 +24,22 @@ module ChromaWave
       # @raise [FormatMismatchError] if the framebuffer format does not match
       def display_grayscale(framebuffer)
         validate_framebuffer!(framebuffer)
-        init_grayscale unless current_mode == :grayscale
-        synchronize_device { device.send(:_epd_display, framebuffer) }
+        synchronize_device do
+          _init_grayscale_mode unless current_mode == :grayscale
+          device.send(:_epd_display, framebuffer)
+        end
         self
+      end
+
+      private
+
+      # Unsynchronized grayscale-mode init logic. Caller must hold the device mutex.
+      #
+      # @return [void]
+      def _init_grayscale_mode
+        device.send(:_epd_init, Native::MODE_GRAYSCALE)
+        @current_mode = :grayscale
+        @initialized = true
       end
     end
   end

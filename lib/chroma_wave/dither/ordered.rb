@@ -28,7 +28,7 @@ module ChromaWave
       # @return [void]
       def call(canvas, framebuffer)
         pal = palette
-        bytes = canvas.rgba_bytes
+        bytes = canvas.raw_buffer
         width = canvas.width
         spread = 256.0 / pal.size
         pixel = RGB.new(0, 0, 0)
