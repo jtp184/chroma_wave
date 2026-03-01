@@ -1,10 +1,11 @@
 #include "freetype.h"
 #include "ruby/encoding.h"
-#include <pthread.h>
 
 VALUE rb_cFont;
 
 #ifndef NO_FREETYPE
+
+#include <pthread.h>
 
 /* ---- Cached symbol IDs for glyph hash keys ---- */
 
@@ -14,9 +15,11 @@ static ID id_bitmap, id_width, id_height, id_bearing_x, id_bearing_y, id_advance
 
 static FT_Library ft_library = NULL;
 
-/* pthread mutex protecting ft_library initialization.
- * Statically initialized — no setup needed, no cleanup needed. */
-static pthread_mutex_t ft_init_lock = PTHREAD_MUTEX_INITIALIZER;
+/* pthread_once control for one-time FT_Library initialization. */
+static pthread_once_t ft_init_once = PTHREAD_ONCE_INIT;
+
+/* FT_Error from initialization, checked after pthread_once returns. */
+static FT_Error ft_init_error = 0;
 
 /* Cleanup callback registered via rb_set_end_proc */
 static void
@@ -29,28 +32,34 @@ ft_library_cleanup(VALUE _unused)
     }
 }
 
+/* One-time initializer called via pthread_once.
+ * Cannot raise (pthread_once doesn't support longjmp),
+ * so we stash the error for the caller to check. */
+static void
+ft_init_once_func(void)
+{
+    ft_init_error = FT_Init_FreeType(&ft_library);
+    if (ft_init_error) {
+        ft_library = NULL;
+        return;
+    }
+    rb_set_end_proc(ft_library_cleanup, Qnil);
+}
+
 /* Lazily initialize the global FT_Library on first use.
  *
- * Thread-safe via pthread_mutex_t for multi-runtime safety
- * (JRuby/TruffleRuby run without a GIL). */
+ * Thread-safe via pthread_once — no data races, no DCLP.
+ * Works correctly on multi-runtime runtimes (JRuby/TruffleRuby)
+ * that run without a GIL. */
 static void
 ft_ensure_library(void)
 {
-    if (ft_library) return;  /* Fast path — safe after init is visible */
+    pthread_once(&ft_init_once, ft_init_once_func);
 
-    pthread_mutex_lock(&ft_init_lock);
-    if (!ft_library) {
-        FT_Error err = FT_Init_FreeType(&ft_library);
-        if (err) {
-            ft_library = NULL;
-            pthread_mutex_unlock(&ft_init_lock);
-            rb_raise(rb_eChromaWaveError,
-                     "FreeType initialization failed (FT error %d)", err);
-        }
-
-        rb_set_end_proc(ft_library_cleanup, Qnil);
+    if (ft_init_error) {
+        rb_raise(rb_eChromaWaveError,
+                 "FreeType initialization failed (FT error %d)", ft_init_error);
     }
-    pthread_mutex_unlock(&ft_init_lock);
 }
 
 /* ---- TypedData for cw_font_face_t ---- */
