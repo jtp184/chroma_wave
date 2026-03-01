@@ -172,9 +172,9 @@ module ChromaWave
     # @raise [ArgumentError] if the name is not a recognized COLOR4 color
     def route_for_color(name)
       case name
-      when :black         then [:black, :white]
-      when :white         then [:white, :white]
-      when :red, :yellow  then [:white, :black]
+      when :black         then %i[black white]
+      when :white         then %i[white white]
+      when :red, :yellow  then %i[white black]
       else raise ArgumentError, "unexpected COLOR4 palette color: #{name.inspect}"
       end
     end

@@ -112,15 +112,15 @@ module ChromaWave
       # @param width [Integer] row width
       # @param adjusted [RGB] the error-adjusted input pixel
       # @param nearest_rgb [Array<Integer>] [r, g, b] of the quantized palette color
-      def distribute(current, next_row, x, width, adjusted, nearest_rgb) # rubocop:disable Metrics/ParameterLists
-        er = adjusted.r - nearest_rgb[0]
-        eg = adjusted.g - nearest_rgb[1]
-        eb = adjusted.b - nearest_rgb[2]
+      def distribute(current, next_row, x, width, adjusted, nearest_rgb)
+        err_r = adjusted.r - nearest_rgb[0]
+        err_g = adjusted.g - nearest_rgb[1]
+        err_b = adjusted.b - nearest_rgb[2]
 
-        add_error(current, x + 1, width, er, eg, eb, FS_RIGHT)
-        add_error(next_row, x - 1, width, er, eg, eb, FS_BELOW_LEFT)
-        add_error(next_row, x, width, er, eg, eb, FS_BELOW)
-        add_error(next_row, x + 1, width, er, eg, eb, FS_BELOW_RIGHT)
+        add_error(current, x + 1, width, err_r, err_g, err_b, FS_RIGHT)
+        add_error(next_row, x - 1, width, err_r, err_g, err_b, FS_BELOW_LEFT)
+        add_error(next_row, x, width, err_r, err_g, err_b, FS_BELOW)
+        add_error(next_row, x + 1, width, err_r, err_g, err_b, FS_BELOW_RIGHT)
       end
 
       # Adds a weighted error to a single pixel in an error buffer row.
@@ -128,17 +128,17 @@ module ChromaWave
       # @param row [Array<Array<Float>>] error buffer row
       # @param x [Integer] target pixel x coordinate
       # @param width [Integer] row width (for bounds check)
-      # @param er [Numeric] red channel quantization error
-      # @param eg [Numeric] green channel quantization error
-      # @param eb [Numeric] blue channel quantization error
+      # @param err_r [Numeric] red channel quantization error
+      # @param err_g [Numeric] green channel quantization error
+      # @param err_b [Numeric] blue channel quantization error
       # @param weight [Float] distribution weight
-      def add_error(row, x, width, er, eg, eb, weight) # rubocop:disable Metrics/ParameterLists
+      def add_error(row, x, width, err_r, err_g, err_b, weight) # rubocop:disable Metrics/ParameterLists
         return unless x >= 0 && x < width
 
         cell = row[x]
-        cell[0] += er * weight
-        cell[1] += eg * weight
-        cell[2] += eb * weight
+        cell[0] += err_r * weight
+        cell[1] += err_g * weight
+        cell[2] += err_b * weight
       end
     end
   end
