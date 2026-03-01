@@ -46,6 +46,10 @@ end
 # Probes for the first available hardware backend.
 # Requires both the GPIO library AND the vendor HAL to be present.
 #
+# Note: mkmf's +have_header+ and +have_library+ add defines/libs to
+# +$defs+ and +$libs+ as a side effect. The caller is responsible for
+# rolling back these globals when falling through to the mock backend.
+#
 # @return [String, nil] backend name or nil if none found
 def detect_backend
   return nil unless vendor_hal_available?
@@ -110,10 +114,16 @@ def select_backend!
       apply_override!(override)
     end
   else
+    # Snapshot $defs/$libs before probing — have_header/have_library add
+    # defines as a side effect that must be rolled back on mock fallback.
+    defs_before = $defs.dup
+    libs_before = $libs.dup
     detected = detect_backend
     if detected
       apply_backend!(detected)
     else
+      $defs.replace(defs_before)
+      $libs = libs_before
       apply_mock!('No GPIO/SPI library found — building with mock HAL backend')
     end
   end
