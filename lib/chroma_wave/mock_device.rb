@@ -21,9 +21,6 @@ module ChromaWave
   #     mock.save_png('output.png')
   #   end
   class MockDevice < Display
-    # Maps capability symbols from C config to Ruby modules (mirrors Registry).
-    CAPABILITY_MAP = Registry::CAPABILITY_MAP
-
     class << self
       # Factory — builds a MockDevice subclass with the correct capabilities.
       #
@@ -80,7 +77,7 @@ module ChromaWave
         klass = Class.new(self)
 
         caps.each do |cap|
-          mod = CAPABILITY_MAP[cap]
+          mod = Registry::CAPABILITY_MAP[cap]
           klass.include(mod) if mod
         end
 
@@ -198,7 +195,7 @@ module ChromaWave
     # @return [void]
     def record_operation(**entry)
       @operations_mutex.synchronize do
-        @operations_log << entry.merge(timestamp: Time.now)
+        @operations_log << entry.merge(timestamp: Time.now).freeze
       end
     end
 
@@ -238,18 +235,20 @@ module ChromaWave
     def write_png(framebuffer, path)
       w = framebuffer.width
       h = framebuffer.height
-      buf = String.new(encoding: Encoding::BINARY, capacity: w * h * 3)
+      pixels = Array.new(w * h * 3)
+      i = 0
 
       h.times do |y|
         w.times do |x|
-          color_name = framebuffer.get_pixel(x, y)
-          color = Color.from_name(color_name)
-          buf << color.r.chr(Encoding::BINARY)
-          buf << color.g.chr(Encoding::BINARY)
-          buf << color.b.chr(Encoding::BINARY)
+          color = Color.from_name(framebuffer.get_pixel(x, y))
+          pixels[i] = color.r
+          pixels[i + 1] = color.g
+          pixels[i + 2] = color.b
+          i += 3
         end
       end
 
+      buf = pixels.pack('C*')
       image = ::Vips::Image.new_from_memory(buf, w, h, 3, :uchar)
       image.write_to_file(path.to_s)
     end

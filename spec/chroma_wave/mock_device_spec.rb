@@ -402,7 +402,8 @@ RSpec.describe ChromaWave::MockDevice do
       mock = described_class.new(model: model)
       expect { mock.save_png('/tmp/should_not_exist.png') }
         .to raise_error(RuntimeError, /no framebuffer/)
-      mock.close
+    ensure
+      mock&.close
     end
   end
 
@@ -461,7 +462,7 @@ RSpec.describe ChromaWave::MockDevice do
       expect { mock.clear }.to raise_error(ChromaWave::DeviceError, /closed/)
     end
 
-    it 'deep_sleep is a no-op after close (not initialized)' do
+    it 'deep_sleep is a no-op when not initialized (post-close)' do
       mock = described_class.new(model: model)
       mock.show(make_canvas(mock))
       mock.close
