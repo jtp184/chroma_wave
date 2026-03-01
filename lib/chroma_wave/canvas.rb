@@ -198,11 +198,16 @@ module ChromaWave
       true
     end
 
-    protected
-
-    # Exposes the internal buffer for same-class peer comparison in {#==}.
+    # Returns the raw RGBA buffer without copying.
     #
-    # @return [String] the raw RGBA buffer
+    # Unlike {#rgba_bytes}, which duplicates the buffer for safety, this
+    # method returns a direct reference. Callers must not mutate the
+    # returned string. Intended for read-only hot paths (e.g. dithering)
+    # where copying 1+ MB of pixel data is wasteful.
+    #
+    # Also used for same-class peer comparison in {#==}.
+    #
+    # @return [String] the raw RGBA buffer (do not mutate)
     def raw_buffer
       @buffer
     end
