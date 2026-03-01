@@ -32,5 +32,12 @@ void DEV_Delay_ms(UDOUBLE xms);
 UBYTE DEV_Module_Init(void);
 void DEV_Module_Exit(void);
 
+#else /* Real hardware backend — delegate to vendor HAL.
+     * The include path is set by extconf.rb: either the vendored copy
+     * at vendor/waveshare_epd/lib/Config/ or a user-provided
+     * --with-epd-backend-include=DIR override. */
+
+#include "DEV_Config.h"
+
 #endif /* EPD_MOCK_BACKEND */
 #endif /* MOCK_HAL_H */

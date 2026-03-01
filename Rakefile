@@ -20,6 +20,7 @@ GEMSPEC = Gem::Specification.load('chroma_wave.gemspec')
 
 Rake::ExtensionTask.new('chroma_wave', GEMSPEC) do |ext|
   ext.lib_dir = 'lib/chroma_wave'
+  ext.config_options << "--with-epd-backend=#{ENV.fetch('EPD_BACKEND', 'mock')}"
 end
 
 namespace :generate do
