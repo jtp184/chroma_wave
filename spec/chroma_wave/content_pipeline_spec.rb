@@ -82,7 +82,7 @@ RSpec.describe ChromaWave::Font do # rubocop:disable RSpec/SpecFilePathFormat --
 
       canvas.draw_text('ChromaWave', x: 10, y: 10, font: font, color: ChromaWave::Color::BLACK)
 
-      display = ChromaWave::Display.new(model: model)
+      display = ChromaWave::MockDevice.new(model: model)
       expect { display.show(canvas) }.not_to raise_error
       display.close
     end

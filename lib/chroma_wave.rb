@@ -36,3 +36,4 @@ require_relative 'chroma_wave/capabilities/dual_buffer'      # Dual-buffer tri-c
 require_relative 'chroma_wave/capabilities/regional_refresh' # Regional sub-area refresh
 require_relative 'chroma_wave/display'      # High-level Display with lazy init + capabilities
 require_relative 'chroma_wave/registry'     # Auto-builds Display subclasses from C config
+require_relative 'chroma_wave/mock_device'  # Test-friendly Display with operation logging
