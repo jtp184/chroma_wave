@@ -246,9 +246,9 @@ module ChromaWave
 
         Dir.glob(File.join(dir, TTF_GLOB)).each do |font_path|
           stem = normalize_name(File.basename(font_path, File.extname(font_path)))
-          result << [stem, font_path]
+          result << [stem, font_path].freeze
         end
-      end
+      end.freeze
     end
 
     # Normalizes a font name for comparison: lowercase, strip non-alphanumeric.

@@ -57,6 +57,22 @@ RSpec.describe ChromaWave::Font do
     end
   end
 
+  describe 'font discovery cache immutability' do
+    before { described_class.clear_font_cache! }
+
+    it 'freezes the outer candidates array' do
+      described_class.new('dejavu-sans', size: 16)
+      cache = described_class.instance_variable_get(:@font_cache)
+      expect(cache).to be_frozen
+    end
+
+    it 'freezes each inner [stem, path] pair' do
+      described_class.new('dejavu-sans', size: 16)
+      cache = described_class.instance_variable_get(:@font_cache)
+      expect(cache).to all be_frozen
+    end
+  end
+
   describe '.clear_font_cache!' do
     it 'clears the cached font candidates' do
       # Warm the cache by discovering a font by name
