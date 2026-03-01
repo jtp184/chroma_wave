@@ -229,28 +229,37 @@ module ChromaWave
 
     # Writes a framebuffer to a PNG file using palette-accurate colors.
     #
-    # @param fb [Framebuffer] the framebuffer to export
+    # Builds the RGB buffer directly as a binary string, using a pre-built
+    # palette lookup to avoid per-pixel Color.from_name calls.
+    #
+    # @param framebuffer [Framebuffer] the framebuffer to export
     # @param path [String] output file path
     # @return [void]
     def write_png(framebuffer, path)
       w = framebuffer.width
       h = framebuffer.height
-      pixels = Array.new(w * h * 3)
-      i = 0
+      rgb_for = build_palette_rgb(framebuffer.pixel_format)
+      buf = String.new(capacity: w * h * 3, encoding: 'BINARY')
 
       h.times do |y|
         w.times do |x|
-          color = Color.from_name(framebuffer.get_pixel(x, y))
-          pixels[i] = color.r
-          pixels[i + 1] = color.g
-          pixels[i + 2] = color.b
-          i += 3
+          buf << rgb_for[framebuffer.get_pixel(x, y)]
         end
       end
 
-      buf = pixels.pack('C*')
       image = ::Vips::Image.new_from_memory(buf, w, h, 3, :uchar)
       image.write_to_file(path.to_s)
+    end
+
+    # Builds a hash mapping palette color names to packed RGB byte strings.
+    #
+    # @param pixel_format [PixelFormat] the framebuffer's pixel format
+    # @return [Hash{Symbol => String}] color name to 3-byte RGB string
+    def build_palette_rgb(pixel_format)
+      pixel_format.palette.each_with_object({}) do |name, map|
+        color = Color.from_name(name)
+        map[name] = [color.r, color.g, color.b].pack('CCC')
+      end
     end
 
     # Stub device that intercepts hardware calls and delegates to MockDevice.

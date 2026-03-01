@@ -220,7 +220,7 @@ RSpec.describe ChromaWave::MockDevice do
       mock = described_class.new(model: model)
       mock.show(make_canvas(mock))
       mock.clear
-      expect(mock.operations.size).to eq(3) # init + show + clear (clear triggers init if needed)
+      expect(mock.operations.size).to eq(3) # init (from show) + show + clear
       mock.close
     end
 
@@ -389,10 +389,22 @@ RSpec.describe ChromaWave::MockDevice do
     it 'creates a PNG file with correct dimensions' do
       mock = described_class.new(model: model)
       mock.show(make_canvas(mock))
-      path = File.join(Dir.tmpdir, "chroma_wave_test_#{Process.pid}.png")
+      path = png_tmppath('dims')
       mock.save_png(path)
       expect(File.exist?(path)).to be true
       verify_png_dimensions(path, mock.width, mock.height)
+    ensure
+      FileUtils.rm_f(path)
+      mock&.close
+    end
+
+    it 'maps palette colors to correct RGB values' do
+      mock = described_class.new(model: model)
+      canvas = make_canvas(mock).tap { |c| c.set_pixel(0, 0, ChromaWave::Color::BLACK) }
+      mock.show(canvas)
+      path = export_png(mock)
+      img = Vips::Image.new_from_file(path)
+      expect(img.getpoint(0, 0)).to eq([0.0, 0.0, 0.0])
     ensure
       FileUtils.rm_f(path)
       mock&.close
@@ -477,6 +489,13 @@ RSpec.describe ChromaWave::MockDevice do
       mock.close
       expect(mock.operation_count(:close)).to eq(1)
     end
+
+    it 'reports open? correctly on the device stub' do
+      mock = described_class.new(model: model)
+      expect(mock.send(:device).open?).to be true
+      mock.close
+      expect(mock.send(:device).open?).to be false
+    end
   end
 
   describe 'RSpec :hardware helper', :hardware do
@@ -526,11 +545,25 @@ RSpec.describe ChromaWave::MockDevice do
     ChromaWave::Canvas.new(width: w, height: h)
   end
 
+  def png_tmppath(label = 'test')
+    File.join(Dir.tmpdir, "chroma_wave_#{label}_#{Process.pid}.png")
+  end
+
+  def export_png(mock, label: 'pixel')
+    png_tmppath(label).tap { |path| mock.save_png(path) }
+  end
+
   def verify_png_dimensions(path, expected_width, expected_height)
     require 'vips'
     img = Vips::Image.new_from_file(path)
     expect(img.width).to eq(expected_width)
     expect(img.height).to eq(expected_height)
     expect(img.bands).to eq(3)
+  end
+
+  def verify_png_pixel(path, x, y, expected_rgb)
+    require 'vips'
+    img = Vips::Image.new_from_file(path)
+    expect(img.getpoint(x, y)).to eq(expected_rgb)
   end
 end
