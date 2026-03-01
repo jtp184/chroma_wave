@@ -109,17 +109,27 @@ module ChromaWave
       # @return [Color] composited result with correct alpha
       def blend_over(foreground, alpha, background)
         if background.opaque?
-          # Fast path: opaque background (a_out = 1.0, result is always opaque).
-          # Integer math: blended = (fg * alpha + bg * (255 - alpha)) / 255
-          inv = 255 - alpha
-          Color.new(
-            r: ((foreground.r * alpha) + (background.r * inv)) / 255,
-            g: ((foreground.g * alpha) + (background.g * inv)) / 255,
-            b: ((foreground.b * alpha) + (background.b * inv)) / 255
-          )
+          blend_over_opaque(foreground, alpha, background)
         else
           blend_over_general(foreground, alpha, background)
         end
+      end
+
+      # Fast path for opaque backgrounds (a_out = 1.0, result is always opaque).
+      #
+      # Integer math with rounding: blended = (fg * alpha + bg * (255 - alpha) + 127) / 255
+      #
+      # @param foreground [Color] foreground color (RGB channels used)
+      # @param alpha [Integer] foreground alpha (0..255)
+      # @param background [Color] background color (opaque)
+      # @return [Color] composited result (always opaque)
+      def blend_over_opaque(foreground, alpha, background)
+        inv = 255 - alpha
+        Color.new(
+          r: ((foreground.r * alpha) + (background.r * inv) + 127) / 255,
+          g: ((foreground.g * alpha) + (background.g * inv) + 127) / 255,
+          b: ((foreground.b * alpha) + (background.b * inv) + 127) / 255
+        )
       end
 
       # General source-over blend for semi-transparent backgrounds.
