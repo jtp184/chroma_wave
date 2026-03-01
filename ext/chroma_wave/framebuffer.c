@@ -163,6 +163,10 @@ fb_set_pixel(VALUE self, VALUE rb_x, VALUE rb_y, VALUE rb_color)
     framebuffer_t *fb;
     TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
     int x = NUM2INT(rb_x);
     int y = NUM2INT(rb_y);
 
@@ -212,6 +216,10 @@ fb_get_pixel(VALUE self, VALUE rb_x, VALUE rb_y)
     framebuffer_t *fb;
     TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
     int x = NUM2INT(rb_x);
     int y = NUM2INT(rb_y);
 
@@ -253,6 +261,10 @@ fb_clear(VALUE self, VALUE rb_color)
     framebuffer_t *fb;
     TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
     uint8_t c = (uint8_t)(NUM2INT(rb_color) & 0xFF);
     uint8_t fill;
 
@@ -285,6 +297,10 @@ fb_bytes(VALUE self)
     framebuffer_t *fb;
     TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
     VALUE str = rb_str_new((const char *)fb->buffer, (long)fb->buffer_size);
     rb_enc_associate(str, rb_ascii8bit_encoding());
     OBJ_FREEZE(str);
@@ -302,6 +318,10 @@ fb_eq(VALUE self, VALUE other)
 
     TypedData_Get_Struct(self,  framebuffer_t, &framebuffer_type, fb_a);
     TypedData_Get_Struct(other, framebuffer_t, &framebuffer_type, fb_b);
+
+    if (!fb_a->buffer || !fb_b->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
 
     if (fb_a->width != fb_b->width ||
         fb_a->height != fb_b->height ||
