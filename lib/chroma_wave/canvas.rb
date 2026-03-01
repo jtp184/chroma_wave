@@ -233,16 +233,15 @@ module ChromaWave
     #
     # Clips the rectangle to canvas bounds, then writes one memcpy-style
     # row per scanline instead of per-pixel set_pixel calls.
-    # Falls back to the per-pixel Surface default when the color does
-    # not respond to +to_rgba_bytes+.
     #
     # @param x [Integer] top-left x
     # @param y [Integer] top-left y
     # @param w [Integer] width
     # @param h [Integer] height
-    # @param color [Object] fill color (must respond to +to_rgba_bytes+ for fast path)
+    # @param color [Color] fill color
+    # @raise [TypeError] if +color+ does not respond to +to_rgba_bytes+
     def fill_rect(x, y, w, h, color)
-      return super unless color.respond_to?(:to_rgba_bytes)
+      raise TypeError, "expected Color, got #{color.class}" unless color.respond_to?(:to_rgba_bytes)
 
       # Clip to canvas bounds
       x0 = [x, 0].max

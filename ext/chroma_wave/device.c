@@ -536,6 +536,10 @@ device_epd_display_region(VALUE self, VALUE rb_fb, VALUE rb_x,
 
     TypedData_Get_Struct(rb_fb, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
     /* Validate region coordinates */
     int rx = NUM2INT(rb_x);
     int ry = NUM2INT(rb_y);

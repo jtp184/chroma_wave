@@ -45,9 +45,11 @@ module ChromaWave
       #
       # @param color [Symbol] palette color name (e.g. +:black+, +:white+, +:red+)
       # @return [self]
+      # @raise [KeyError] if +color+ is not in this display's palette
       def clear(color: :white)
         if pixel_format == PixelFormat::COLOR4 && color != :white
           ensure_initialized!
+          pixel_format.palette.index_of(color) # validate; raises KeyError
           black_val, red_val = renderer.send(:route_for_color, color)
           black_fb = Framebuffer.new(width, height, PixelFormat::MONO).tap { |fb| fb.clear(black_val) }
           red_fb   = Framebuffer.new(width, height, PixelFormat::MONO).tap { |fb| fb.clear(red_val) }
