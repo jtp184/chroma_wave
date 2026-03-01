@@ -252,13 +252,13 @@ module ChromaWave
         px = -dy / len
         py = dx / len
 
-        # Generate exactly w offsets centered around zero.
-        # For odd w (e.g. 3): offsets = [-1, 0, 1]
-        # For even w (e.g. 4): offsets = [-2, -1, 0, 1] (bias toward negative)
-        low  = -(w / 2)
-        high = low + w - 1
+        # Generate exactly w offsets centered symmetrically around zero.
+        # For odd w (e.g. 3):  offsets = [-1.0, 0.0, 1.0]
+        # For even w (e.g. 4): offsets = [-1.5, -0.5, 0.5, 1.5]
+        low  = -half
+        high = half
 
-        (low..high).each do |offset|
+        (low..high).step(1.0) do |offset|
           ox = (px * offset).round
           oy = (py * offset).round
           bresenham(x0 + ox, y0 + oy, x1 + ox, y1 + oy) do |x, y|
