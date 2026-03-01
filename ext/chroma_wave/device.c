@@ -334,6 +334,10 @@ device_epd_display(VALUE self, VALUE rb_fb)
 
     TypedData_Get_Struct(rb_fb, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
     /* Prepare args for non-GVL execution */
     args.dev     = dev;
     args.buf     = fb->buffer;
@@ -434,6 +438,13 @@ device_epd_display_dual(VALUE self, VALUE rb_black_fb, VALUE rb_red_fb)
 
     TypedData_Get_Struct(rb_black_fb, framebuffer_t, &framebuffer_type, black_fb);
     TypedData_Get_Struct(rb_red_fb,   framebuffer_t, &framebuffer_type, red_fb);
+
+    if (!black_fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "black framebuffer not initialized");
+    }
+    if (!red_fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "red framebuffer not initialized");
+    }
 
     /* Prepare args for non-GVL execution */
     args.dev       = dev;

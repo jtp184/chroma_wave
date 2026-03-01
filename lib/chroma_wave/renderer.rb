@@ -68,6 +68,17 @@ module ChromaWave
       [black_fb, red_fb]
     end
 
+    # Maps each COLOR4 palette color to its [black_plane, red_plane] values.
+    #
+    # Callers must validate the color against the palette before calling
+    # {#route_for_color} (e.g. via {Palette#index_of} which raises +KeyError+).
+    COLOR4_ROUTES = {
+      black: %i[black white].freeze,
+      white: %i[white white].freeze,
+      red: %i[white black].freeze,
+      yellow: %i[white black].freeze
+    }.freeze
+
     private
 
     attr_reader :strategy
@@ -195,14 +206,9 @@ module ChromaWave
     #
     # @param name [Symbol] the COLOR4 palette color name
     # @return [Array(Symbol, Symbol)] black and red plane values
-    # @raise [ArgumentError] if the name is not a recognized COLOR4 color
+    # @raise [KeyError] if the name is not a recognized COLOR4 color
     def route_for_color(name)
-      case name
-      when :black         then %i[black white]
-      when :white         then %i[white white]
-      when :red, :yellow  then %i[white black]
-      else raise ArgumentError, "unexpected COLOR4 palette color: #{name.inspect}"
-      end
+      COLOR4_ROUTES.fetch(name)
     end
   end
 end
