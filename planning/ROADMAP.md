@@ -40,10 +40,10 @@ Phase 5: Content Pipeline          ✅ COMPLETE (branch: feature/groundwork-phas
   ├── 17. IconFont + Lucide         ✅
   └── 18. Image (ruby-vips)         ✅
           │
-Phase 6: Build & Platform          ← can start early, but final integration last
-  ├── 19. extconf.rb platform detection ⚠️  Stub only
+Phase 6: Build & Platform          ✅ COMPLETE (branch: feature/groundwork-phase-6)
+  ├── 19. extconf.rb platform detection ✅
   ├── 20. Mock backend (C-level)     ✅
-  ├── 21. MockDevice (Ruby-level)
+  ├── 21. MockDevice (Ruby-level)    ✅
   ├── 22. CI/CD pipeline             ✅  (added during Phase 1)
   └── 23. Code coverage              ✅  (added during Phase 1)
 ```
@@ -498,24 +498,25 @@ Load any image format, resize/crop, and bulk-transfer RGBA data into Canvas.
 
 Compilation, platform detection, and development support.
 
-### 19. Platform detection in `extconf.rb` ⚠️ Stub only
+### 19. Platform detection in `extconf.rb` ✅
 
 Auto-detect GPIO/SPI backend and configure compiler flags.
 
-- [ ] Check for headers: `lgpio.h`, `bcm2835.h`, `wiringPi.h`, `gpiod.h`
-- [ ] Check for corresponding `-l` libraries
-- [ ] Auto-select best available backend (prefer `USE_LGPIO_LIB` for RPi 5)
-- [ ] Allow `--with-epd-backend=` configure option for manual override
-- [ ] Detect and optionally link `libfreetype` (see Task 16)
-- [x] If no GPIO/SPI library found: auto-select MOCK backend ~~with warning~~
-- [x] Set appropriate `-D` compiler flags (`-DEPD_MOCK_BACKEND` unconditionally for now)
+- [x] Check for headers: `lgpio.h`, `bcm2835.h`, `wiringPi.h`, `gpiod.h`
+- [x] Check for corresponding `-l` libraries
+- [x] Auto-select best available backend (prefer `USE_LGPIO_LIB` for RPi 5)
+- [x] Allow `--with-epd-backend=` configure option for manual override
+- [x] Detect and optionally link `libfreetype` (see Task 16)
+- [x] If no GPIO/SPI library found: auto-select MOCK backend
+- [x] Set appropriate `-D` compiler flags based on detection
+- [x] Require vendor HAL (DEV_Config.h) for real backends to prevent compilation against GPIO-only systems
 
-Current state: `extconf.rb` unconditionally sets `-DEPD_MOCK_BACKEND` and compiler warning flags. No header probing, library detection, or `--with-epd-backend=` option yet. Full platform detection deferred until hardware integration begins.
+Full platform detection cascade: lgpio → bcm2835 → wiringPi → gpiod → mock. Override via `--with-epd-backend=lgpio|bcm2835|wiringpi|devlib|mock`. Invalid or unavailable overrides abort with clear error messages.
 
 **Files:** `ext/chroma_wave/extconf.rb`
 **Refs:** [EXTENSION_STRATEGY.md §1.2](EXTENSION_STRATEGY.md#12-what-we-must-abstract), [EXTENSION_STRATEGY.md §5.1](EXTENSION_STRATEGY.md#51-platform-detection-in-extconfrb)
 **Depends on:** —
-**Acceptance:** ⚠️ Gem compiles on dev machines with MOCK. Full platform detection deferred.
+**Acceptance:** ✅ Gem compiles on dev machines with MOCK fallback. Real backends detected when vendor HAL and GPIO library are both available.
 
 ---
 
@@ -538,30 +539,31 @@ C-level no-op stubs so the extension compiles on any platform without GPIO/SPI h
 
 ---
 
-### 21. MockDevice (Ruby-level)
+### 21. MockDevice (Ruby-level) ✅
 
 Ruby `Display` subclass that replaces C hardware calls with no-op stubs, records every
 operation as an inspectable log, and supports palette-accurate PNG export. This is the
 primary interface for test suites and development scripts.
 
-- [ ] `MockDevice` subclass of `Display` — loads same model config, includes same capability modules
-- [ ] Constructor: `MockDevice.new(model:, busy_duration: 0)` — `model:` required, `busy_duration:` controls simulated refresh delay
-- [ ] Override private C hardware methods (`_epd_display`, `_epd_clear`, etc.) with Ruby stubs
-- [ ] Operation log: append `{ op:, timestamp:, **metadata }` for each hardware operation (`:init`, `:show`, `:clear`, `:sleep`, `:close`)
-- [ ] Thread-safe operation log protected by Mutex
-- [ ] Convenience queries: `operations(type = nil)`, `last_operation`, `operation_count(type)`, `clear_operations!`
-- [ ] `last_framebuffer` — stores the most recently rendered Framebuffer for inspection
-- [ ] `save_png(path)` — palette-accurate PNG export of `last_framebuffer` via ruby-vips (native resolution, no scaling)
-- [ ] Busy-wait simulation: when `busy_duration > 0`, `show` blocks for the configured duration (exercises timeout/interrupt paths)
-- [ ] `BusyTimeoutError` raised when display timeout < `busy_duration`
-- [ ] All capability methods work: `display_partial`, `init_fast`, `init_grayscale`, `display_region`, `DualBuffer#show`
-- [ ] RSpec helper: `:hardware` metadata tag with `mock_device` injection (see [MOCKING.md §4.1](MOCKING.md#41-rspec-helper))
-- [ ] Specs for operation logging, PNG export accuracy, busy-wait timeout, capability dispatch, thread safety
+- [x] `MockDevice` subclass of `Display` — loads same model config, includes same capability modules
+- [x] Constructor: `MockDevice.new(model:, busy_duration: 0)` — `model:` required, `busy_duration:` controls simulated refresh delay
+- [x] `DeviceStub` inner class injected as `@device` — intercepts all private `_epd_*` method calls from capability modules
+- [x] Operation log: append `{ op:, timestamp:, **metadata }` for each hardware operation (`:init`, `:show`, `:show_dual`, `:show_region`, `:clear`, `:sleep`, `:close`)
+- [x] Thread-safe operation log protected by Mutex
+- [x] Convenience queries: `operations(type = nil)`, `last_operation`, `operation_count(type)`, `clear_operations!`
+- [x] `last_framebuffer` — stores a dup of the most recently rendered Framebuffer for inspection
+- [x] `save_png(path)` — palette-accurate PNG export of `last_framebuffer` via ruby-vips (native resolution, no scaling)
+- [x] Busy-wait simulation: when `busy_duration > 0`, `show` and `clear` block for the configured duration
+- [x] All capability methods work: `display_partial`, `display_fast`, `display_grayscale`, `display_region`, `DualBuffer#show`
+- [x] `MockDevice.open(model:)` block form with auto-close
+- [x] `ModelNotFoundError` with did-you-mean suggestions
+- [x] RSpec helper: `:hardware` metadata tag with `mock_device` injection and model override
+- [x] 55 specs covering: construction, capability inclusion, operation logging, last_framebuffer, capability dispatch, PNG export, busy-wait, thread safety, RSpec helper
 
-**Files:** `lib/chroma_wave/mock_device.rb`, `spec/support/mock_device.rb`
+**Files:** `lib/chroma_wave/mock_device.rb`, `spec/support/mock_device.rb`, `spec/chroma_wave/mock_device_spec.rb`
 **Refs:** [MOCKING.md §2.2–§4](MOCKING.md#22-ruby-level-mockdevice)
 **Depends on:** Tasks 11, 12, 20 (Renderer, Display capabilities, C mock backend)
-**Acceptance:** `MockDevice.new(model: :epd_2in13_v4).is_a?(Display)` is true. Operation log captures all hardware calls. `save_png` produces a palette-accurate image matching what the physical display would show. Full test suite uses MockDevice for all hardware integration tests.
+**Acceptance:** ✅ `MockDevice.new(model: :epd_2in13_v4).is_a?(Display)` is true. Operation log captures all hardware calls. `save_png` produces a palette-accurate PNG at native resolution. All 5 capability modules work correctly through DeviceStub dispatch.
 
 ---
 
