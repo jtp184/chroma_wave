@@ -77,6 +77,8 @@ module ChromaWave
           @sequence << @current_cmd
           @sequence << @current_data.length
           @sequence.concat(@current_data)
+          @current_cmd = nil
+          @current_data = []
         end
 
         # @param delay [Integer] delay in milliseconds
