@@ -447,6 +447,37 @@ RSpec.describe ChromaWave::MockDevice do
     end
   end
 
+  describe 'post-close behavior' do
+    it 'raises DeviceError when showing after close' do
+      mock = described_class.new(model: model)
+      mock.close
+      fb = ChromaWave::Framebuffer.new(mock.width, mock.height, mock.pixel_format)
+      expect { mock.show(fb) }.to raise_error(ChromaWave::DeviceError, /closed/)
+    end
+
+    it 'raises DeviceError when clearing after close' do
+      mock = described_class.new(model: model)
+      mock.close
+      expect { mock.clear }.to raise_error(ChromaWave::DeviceError, /closed/)
+    end
+
+    it 'deep_sleep is a no-op after close (not initialized)' do
+      mock = described_class.new(model: model)
+      mock.show(make_canvas(mock))
+      mock.close
+      count_before = mock.operation_count
+      mock.deep_sleep
+      expect(mock.operation_count).to eq(count_before)
+    end
+
+    it 'logs only one :close on double close' do
+      mock = described_class.new(model: model)
+      mock.close
+      mock.close
+      expect(mock.operation_count(:close)).to eq(1)
+    end
+  end
+
   describe 'RSpec :hardware helper', :hardware do
     it 'provides a mock_device in metadata' do |example|
       mock = example.metadata[:mock_device]

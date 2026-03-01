@@ -39,7 +39,7 @@ module ChromaWave
         config = Native.model_config(name)
         raise_not_found!(name) unless config
 
-        klass = mock_classes[name] ||= build_mock_class(name, config)
+        klass = mock_classes[name] ||= build_mock_class(config)
         instance = klass.allocate
         instance.send(:initialize, model_name: name, config: config, busy_duration: busy_duration)
         instance
@@ -73,10 +73,9 @@ module ChromaWave
 
       # Builds a MockDevice subclass with the appropriate capabilities.
       #
-      # @param name [String] model name
       # @param config [Hash] model configuration from Native
       # @return [Class] a MockDevice subclass
-      def build_mock_class(_name, config)
+      def build_mock_class(config)
         caps = config[:capabilities] || []
         klass = Class.new(self)
 
@@ -195,11 +194,12 @@ module ChromaWave
 
     # Records an operation to the thread-safe log.
     #
-    # @param entry [Hash] the operation entry (accepts Hash or keyword args)
+    # @param entry [Hash] the operation fields (op:, plus metadata)
     # @return [void]
-    def record_operation(entry = nil, **kwargs)
-      data = (entry || kwargs).merge(timestamp: Time.now)
-      @operations_mutex.synchronize { @operations_log << data }
+    def record_operation(**entry)
+      @operations_mutex.synchronize do
+        @operations_log << entry.merge(timestamp: Time.now)
+      end
     end
 
     # Stores a dup of the framebuffer for later inspection.
@@ -275,10 +275,12 @@ module ChromaWave
         @mutex.synchronize(&)
       end
 
-      # Closes the stub device.
+      # Closes the stub device. Safe to call multiple times.
       #
       # @return [void]
       def close
+        return unless @open
+
         @open = false
         @mock_device.send(:record_operation, op: :close)
       end
@@ -292,11 +294,21 @@ module ChromaWave
 
       private
 
+      # Raises DeviceError if the stub has been closed.
+      #
+      # @raise [DeviceError] if the device is not open
+      # @return [void]
+      def assert_open!
+        raise DeviceError, 'device is closed' unless @open
+      end
+
       # Stub for EPD init — logs the mode.
       #
       # @param mode [Integer] init mode constant
       # @return [void]
+      # @raise [DeviceError] if the device is closed
       def _epd_init(mode)
+        assert_open!
         mode_name = mode_to_sym(mode)
         @mock_device.send(
           :record_operation,
@@ -308,7 +320,9 @@ module ChromaWave
       #
       # @param framebuffer [Framebuffer] the framebuffer to display
       # @return [void]
+      # @raise [DeviceError] if the device is closed
       def _epd_display(framebuffer)
+        assert_open!
         @mock_device.send(:store_framebuffer, framebuffer)
         @mock_device.send(
           :record_operation,
@@ -322,7 +336,9 @@ module ChromaWave
       # @param black_fb [Framebuffer] the black plane framebuffer
       # @param red_fb [Framebuffer] the red plane framebuffer
       # @return [void]
+      # @raise [DeviceError] if the device is closed
       def _epd_display_dual(black_fb, red_fb)
+        assert_open!
         @mock_device.send(:store_framebuffer, black_fb)
         @mock_device.send(
           :record_operation,
@@ -341,7 +357,9 @@ module ChromaWave
       # @param width [Integer] aligned width
       # @param height [Integer] height
       # @return [void]
+      # @raise [DeviceError] if the device is closed
       def _epd_display_region(framebuffer, x, y, width, height)
+        assert_open!
         @mock_device.send(:store_framebuffer, framebuffer)
         @mock_device.send(
           :record_operation,
@@ -353,7 +371,9 @@ module ChromaWave
       # Stub for EPD clear — logs the operation.
       #
       # @return [void]
+      # @raise [DeviceError] if the device is closed
       def _epd_clear
+        assert_open!
         @mock_device.send(:record_operation, op: :clear, color: :white)
         @mock_device.send(:simulate_busy)
       end
@@ -361,7 +381,9 @@ module ChromaWave
       # Stub for EPD sleep — logs the operation.
       #
       # @return [void]
+      # @raise [DeviceError] if the device is closed
       def _epd_sleep
+        assert_open!
         @mock_device.send(:record_operation, op: :sleep)
       end
 
