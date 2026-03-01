@@ -547,7 +547,7 @@ device_epd_display_region(VALUE self, VALUE rb_fb, VALUE rb_x,
                  "region coordinates must be non-negative and dimensions positive "
                  "(got x=%d, y=%d, w=%d, h=%d)", rx, ry, rw, rh);
     }
-    if (rx + rw > dev->config->width || ry + rh > dev->config->height) {
+    if (rw > (int)dev->config->width - rx || rh > (int)dev->config->height - ry) {
         rb_raise(rb_eArgError,
                  "region (%d,%d)+(%d,%d) exceeds display bounds (%dx%d)",
                  rx, ry, rw, rh,
