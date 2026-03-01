@@ -157,6 +157,87 @@ canvas_load_rgba(VALUE self,
     return Qnil;
 }
 
+/* ---- _canvas_blit_glyph(buf, bitmap, gx, gy, gw, gh, dw, dh, r, g, b) ----
+ *
+ * Alpha-composites a glyph bitmap onto a Canvas RGBA buffer.
+ *
+ * buf    – Canvas RGBA buffer String (modified in-place)
+ * bitmap – glyph alpha bitmap String (1 byte per pixel, 0–255)
+ * gx, gy – destination position on canvas
+ * gw, gh – glyph dimensions in pixels
+ * dw, dh – canvas dimensions in pixels
+ * r,g,b  – foreground colour RGB (0–255 each)
+ *
+ * Per-pixel: skip alpha==0, direct write alpha==255, else integer blend:
+ *   (fg * alpha + bg * (255 - alpha) + 127) / 255
+ */
+static VALUE
+canvas_blit_glyph(VALUE self,
+                  VALUE rb_buf, VALUE rb_bmp,
+                  VALUE rb_gx, VALUE rb_gy,
+                  VALUE rb_gw, VALUE rb_gh,
+                  VALUE rb_dw, VALUE rb_dh,
+                  VALUE rb_r, VALUE rb_g, VALUE rb_b)
+{
+    (void)self;
+
+    Check_Type(rb_buf, T_STRING);
+    Check_Type(rb_bmp, T_STRING);
+    rb_str_modify(rb_buf);
+
+    uint8_t       *dst = (uint8_t *)RSTRING_PTR(rb_buf);
+    const uint8_t *bmp = (const uint8_t *)RSTRING_PTR(rb_bmp);
+    long dst_len = RSTRING_LEN(rb_buf);
+    long bmp_len = RSTRING_LEN(rb_bmp);
+
+    int gx = NUM2INT(rb_gx);
+    int gy = NUM2INT(rb_gy);
+    int gw = NUM2INT(rb_gw);
+    int gh = NUM2INT(rb_gh);
+    int dw = NUM2INT(rb_dw);
+    int dh = NUM2INT(rb_dh);
+
+    uint8_t fr = (uint8_t)(NUM2INT(rb_r) & 0xFF);
+    uint8_t fg = (uint8_t)(NUM2INT(rb_g) & 0xFF);
+    uint8_t fb = (uint8_t)(NUM2INT(rb_b) & 0xFF);
+
+    if (gw <= 0 || gh <= 0 || dw <= 0 || dh <= 0) return Qnil;
+
+    for (int row = 0; row < gh; row++) {
+        int dest_y = gy + row;
+        if (dest_y < 0 || dest_y >= dh) continue;
+
+        for (int col = 0; col < gw; col++) {
+            int dest_x = gx + col;
+            if (dest_x < 0 || dest_x >= dw) continue;
+
+            long b_off = (long)row * gw + col;
+            if (b_off >= bmp_len) continue;
+
+            uint8_t alpha = bmp[b_off];
+            if (alpha == 0) continue;
+
+            long d_off = ((long)dest_y * dw + dest_x) * 4;
+            if (d_off + 3 >= dst_len) continue;
+
+            if (alpha == 255) {
+                dst[d_off + 0] = fr;
+                dst[d_off + 1] = fg;
+                dst[d_off + 2] = fb;
+                dst[d_off + 3] = 255;
+            } else {
+                uint8_t inv = 255 - alpha;
+                dst[d_off + 0] = (uint8_t)((fr * alpha + dst[d_off + 0] * inv + 127) / 255);
+                dst[d_off + 1] = (uint8_t)((fg * alpha + dst[d_off + 1] * inv + 127) / 255);
+                dst[d_off + 2] = (uint8_t)((fb * alpha + dst[d_off + 2] * inv + 127) / 255);
+                dst[d_off + 3] = 255;
+            }
+        }
+    }
+
+    return Qnil;
+}
+
 /* ---- Init_canvas() ---- */
 void
 Init_canvas(void)
@@ -166,4 +247,5 @@ Init_canvas(void)
     rb_define_private_method(rb_cCanvas, "_canvas_clear",      canvas_clear,      5);
     rb_define_private_method(rb_cCanvas, "_canvas_blit_alpha",  canvas_blit_alpha,  8);
     rb_define_private_method(rb_cCanvas, "_canvas_load_rgba",   canvas_load_rgba,   7);
+    rb_define_private_method(rb_cCanvas, "_canvas_blit_glyph",  canvas_blit_glyph,  11);
 }

@@ -20,3 +20,6 @@ gem 'rubocop-rspec', '~> 3.9'
 
 gem 'hanna-nouveau', '~> 1.5'
 gem 'rdoc', '~> 7.2'
+
+# Optional: image loading support (requires libvips system library)
+gem 'ruby-vips', '~> 2.2', require: false

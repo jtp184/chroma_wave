@@ -84,4 +84,5 @@ Init_chroma_wave(void)
     Init_driver_registry();
     Init_canvas();
     Init_device();
+    Init_freetype();
 }

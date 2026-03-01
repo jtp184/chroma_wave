@@ -176,6 +176,28 @@ module ChromaWave
       end
     end
 
+    # Composites a glyph bitmap directly into the RGBA buffer via the C accelerator.
+    #
+    # Wraps the private +_canvas_blit_glyph+ C method in a public, keyword-arg
+    # interface. Returns +true+ if the C path was used, +false+ if unavailable
+    # so callers can fall back gracefully.
+    #
+    # @param bitmap [String] grayscale alpha bitmap (1 byte/pixel)
+    # @param x [Integer] destination x in canvas coordinates
+    # @param y [Integer] destination y in canvas coordinates
+    # @param width [Integer] glyph bitmap width
+    # @param height [Integer] glyph bitmap height
+    # @param color [Color] foreground color for the glyph
+    # @return [Boolean] true if C accelerator was used, false otherwise
+    def blit_glyph(bitmap, x:, y:, width:, height:, color:) # rubocop:disable Naming/PredicateMethod
+      return false unless respond_to?(:_canvas_blit_glyph, true)
+
+      _canvas_blit_glyph(buffer, bitmap, x, y, width, height,
+                         self.width, self.height,
+                         color.r, color.g, color.b)
+      true
+    end
+
     protected
 
     # Exposes the internal buffer for same-class peer comparison in {#==}.
@@ -197,11 +219,7 @@ module ChromaWave
       @buffer = source.raw_buffer.dup
     end
 
-    # Computes the byte offset for pixel (x, y).
-    #
-    # @param x [Integer] x coordinate
-    # @param y [Integer] y coordinate
-    # @return [Integer] byte offset into the buffer
+    # Byte offset for pixel (x, y) in the RGBA buffer.
     def pixel_offset(x, y)
       ((y * width) + x) * BYTES_PER_PIXEL
     end
@@ -230,6 +248,21 @@ module ChromaWave
       (y0...y1).each do |row_y|
         offset = pixel_offset(x0, row_y)
         buffer[offset, row.bytesize] = row
+      end
+    end
+
+    # C-accelerated glyph compositing. Blends directly into the RGBA
+    # buffer with integer alpha math, avoiding per-pixel Color allocation.
+    # Falls back to the pure-Ruby path when the C method is unavailable.
+    def render_glyph(glyph, base_x, base_y, color)
+      if respond_to?(:_canvas_blit_glyph, true)
+        _canvas_blit_glyph(buffer, glyph[:bitmap],
+                           base_x + glyph[:x], base_y + glyph[:y],
+                           glyph[:width], glyph[:height],
+                           width, height,
+                           color.r, color.g, color.b)
+      else
+        super
       end
     end
 

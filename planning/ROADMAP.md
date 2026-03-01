@@ -35,10 +35,10 @@ Phase 4: Rendering & Display       ✅ COMPLETE (branch: feature/groundwork-phas
   ├── 14. GVL release for refresh    ✅
   └── 15. Busy-wait timeout          ✅  (cancellable via UBF)
           │
-Phase 5: Content Pipeline          ← depends on Phase 3 (draws onto Surfaces)
-  ├── 16. FreeType bindings
-  ├── 17. IconFont + Lucide
-  └── 18. Image (ruby-vips)
+Phase 5: Content Pipeline          ✅ COMPLETE (branch: feature/groundwork-phase-5)
+  ├── 16. FreeType bindings         ✅
+  ├── 17. IconFont + Lucide         ✅
+  └── 18. Image (ruby-vips)         ✅
           │
 Phase 6: Build & Platform          ← can start early, but final integration last
   ├── 19. extconf.rb platform detection ⚠️  Stub only
@@ -422,63 +422,75 @@ The `epd_read_busy` checks the cancel flag each iteration, enabling clean interr
 
 ---
 
-## 📐 Phase 5: Content Pipeline
+## 📐 Phase 5: Content Pipeline ✅
 
 Text, icons, and images — the high-level content types that draw onto Surfaces.
 
-### 16. FreeType bindings
+### 16. FreeType bindings ✅
 
 C extension bindings for FreeType glyph rasterization. Ruby-side `Font` class handles layout.
 
-- [ ] Link `libfreetype` in `extconf.rb` (optional — compile without if not found, set `-DNO_FREETYPE`)
-- [ ] `freetype.c`: manage `FT_Library` lifecycle (singleton, initialized on first use)
-- [ ] Wrap `FT_Face` in a `TypedData` struct with proper `dfree`
-- [ ] Expose private C methods: `_ft_load_face`, `_ft_render_glyph`, `_ft_glyph_metrics`
-- [ ] Ruby `Font` class: font discovery, size setting, measurement (`text_width`, `text_height`)
-- [ ] Ruby `Surface#draw_text`: layout engine (alignment, word wrapping), calls `Font` for glyphs
-- [ ] When `NO_FREETYPE`: `Font.new` / `draw_text` raise `ChromaWave::DependencyError` with install hint
-- [ ] Specs for glyph rendering, metrics accuracy, missing-freetype fallback error
+- [x] Link `libfreetype` in `extconf.rb` (optional — compile without if not found, set `-DNO_FREETYPE`)
+- [x] `freetype.c`: manage `FT_Library` lifecycle (singleton, initialized on first use, cleaned via `rb_set_end_proc`)
+- [x] Wrap `FT_Face` in a `TypedData` struct with proper `dfree` (GC-shutdown-safe: checks `ft_library` before `FT_Done_Face`)
+- [x] Expose 6 private C methods: `_ft_load_face`, `_ft_render_glyph`, `_ft_glyph_metrics`, `_ft_line_height`, `_ft_ascent`, `_ft_descent`
+- [x] Ruby `Font` class: font discovery (bundled + system dirs, exact/fuzzy match), `measure`, `each_glyph`, `line_height`, `ascent`, `descent`
+- [x] Ruby `Drawing::Text` mixin: `Surface#draw_text` with word wrap, alignment (:left/:center/:right), anti-aliased alpha compositing
+- [x] `TextMetrics = Data.define(:width, :height, :ascent, :descent)` value type
+- [x] When `NO_FREETYPE`: `Font.new` raises `ChromaWave::DependencyError` with install hint
+- [x] Specs for glyph rendering, metrics accuracy, text layout, word wrap, alignment, missing-freetype fallback
+- [x] `Font.default(size:)` factory using bundled DejaVu Sans (OFL-licensed)
 
-**Files:** `ext/chroma_wave/freetype.c`, `ext/chroma_wave/freetype.h`, `lib/chroma_wave/font.rb`, `lib/chroma_wave/drawing/text.rb`
+Also implemented: pitch-aware row copy for FreeType bitmaps, 26.6 fixed-point metric conversion, `FT_RENDER_MODE_NORMAL` for anti-aliased output, per-pixel alpha compositing with `Color#over`.
+
+**Files:** `ext/chroma_wave/freetype.c`, `ext/chroma_wave/freetype.h`, `lib/chroma_wave/font.rb`, `lib/chroma_wave/text_metrics.rb`, `lib/chroma_wave/drawing/text.rb`
 **Refs:** [CONTENT_PIPELINE.md](CONTENT_PIPELINE.md), [EXTENSION_STRATEGY.md §5.1](EXTENSION_STRATEGY.md#51-platform-detection-in-extconfrb)
 **Depends on:** Task 6 (Surface protocol)
-**Acceptance:** Text renders correctly with system TTF fonts. Missing FreeType gives a helpful error.
+**Acceptance:** ✅ Text renders correctly with system and bundled TTF fonts. Anti-aliased glyph compositing works. Missing FreeType gives a helpful error. 22 specs covering Font, TextMetrics, and Drawing::Text.
 
 ---
 
-### 17. IconFont + Lucide
+### 17. IconFont + Lucide ✅
 
 `IconFont` subclass of `Font` with symbol → codepoint registry. Bundles Lucide icons.
 
-- [ ] `IconFont` extends `Font` with symbol-based glyph lookup (`icon_font.glyph(:arrow_right)`)
-- [ ] Bundle `lucide.ttf` (~120KB, ISC license) in `data/fonts/`
-- [ ] Include `LICENSE-lucide.txt`
-- [ ] `rake icons:generate` task: parse Lucide metadata → `lib/chroma_wave/icon_font/lucide_glyphs.rb`
-- [ ] Generated glyph map: `{ arrow_right: 0xE001, ... }`
-- [ ] Specs for icon rendering, symbol lookup, missing-icon error
+- [x] `IconFont` extends `Font` with symbol-based glyph lookup via `glyph_map` (frozen hash)
+- [x] Bundle `lucide.ttf` (~803KB, ISC license) in `data/fonts/`
+- [x] Include `LICENSE-lucide.txt` and `LICENSE-dejavu.txt`
+- [x] `rake icons:generate` task: parse `lucide-info.json` metadata → `lib/chroma_wave/icon_font/lucide_glyphs.rb`
+- [x] Generated glyph map: 1,688 icons, `{ house: 0xE9FC, ... }`
+- [x] `IconFont#draw(surface, :name, x:, y:, color:)` renders named icon
+- [x] `IconFont#measure_icon(:name)` returns TextMetrics
+- [x] Unknown icon names raise `KeyError`
+- [x] `IconFont.lucide(size:)` factory with bundled font + full glyph map
+- [x] Specs for icon rendering, symbol lookup, glyph map structure, missing-icon error
 
-**Files:** `lib/chroma_wave/icon_font.rb`, `lib/chroma_wave/icon_font/lucide_glyphs.rb`, `data/fonts/lucide.ttf`, `data/fonts/LICENSE-lucide.txt`
+**Files:** `lib/chroma_wave/icon_font.rb`, `lib/chroma_wave/icon_font/lucide_glyphs.rb`, `data/fonts/lucide.ttf`, `data/fonts/LICENSE-lucide.txt`, `lib/tasks/icons.rake`
 **Refs:** [CONTENT_PIPELINE.md](CONTENT_PIPELINE.md)
 **Depends on:** Task 16 (Font / FreeType)
-**Acceptance:** `icon_font.glyph(:home)` renders the Lucide home icon. Rake task regenerates the glyph map from upstream metadata.
+**Acceptance:** ✅ `IconFont.lucide(size: 24)` loads 1,688 Lucide icons. `icons.draw(canvas, :house, ...)` renders correctly. Rake task regenerates glyph map from upstream metadata.
 
 ---
 
-### 18. Image loading (ruby-vips)
+### 18. Image loading (ruby-vips) ✅
 
 Load any image format, resize/crop, and bulk-transfer RGBA data into Canvas.
 
-- [ ] `Image.load(path)` — load via ruby-vips, convert to RGBA
-- [ ] `Image#resize(width:, height:, fit:)` — resize with various fit modes
-- [ ] `Image#crop(x:, y:, width:, height:)`
-- [ ] `Image#draw_onto(canvas, x:, y:)` — bulk RGBA transfer via `Canvas#load_rgba_bytes` / C accelerator
-- [ ] vips packed RGBA output maps directly to Canvas's packed String buffer
-- [ ] Specs for load, resize, crop, and draw_onto correctness
+- [x] `Image.load(path)` — load via ruby-vips, convert to RGBA
+- [x] `Image.from_buffer(data)` — load from binary string
+- [x] `Image#resize(width:, height:)` — aspect-ratio-preserving resize
+- [x] `Image#crop(x:, y:, width:, height:)`
+- [x] `Image#draw_onto(canvas, x:, y:)` — bulk RGBA transfer via `Canvas#load_rgba_bytes` C accelerator
+- [x] `Image#to_canvas` — creates new Canvas from image data
+- [x] `Image#to_rgba_bytes` — raw RGBA bytes for direct buffer access
+- [x] Grayscale, RGB, RGBA, CMYK inputs all normalize to 4-band RGBA uint8
+- [x] Lazy `require 'vips'` — raises `DependencyError` when ruby-vips not installed
+- [x] Specs for load, resize, crop, draw_onto, format normalization, missing-vips fallback
 
-**Files:** `lib/chroma_wave/image.rb`
+**Files:** `lib/chroma_wave/image.rb`, `spec/chroma_wave/image_spec.rb`
 **Refs:** [CONTENT_PIPELINE.md](CONTENT_PIPELINE.md)
 **Depends on:** Tasks 7, 8 (Canvas + C accelerators)
-**Acceptance:** JPEG/PNG/WebP images load, resize, and blit onto Canvas correctly. Bulk transfer uses C accelerator when available.
+**Acceptance:** ✅ JPEG/PNG images load, resize, and blit onto Canvas correctly. Bulk transfer uses C accelerator. Missing ruby-vips raises `DependencyError` with install hint.
 
 ---
 

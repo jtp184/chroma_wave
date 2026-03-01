@@ -11,6 +11,8 @@ RuboCop::RakeTask.new
 
 require 'rake/extensiontask'
 
+Dir.glob('lib/tasks/**/*.rake').each { |r| import r }
+
 desc 'Build the gem'
 task build: :compile
 

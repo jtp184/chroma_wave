@@ -72,10 +72,14 @@ extern VALUE rb_eModelNotFoundError;
 pixel_format_t cw_sym_to_pixel_format(VALUE sym);
 VALUE          cw_pixel_format_to_sym(pixel_format_t fmt);
 
+/* Font class VALUE (defined by freetype.c) */
+extern VALUE rb_cFont;
+
 /* Init functions for sub-modules */
 void Init_framebuffer(void);
 void Init_driver_registry(void);
 void Init_canvas(void);
 void Init_device(void);
+void Init_freetype(void);
 
 #endif /* CHROMA_WAVE_H */
