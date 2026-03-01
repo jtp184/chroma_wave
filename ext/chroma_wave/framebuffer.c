@@ -1,6 +1,9 @@
 #include "framebuffer.h"
 #include "ruby/encoding.h"
 
+/* Cached symbol ID for pinning framebuffer references in raw_buffer strings */
+static ID id_fb_source;
+
 /* ---- Helper: calculate bytes per row ---- */
 static uint16_t
 calc_width_byte(uint16_t width, pixel_format_t fmt)
@@ -319,11 +322,18 @@ fb_raw_buffer(VALUE self)
     }
 
     /* Wrap the C buffer without copying.  The string is frozen so Ruby
-     * code cannot mutate the underlying buffer.  The string lifetime is
-     * tied to self via rb_str_tmp_frozen_acquire semantics — but since
-     * we freeze it, the GC won't collect it while references exist. */
+     * code cannot mutate the underlying buffer directly.
+     *
+     * Pin the Framebuffer by storing a back-reference on the string.
+     * This creates a GC edge (String → Framebuffer) that prevents the
+     * Framebuffer from being collected while the string is still alive,
+     * avoiding a use-after-free on the underlying buffer.
+     *
+     * Note: the buffer contents may change via set_pixel/clear on the
+     * Framebuffer; callers should treat the string as a transient view. */
     VALUE str = rb_str_new_static((const char *)fb->buffer, (long)fb->buffer_size);
     rb_enc_associate(str, rb_ascii8bit_encoding());
+    rb_ivar_set(str, id_fb_source, self);
     OBJ_FREEZE(str);
     return str;
 }
@@ -384,6 +394,8 @@ fb_inspect(VALUE self)
 void
 Init_framebuffer(void)
 {
+    id_fb_source = rb_intern("@__fb_source__");
+
     rb_cFramebuffer = rb_define_class_under(rb_mChromaWave, "Framebuffer", rb_cObject);
 
     rb_define_alloc_func(rb_cFramebuffer, fb_alloc);
