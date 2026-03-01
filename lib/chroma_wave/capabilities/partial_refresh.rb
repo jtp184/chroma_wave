@@ -23,11 +23,7 @@ module ChromaWave
       #
       # @return [self]
       def init_partial
-        synchronize_device do
-          device.send(:_epd_init, Native::MODE_PARTIAL)
-          @current_mode = :partial
-          @initialized = true
-        end
+        synchronize_device { _init_partial_mode }
         self
       end
 
@@ -40,8 +36,10 @@ module ChromaWave
       # @raise [FormatMismatchError] if the framebuffer format does not match
       def display_partial(framebuffer)
         validate_framebuffer!(framebuffer)
-        init_partial unless current_mode == :partial
-        synchronize_device { device.send(:_epd_display, framebuffer) }
+        synchronize_device do
+          _init_partial_mode unless current_mode == :partial
+          device.send(:_epd_display, framebuffer)
+        end
         self
       end
 
@@ -55,6 +53,17 @@ module ChromaWave
         ensure_initialized!
         synchronize_device { device.send(:_epd_display, framebuffer) }
         self
+      end
+
+      private
+
+      # Unsynchronized partial-mode init logic. Caller must hold the device mutex.
+      #
+      # @return [void]
+      def _init_partial_mode
+        device.send(:_epd_init, Native::MODE_PARTIAL)
+        @current_mode = :partial
+        @initialized = true
       end
     end
   end

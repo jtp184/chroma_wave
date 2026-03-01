@@ -33,7 +33,7 @@ module ChromaWave
       # @return [void]
       def call(canvas, framebuffer)
         pal = palette
-        bytes = canvas.rgba_bytes
+        bytes = canvas.raw_buffer
         width = canvas.width
         color_rgb = build_color_rgb(pal)
         pixel = RGB.new(0, 0, 0)
@@ -103,6 +103,9 @@ module ChromaWave
 
       # Distributes quantization error to neighboring pixels.
       #
+      # Computes per-channel error as separate numeric variables to avoid
+      # allocating a temporary 3-element Array on every pixel.
+      #
       # @param current [Array<Array<Float>>] current row error buffer
       # @param next_row [Array<Array<Float>>] next row error buffer
       # @param x [Integer] current pixel x coordinate
@@ -110,12 +113,14 @@ module ChromaWave
       # @param adjusted [RGB] the error-adjusted input pixel
       # @param nearest_rgb [Array<Integer>] [r, g, b] of the quantized palette color
       def distribute(current, next_row, x, width, adjusted, nearest_rgb)
-        error = [adjusted.r - nearest_rgb[0], adjusted.g - nearest_rgb[1], adjusted.b - nearest_rgb[2]]
+        err_r = adjusted.r - nearest_rgb[0]
+        err_g = adjusted.g - nearest_rgb[1]
+        err_b = adjusted.b - nearest_rgb[2]
 
-        add_error(current, x + 1, width, error, FS_RIGHT)
-        add_error(next_row, x - 1, width, error, FS_BELOW_LEFT)
-        add_error(next_row, x, width, error, FS_BELOW)
-        add_error(next_row, x + 1, width, error, FS_BELOW_RIGHT)
+        add_error(current, x + 1, width, err_r, err_g, err_b, FS_RIGHT)
+        add_error(next_row, x - 1, width, err_r, err_g, err_b, FS_BELOW_LEFT)
+        add_error(next_row, x, width, err_r, err_g, err_b, FS_BELOW)
+        add_error(next_row, x + 1, width, err_r, err_g, err_b, FS_BELOW_RIGHT)
       end
 
       # Adds a weighted error to a single pixel in an error buffer row.
@@ -123,15 +128,17 @@ module ChromaWave
       # @param row [Array<Array<Float>>] error buffer row
       # @param x [Integer] target pixel x coordinate
       # @param width [Integer] row width (for bounds check)
-      # @param error [Array<Numeric>] [r, g, b] quantization error
+      # @param err_r [Numeric] red channel quantization error
+      # @param err_g [Numeric] green channel quantization error
+      # @param err_b [Numeric] blue channel quantization error
       # @param weight [Float] distribution weight
-      def add_error(row, x, width, error, weight)
+      def add_error(row, x, width, err_r, err_g, err_b, weight) # rubocop:disable Metrics/ParameterLists
         return unless x >= 0 && x < width
 
         cell = row[x]
-        cell[0] += error[0] * weight
-        cell[1] += error[1] * weight
-        cell[2] += error[2] * weight
+        cell[0] += err_r * weight
+        cell[1] += err_g * weight
+        cell[2] += err_b * weight
       end
     end
   end

@@ -176,8 +176,13 @@ module ChromaWave
       # Wraps a single paragraph (no embedded newlines) to max_width.
       #
       # Leading/trailing whitespace is stripped and internal runs of
-      # whitespace are collapsed to a single space. This is intentional —
+      # whitespace are collapsed to a single space. This is intentional --
       # e-paper text rendering has no use for preserved whitespace runs.
+      #
+      # Uses incremental width accumulation (O(N) font measurements) rather
+      # than re-measuring the entire candidate line for each word (O(N^2)).
+      # Each word is measured once, and the space width is cached outside
+      # the loop since it is constant for a given font.
       #
       # @param paragraph [String] a single line of text
       # @param font [Font] loaded Font for measurement
@@ -187,16 +192,22 @@ module ChromaWave
         words = paragraph.split(/\s+/).reject(&:empty?)
         return [''] if words.empty?
 
+        space_width = font.measure(' ').width
         lines = []
         current = words.shift
+        current_width = font.measure(current).width
 
         words.each do |word|
-          candidate = "#{current} #{word}"
-          if font.measure(candidate).width <= max_width
-            current = candidate
+          word_width = font.measure(word).width
+          candidate_width = current_width + space_width + word_width
+
+          if candidate_width <= max_width
+            current = "#{current} #{word}"
+            current_width = candidate_width
           else
             lines << current
             current = word
+            current_width = word_width
           end
         end
         lines << current

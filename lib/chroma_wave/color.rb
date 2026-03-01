@@ -60,7 +60,11 @@ module ChromaWave
 
     # Composites this color over a background using source-over alpha blending.
     #
-    # The result is always fully opaque (alpha 255), suitable for final rendering.
+    # The result is always fully opaque (alpha 255), suitable for compositing
+    # onto an opaque background (the typical e-paper use case). This is a
+    # simplified Porter-Duff source-over that discards the background's alpha
+    # channel — it does not produce correct results when compositing onto
+    # a semi-transparent destination.
     #
     # @param background [Color] the background color to composite over
     # @return [Color] the blended result with alpha 255

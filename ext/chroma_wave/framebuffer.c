@@ -1,6 +1,9 @@
 #include "framebuffer.h"
 #include "ruby/encoding.h"
 
+/* Cached symbol ID for pinning framebuffer references in raw_buffer strings */
+static ID id_fb_source;
+
 /* ---- Helper: calculate bytes per row ---- */
 static uint16_t
 calc_width_byte(uint16_t width, pixel_format_t fmt)
@@ -163,6 +166,10 @@ fb_set_pixel(VALUE self, VALUE rb_x, VALUE rb_y, VALUE rb_color)
     framebuffer_t *fb;
     TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
     int x = NUM2INT(rb_x);
     int y = NUM2INT(rb_y);
 
@@ -212,6 +219,10 @@ fb_get_pixel(VALUE self, VALUE rb_x, VALUE rb_y)
     framebuffer_t *fb;
     TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
     int x = NUM2INT(rb_x);
     int y = NUM2INT(rb_y);
 
@@ -253,6 +264,10 @@ fb_clear(VALUE self, VALUE rb_color)
     framebuffer_t *fb;
     TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
     uint8_t c = (uint8_t)(NUM2INT(rb_color) & 0xFF);
     uint8_t fill;
 
@@ -285,8 +300,40 @@ fb_bytes(VALUE self)
     framebuffer_t *fb;
     TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
     VALUE str = rb_str_new((const char *)fb->buffer, (long)fb->buffer_size);
     rb_enc_associate(str, rb_ascii8bit_encoding());
+    OBJ_FREEZE(str);
+    return str;
+}
+
+/* ---- raw_buffer (no-copy, read-only view) ---- */
+static VALUE
+fb_raw_buffer(VALUE self)
+{
+    framebuffer_t *fb;
+    TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
+
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
+    /* Wrap the C buffer without copying.  The string is frozen so Ruby
+     * code cannot mutate the underlying buffer directly.
+     *
+     * Pin the Framebuffer by storing a back-reference on the string.
+     * This creates a GC edge (String → Framebuffer) that prevents the
+     * Framebuffer from being collected while the string is still alive,
+     * avoiding a use-after-free on the underlying buffer.
+     *
+     * Note: the buffer contents may change via set_pixel/clear on the
+     * Framebuffer; callers should treat the string as a transient view. */
+    VALUE str = rb_str_new_static((const char *)fb->buffer, (long)fb->buffer_size);
+    rb_enc_associate(str, rb_ascii8bit_encoding());
+    rb_ivar_set(str, id_fb_source, self);
     OBJ_FREEZE(str);
     return str;
 }
@@ -302,6 +349,10 @@ fb_eq(VALUE self, VALUE other)
 
     TypedData_Get_Struct(self,  framebuffer_t, &framebuffer_type, fb_a);
     TypedData_Get_Struct(other, framebuffer_t, &framebuffer_type, fb_b);
+
+    if (!fb_a->buffer || !fb_b->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
 
     if (fb_a->width != fb_b->width ||
         fb_a->height != fb_b->height ||
@@ -343,6 +394,8 @@ fb_inspect(VALUE self)
 void
 Init_framebuffer(void)
 {
+    id_fb_source = rb_intern("@__fb_source__");
+
     rb_cFramebuffer = rb_define_class_under(rb_mChromaWave, "Framebuffer", rb_cObject);
 
     rb_define_alloc_func(rb_cFramebuffer, fb_alloc);
@@ -356,6 +409,7 @@ Init_framebuffer(void)
     rb_define_method(rb_cFramebuffer, "get_pixel",       fb_get_pixel,       2);
     rb_define_method(rb_cFramebuffer, "clear",           fb_clear,           1);
     rb_define_method(rb_cFramebuffer, "bytes",           fb_bytes,           0);
+    rb_define_method(rb_cFramebuffer, "raw_buffer",      fb_raw_buffer,      0);
     rb_define_method(rb_cFramebuffer, "==",              fb_eq,              1);
     rb_define_method(rb_cFramebuffer, "inspect",         fb_inspect,         0);
 }

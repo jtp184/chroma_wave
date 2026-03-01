@@ -9,6 +9,10 @@ Gem::Specification.new do |spec|
   spec.email = ['justin.piotroski@gmail.com']
 
   spec.summary = 'Ruby Bindings for Waveshare E-Paper Displays'
+  spec.description = 'Provides a clean, idiomatic Ruby API for rendering content on ' \
+                     'Waveshare E-Paper displays. Includes a C extension wrapping vendor ' \
+                     'drivers, RGBA canvas with drawing primitives, FreeType text rendering, ' \
+                     'dithering strategies, and support for 25+ display models.'
   spec.homepage = 'https://github.com/jtp184/chroma_wave'
   spec.license = 'MIT'
   spec.required_ruby_version = '>= 3.2.0'

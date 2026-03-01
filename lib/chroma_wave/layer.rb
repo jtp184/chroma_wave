@@ -65,6 +65,19 @@ module ChromaWave
       parent.get_pixel(offset_x + x, offset_y + y)
     end
 
+    # Fills the layer region with the given color.
+    #
+    # Delegates to the parent's +fill_rect+, which writes scanline rows
+    # directly into the buffer when the parent is a Canvas, or falls back
+    # to the per-pixel Primitives implementation for other Surface types.
+    #
+    # @param color [Object] a color understood by the parent's +set_pixel+
+    # @return [self]
+    def clear(color)
+      parent.fill_rect(offset_x, offset_y, width, height, color)
+      self
+    end
+
     private
 
     attr_reader :parent, :offset_x, :offset_y

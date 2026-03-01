@@ -198,13 +198,48 @@ module ChromaWave
       true
     end
 
-    protected
-
-    # Exposes the internal buffer for same-class peer comparison in {#==}.
+    # Returns the raw RGBA buffer without copying.
     #
-    # @return [String] the raw RGBA buffer
+    # Unlike {#rgba_bytes}, which duplicates the buffer for safety, this
+    # method returns a direct reference. Callers must not mutate the
+    # returned string. Intended for read-only hot paths (e.g. dithering)
+    # where copying 1+ MB of pixel data is wasteful.
+    #
+    # Also used for same-class peer comparison in {#==}.
+    #
+    # @return [String] the raw RGBA buffer (do not mutate)
     def raw_buffer
       @buffer
+    end
+
+    # Optimized fill_rect that writes scanline rows directly into the buffer.
+    #
+    # Clips the rectangle to canvas bounds, then writes one memcpy-style
+    # row per scanline instead of per-pixel set_pixel calls.
+    #
+    # @param x [Integer] top-left x
+    # @param y [Integer] top-left y
+    # @param w [Integer] width
+    # @param h [Integer] height
+    # @param color [#to_rgba_bytes] fill color (any object responding to +to_rgba_bytes+)
+    # @raise [TypeError] if +color+ does not respond to +to_rgba_bytes+
+    def fill_rect(x, y, w, h, color)
+      raise TypeError, "#{color.class} does not respond to #to_rgba_bytes" unless color.respond_to?(:to_rgba_bytes)
+
+      # Clip to canvas bounds
+      x0 = [x, 0].max
+      y0 = [y, 0].max
+      x1 = [x + w, width].min
+      y1 = [y + h, height].min
+      return if x0 >= x1 || y0 >= y1
+
+      stamp = color.to_rgba_bytes
+      row = stamp * (x1 - x0)
+
+      (y0...y1).each do |row_y|
+        offset = pixel_offset(x0, row_y)
+        buffer[offset, row.bytesize] = row
+      end
     end
 
     private
@@ -222,33 +257,6 @@ module ChromaWave
     # Byte offset for pixel (x, y) in the RGBA buffer.
     def pixel_offset(x, y)
       ((y * width) + x) * BYTES_PER_PIXEL
-    end
-
-    # Optimized fill_rect that writes scanline rows directly into the buffer.
-    #
-    # Clips the rectangle to canvas bounds, then writes one memcpy-style
-    # row per scanline instead of per-pixel set_pixel calls.
-    #
-    # @param x [Integer] top-left x
-    # @param y [Integer] top-left y
-    # @param w [Integer] width
-    # @param h [Integer] height
-    # @param color [Object] fill color
-    def fill_rect(x, y, w, h, color)
-      # Clip to canvas bounds
-      x0 = [x, 0].max
-      y0 = [y, 0].max
-      x1 = [x + w, width].min
-      y1 = [y + h, height].min
-      return if x0 >= x1 || y0 >= y1
-
-      stamp = color.to_rgba_bytes
-      row = stamp * (x1 - x0)
-
-      (y0...y1).each do |row_y|
-        offset = pixel_offset(x0, row_y)
-        buffer[offset, row.bytesize] = row
-      end
     end
 
     # C-accelerated glyph compositing. Blends directly into the RGBA

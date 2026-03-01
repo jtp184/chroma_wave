@@ -260,25 +260,66 @@ display_ubf(void *arg)
     args->dev->cancel = 1;  /* volatile write signals busy-wait to abort */
 }
 
+/* ---- Init without GVL ---- */
+
+/* Arguments passed to init_without_gvl (no VALUE fields!) */
+typedef struct {
+    device_t       *dev;
+    uint8_t         mode;
+    int             result;
+} init_args_t;
+
+/* Runs WITHOUT the GVL -- must NOT call any Ruby API functions. */
+static void *
+init_without_gvl(void *arg)
+{
+    init_args_t *args = (init_args_t *)arg;
+    const epd_driver_t *drv = args->dev->driver;
+
+    if (drv && drv->custom_init) {
+        args->result = drv->custom_init(args->dev->config, args->mode);
+    } else {
+        args->result = epd_generic_init(args->dev->config, args->mode);
+    }
+
+    return NULL;
+}
+
+/* Unblocking function for init */
+static void
+init_ubf(void *arg)
+{
+    init_args_t *args = (init_args_t *)arg;
+    /* Signal cancellation; only code that polls dev->cancel will react. */
+    args->dev->cancel = 1;
+}
+
 /* ---- _epd_init(mode) ---- */
 static VALUE
 device_epd_init(VALUE self, VALUE rb_mode)
 {
     device_t *dev = device_require_open(self);
     uint8_t mode = (uint8_t)NUM2INT(rb_mode);
-    int rc;
+    init_args_t args;
 
-    if (dev->driver && dev->driver->custom_init) {
-        rc = dev->driver->custom_init(dev->config, mode);
-    } else {
-        rc = epd_generic_init(dev->config, mode);
+    /* Prepare args for non-GVL execution */
+    args.dev    = dev;
+    args.mode   = mode;
+    args.result = EPD_OK;
+
+    /* Reset cancel flag before starting */
+    dev->cancel = 0;
+
+    /* Release GVL so other Ruby threads can run during init */
+    rb_thread_call_without_gvl(init_without_gvl, &args,
+                               init_ubf, &args);
+
+    /* Back under GVL -- safe to raise exceptions */
+    if (args.result == EPD_ERR_TIMEOUT) {
+        rb_raise(rb_eBusyTimeoutError, "busy timeout during init (mode=%d)", mode);
     }
-
-    if (rc != EPD_OK) {
-        if (rc == EPD_ERR_TIMEOUT) {
-            rb_raise(rb_eBusyTimeoutError, "busy timeout during init (mode=%d)", mode);
-        }
-        rb_raise(rb_eInitError, "EPD init failed (rc=%d, mode=%d)", rc, mode);
+    if (args.result != EPD_OK) {
+        rb_raise(rb_eInitError, "EPD init failed (rc=%d, mode=%d)", args.result, mode);
     }
 
     return Qnil;
@@ -293,6 +334,10 @@ device_epd_display(VALUE self, VALUE rb_fb)
     display_args_t args;
 
     TypedData_Get_Struct(rb_fb, framebuffer_t, &framebuffer_type, fb);
+
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
 
     /* Prepare args for non-GVL execution */
     args.dev     = dev;
@@ -395,6 +440,13 @@ device_epd_display_dual(VALUE self, VALUE rb_black_fb, VALUE rb_red_fb)
     TypedData_Get_Struct(rb_black_fb, framebuffer_t, &framebuffer_type, black_fb);
     TypedData_Get_Struct(rb_red_fb,   framebuffer_t, &framebuffer_type, red_fb);
 
+    if (!black_fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "black framebuffer not initialized");
+    }
+    if (!red_fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "red framebuffer not initialized");
+    }
+
     /* Prepare args for non-GVL execution */
     args.dev       = dev;
     args.black_buf = black_fb->buffer;
@@ -496,14 +548,36 @@ device_epd_display_region(VALUE self, VALUE rb_fb, VALUE rb_x,
 
     TypedData_Get_Struct(rb_fb, framebuffer_t, &framebuffer_type, fb);
 
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
+    /* Validate region coordinates */
+    int rx = NUM2INT(rb_x);
+    int ry = NUM2INT(rb_y);
+    int rw = NUM2INT(rb_w);
+    int rh = NUM2INT(rb_h);
+
+    if (rx < 0 || ry < 0 || rw <= 0 || rh <= 0) {
+        rb_raise(rb_eArgError,
+                 "region coordinates must be non-negative and dimensions positive "
+                 "(got x=%d, y=%d, w=%d, h=%d)", rx, ry, rw, rh);
+    }
+    if (rw > (int)dev->config->width - rx || rh > (int)dev->config->height - ry) {
+        rb_raise(rb_eArgError,
+                 "region (%d,%d)+(%d,%d) exceeds display bounds (%dx%d)",
+                 rx, ry, rw, rh,
+                 dev->config->width, dev->config->height);
+    }
+
     /* Prepare args for non-GVL execution */
     args.dev     = dev;
     args.buf     = fb->buffer;
     args.buf_len = fb->buffer_size;
-    args.x       = (uint16_t)NUM2INT(rb_x);
-    args.y       = (uint16_t)NUM2INT(rb_y);
-    args.w       = (uint16_t)NUM2INT(rb_w);
-    args.h       = (uint16_t)NUM2INT(rb_h);
+    args.x       = (uint16_t)rx;
+    args.y       = (uint16_t)ry;
+    args.w       = (uint16_t)rw;
+    args.h       = (uint16_t)rh;
     args.result  = EPD_OK;
 
     /* Reset cancel flag before starting */

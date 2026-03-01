@@ -5,6 +5,8 @@ VALUE rb_cFont;
 
 #ifndef NO_FREETYPE
 
+#include <pthread.h>
+
 /* ---- Cached symbol IDs for glyph hash keys ---- */
 
 static ID id_bitmap, id_width, id_height, id_bearing_x, id_bearing_y, id_advance_x;
@@ -12,6 +14,12 @@ static ID id_bitmap, id_width, id_height, id_bearing_x, id_bearing_y, id_advance
 /* ---- FT_Library singleton ---- */
 
 static FT_Library ft_library = NULL;
+
+/* pthread_once control for one-time FT_Library initialization. */
+static pthread_once_t ft_init_once = PTHREAD_ONCE_INIT;
+
+/* FT_Error from initialization, checked after pthread_once returns. */
+static FT_Error ft_init_error = 0;
 
 /* Cleanup callback registered via rb_set_end_proc */
 static void
@@ -24,26 +32,34 @@ ft_library_cleanup(VALUE _unused)
     }
 }
 
+/* One-time initializer called via pthread_once.
+ * Cannot raise (pthread_once doesn't support longjmp),
+ * so we stash the error for the caller to check. */
+static void
+ft_init_once_func(void)
+{
+    ft_init_error = FT_Init_FreeType(&ft_library);
+    if (ft_init_error) {
+        ft_library = NULL;
+        return;
+    }
+    rb_set_end_proc(ft_library_cleanup, Qnil);
+}
+
 /* Lazily initialize the global FT_Library on first use.
  *
- * Not synchronized — if two threads race on the very first Font.new,
- * both may call FT_Init_FreeType and one handle will leak.  This is
- * acceptable for an e-paper gem that creates fonts during setup, not
- * under concurrent pressure.  A rb_mutex_lock guard could be added
- * here if truly concurrent initialization becomes a requirement. */
+ * Thread-safe via pthread_once — no data races, no DCLP.
+ * Works correctly on multi-threaded runtimes (JRuby/TruffleRuby)
+ * that run without a GIL. */
 static void
 ft_ensure_library(void)
 {
-    if (ft_library) return;
+    pthread_once(&ft_init_once, ft_init_once_func);
 
-    FT_Error err = FT_Init_FreeType(&ft_library);
-    if (err) {
-        ft_library = NULL;
+    if (ft_init_error) {
         rb_raise(rb_eChromaWaveError,
-                 "FreeType initialization failed (FT error %d)", err);
+                 "FreeType initialization failed (FT error %d)", ft_init_error);
     }
-
-    rb_set_end_proc(ft_library_cleanup, Qnil);
 }
 
 /* ---- TypedData for cw_font_face_t ---- */

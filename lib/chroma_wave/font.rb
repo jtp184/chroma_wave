@@ -215,17 +215,12 @@ module ChromaWave
 
     # Returns cached font candidates, building the cache on first call.
     #
-    # Thread-safe via {FONT_CACHE_MUTEX}.
+    # Thread-safe via {FONT_CACHE_MUTEX}. Always synchronizes the cache
+    # check for multi-runtime safety (JRuby/TruffleRuby do not guarantee
+    # atomic reference reads).
     #
     # @return [Array<Array(String, String)>] pairs of [normalized_stem, path]
     def font_candidates
-      # Fast path — avoid Mutex overhead when cache is warm.
-      # The unsynchronized read is safe on MRI (GIL guarantees atomic
-      # reference reads). On JRuby/TruffleRuby, remove this fast path
-      # and always go through the mutex.
-      cache = self.class.send(:font_cache)
-      return cache if cache
-
       FONT_CACHE_MUTEX.synchronize do
         self.class.send(:font_cache) || begin
           search_dirs = [File.join(DATA_DIR, 'fonts')] + FONT_DIRS.map { |d| File.expand_path(d) }

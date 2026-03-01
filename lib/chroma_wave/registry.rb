@@ -19,6 +19,9 @@ module ChromaWave
       regional: Capabilities::RegionalRefresh
     }.freeze
 
+    # Mutex protecting the display class cache for multi-runtime safety.
+    CACHE_MUTEX = Mutex.new
+
     class << self
       # Builds a Display subclass instance for the given model.
       #
@@ -30,7 +33,9 @@ module ChromaWave
         config = Native.model_config(name)
         raise_not_found!(name) unless config
 
-        klass = display_classes[name] ||= build_class(name, config)
+        klass = CACHE_MUTEX.synchronize do
+          display_classes[name] ||= build_class(name, config)
+        end
         klass.send(:new, model_name: name, config: config)
       end
 

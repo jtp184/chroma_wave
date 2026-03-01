@@ -20,12 +20,10 @@ module ChromaWave
           @current_data = []
         end
 
-        # Flushes pending command then resets current state.
+        # Flushes pending command (which also resets current state).
         # @return [void]
         def flush_and_reset
           flush_command
-          @current_cmd = nil
-          @current_data = []
         end
 
         # Appends a sentinel, flushing pending command first.
@@ -77,6 +75,8 @@ module ChromaWave
           @sequence << @current_cmd
           @sequence << @current_data.length
           @sequence.concat(@current_data)
+          @current_cmd = nil
+          @current_data = []
         end
 
         # @param delay [Integer] delay in milliseconds

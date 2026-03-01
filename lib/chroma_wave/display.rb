@@ -87,13 +87,24 @@ module ChromaWave
       self
     end
 
-    # Clears the display to white.
+    # Clears the display to a solid color.
     #
-    # @param color [Symbol] reserved for future use (currently ignored)
+    # When +color+ is +:white+ (the default), delegates to the hardware's
+    # native clear command. For any other color, fills a Framebuffer with
+    # the specified palette color and pushes it to the display.
+    #
+    # @param color [Symbol] palette color name (e.g. +:black+, +:white+, +:red+)
     # @return [self]
-    def clear(color: :white) # rubocop:disable Lint/UnusedMethodArgument
+    # @raise [KeyError] if +color+ is not in this display's palette
+    def clear(color: :white)
       ensure_initialized!
-      synchronize_device { device.send(:_epd_clear) }
+      if color == :white
+        synchronize_device { device.send(:_epd_clear) }
+      else
+        fb = Framebuffer.new(width, height, pixel_format)
+        fb.clear(color)
+        synchronize_device { device.send(:_epd_display, fb) }
+      end
       self
     end
 
@@ -103,11 +114,13 @@ module ChromaWave
     #
     # @return [self]
     def deep_sleep
-      return self unless @initialized
+      synchronize_device do
+        return self unless @initialized
 
-      synchronize_device { device.send(:_epd_sleep) }
-      @initialized = false
-      @current_mode = nil
+        device.send(:_epd_sleep)
+        @initialized = false
+        @current_mode = nil
+      end
       self
     end
 
@@ -162,11 +175,14 @@ module ChromaWave
 
     # Lazily initializes the EPD on first use with full refresh mode.
     #
+    # Thread-safe: always synchronizes the @initialized check to prevent
+    # races on JRuby/TruffleRuby where reads are not atomic.
+    #
     # @return [void]
     def ensure_initialized!
-      return if @initialized
-
       synchronize_device do
+        return if @initialized
+
         device.send(:_epd_init, Native::MODE_FULL)
         @initialized = true
         @current_mode = :full

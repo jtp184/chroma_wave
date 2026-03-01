@@ -11,11 +11,7 @@ module ChromaWave
       #
       # @return [self]
       def init_fast
-        synchronize_device do
-          device.send(:_epd_init, Native::MODE_FAST)
-          @current_mode = :fast
-          @initialized = true
-        end
+        synchronize_device { _init_fast_mode }
         self
       end
 
@@ -28,9 +24,22 @@ module ChromaWave
       # @raise [FormatMismatchError] if the framebuffer format does not match
       def display_fast(framebuffer)
         validate_framebuffer!(framebuffer)
-        init_fast unless current_mode == :fast
-        synchronize_device { device.send(:_epd_display, framebuffer) }
+        synchronize_device do
+          _init_fast_mode unless current_mode == :fast
+          device.send(:_epd_display, framebuffer)
+        end
         self
+      end
+
+      private
+
+      # Unsynchronized fast-mode init logic. Caller must hold the device mutex.
+      #
+      # @return [void]
+      def _init_fast_mode
+        device.send(:_epd_init, Native::MODE_FAST)
+        @current_mode = :fast
+        @initialized = true
       end
     end
   end
