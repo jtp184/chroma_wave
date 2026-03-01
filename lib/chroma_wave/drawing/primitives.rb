@@ -252,7 +252,13 @@ module ChromaWave
         px = -dy / len
         py = dx / len
 
-        (-half.ceil..half.ceil).each do |offset|
+        # Generate exactly w offsets centered around zero.
+        # For odd w (e.g. 3): offsets = [-1, 0, 1]
+        # For even w (e.g. 4): offsets = [-2, -1, 0, 1] (bias toward negative)
+        low  = -(w / 2)
+        high = low + w - 1
+
+        (low..high).each do |offset|
           ox = (px * offset).round
           oy = (py * offset).round
           bresenham(x0 + ox, y0 + oy, x1 + ox, y1 + oy) do |x, y|
@@ -723,8 +729,12 @@ module ChromaWave
       # @param sw [Integer] stroke width
       # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
       def draw_arc_pixels(cx, cy, r, start_angle, end_angle, color, sw) # rubocop:disable Metrics/ParameterLists
-        # Normalize angles to [0, 2π)
         two_pi = 2 * Math::PI
+
+        # If the arc spans a full circle (or more), draw complete circles instead
+        full_circle = (end_angle - start_angle).abs >= (two_pi - 1e-10)
+
+        # Normalize angles to [0, 2π)
         sa = start_angle % two_pi
         ea = end_angle % two_pi
 
@@ -737,8 +747,12 @@ module ChromaWave
 
           while xi <= yi
             each_circle_octant(xi, yi) do |dx, dy|
-              angle = Math.atan2(-dy, dx) % two_pi
-              set_pixel(cx + dx, cy + dy, color) if angle_in_range?(angle, sa, ea)
+              if full_circle
+                set_pixel(cx + dx, cy + dy, color)
+              else
+                angle = Math.atan2(-dy, dx) % two_pi
+                set_pixel(cx + dx, cy + dy, color) if angle_in_range?(angle, sa, ea)
+              end
             end
             xi += 1
             if d.negative?
@@ -829,7 +843,7 @@ module ChromaWave
 
           next unless scan_y >= y0 && scan_y < y1
 
-          x_intersect = x0 + ((scan_y - y0) * (x1 - x0) / (y1 - y0))
+          x_intersect = x0 + ((scan_y - y0) * (x1 - x0)).fdiv(y1 - y0).round
           intersections << x_intersect
         end
 
