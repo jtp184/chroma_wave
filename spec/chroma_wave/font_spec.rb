@@ -44,8 +44,12 @@ RSpec.describe ChromaWave::Font do
 
     context 'without FreeType' do
       let(:font_class_without_ft) do
-        Class.new(described_class) do
-          undef_method :_ft_load_face
+        if described_class.private_method_defined?(:_ft_load_face)
+          Class.new(described_class) do
+            undef_method :_ft_load_face
+          end
+        else
+          described_class
         end
       end
 
