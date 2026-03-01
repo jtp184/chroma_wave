@@ -134,7 +134,7 @@ module ChromaWave
     # @param black_fb [Framebuffer] MONO framebuffer for the black plane
     # @param red_fb [Framebuffer] MONO framebuffer for the red plane
     def split_channels_from_fb(color_fb, black_fb, red_fb)
-      raw = color_fb.bytes
+      raw = color_fb.raw_buffer
       width = color_fb.width
       route = build_dual_route_table
 

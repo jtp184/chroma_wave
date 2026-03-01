@@ -307,6 +307,27 @@ fb_bytes(VALUE self)
     return str;
 }
 
+/* ---- raw_buffer (no-copy, read-only view) ---- */
+static VALUE
+fb_raw_buffer(VALUE self)
+{
+    framebuffer_t *fb;
+    TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, fb);
+
+    if (!fb->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
+    /* Wrap the C buffer without copying.  The string is frozen so Ruby
+     * code cannot mutate the underlying buffer.  The string lifetime is
+     * tied to self via rb_str_tmp_frozen_acquire semantics — but since
+     * we freeze it, the GC won't collect it while references exist. */
+    VALUE str = rb_str_new_static((const char *)fb->buffer, (long)fb->buffer_size);
+    rb_enc_associate(str, rb_ascii8bit_encoding());
+    OBJ_FREEZE(str);
+    return str;
+}
+
 /* ---- equality ---- */
 static VALUE
 fb_eq(VALUE self, VALUE other)
@@ -376,6 +397,7 @@ Init_framebuffer(void)
     rb_define_method(rb_cFramebuffer, "get_pixel",       fb_get_pixel,       2);
     rb_define_method(rb_cFramebuffer, "clear",           fb_clear,           1);
     rb_define_method(rb_cFramebuffer, "bytes",           fb_bytes,           0);
+    rb_define_method(rb_cFramebuffer, "raw_buffer",      fb_raw_buffer,      0);
     rb_define_method(rb_cFramebuffer, "==",              fb_eq,              1);
     rb_define_method(rb_cFramebuffer, "inspect",         fb_inspect,         0);
 }
