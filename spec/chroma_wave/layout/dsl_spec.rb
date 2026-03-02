@@ -158,6 +158,16 @@ RSpec.describe ChromaWave::Layout::DSL do
       end
     end
 
+    context 'with negative flex' do
+      it 'raises ArgumentError' do
+        f = font
+        c = color
+        expect do
+          described_class.evaluate { text 'hi', font: f, color: c, flex: -1 }
+        end.to raise_error(ArgumentError, /flex must be positive/)
+      end
+    end
+
     context 'with invalid align/valign values' do
       it 'raises ArgumentError for invalid align' do
         f = font

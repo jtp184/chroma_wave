@@ -50,6 +50,7 @@ module ChromaWave
       def initialize(flex: nil, width: nil, height: nil,
                      min_width: 0, min_height: 0, max_width: nil, max_height: nil,
                      align: nil, valign: nil)
+        validate_flex!(flex)
         validate_align!(align)
         validate_valign!(valign)
         @flex = flex
@@ -107,6 +108,13 @@ module ChromaWave
       end
 
       private
+
+      # @raise [ArgumentError] if flex is negative
+      def validate_flex!(flex)
+        return if flex.nil? || !flex.negative?
+
+        raise ArgumentError, "flex must be positive, got #{flex}"
+      end
 
       # @raise [ArgumentError] if align is not a recognized value
       def validate_align!(align)
