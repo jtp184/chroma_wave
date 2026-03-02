@@ -89,6 +89,81 @@ RSpec.describe ChromaWave::Layout::ContainerNode do
     end
   end
 
+  describe '#intrinsic_width' do
+    # Stub node that reports a known intrinsic size.
+    def sized_node(w, h)
+      node = ChromaWave::Layout::Node.new
+      allow(node).to receive_messages(intrinsic_width: w, intrinsic_height: h)
+      node
+    end
+
+    it 'sums children intrinsic widths + gaps for horizontal container' do
+      children = [sized_node(30, 10), sized_node(50, 10)]
+      container = described_class.new(direction: :horizontal, children: children, gap: 10)
+
+      # 30 + 10 + 50 = 90
+      expect(container.intrinsic_width).to eq(90)
+    end
+
+    it 'takes max child intrinsic width for vertical container' do
+      children = [sized_node(30, 10), sized_node(50, 10)]
+      container = described_class.new(direction: :vertical, children: children, gap: 10)
+
+      expect(container.intrinsic_width).to eq(50)
+    end
+
+    it 'includes padding and border inset' do
+      child = sized_node(40, 10)
+      container = described_class.new(
+        direction: :horizontal, children: [child],
+        padding: [0, 10, 0, 5], border: ChromaWave::Color::BLACK, border_width: 2
+      )
+
+      # child(40) + padding_h(15) + border(2*2) = 59
+      expect(container.intrinsic_width).to eq(59)
+    end
+
+    it 'returns inset only for empty container' do
+      container = described_class.new(direction: :horizontal, children: [], padding: 5)
+
+      expect(container.intrinsic_width).to eq(10)
+    end
+  end
+
+  describe '#intrinsic_height' do
+    def sized_node(w, h)
+      node = ChromaWave::Layout::Node.new
+      allow(node).to receive_messages(intrinsic_width: w, intrinsic_height: h)
+      node
+    end
+
+    it 'sums children intrinsic heights + gaps for vertical container' do
+      children = [sized_node(10, 20), sized_node(10, 40)]
+      container = described_class.new(direction: :vertical, children: children, gap: 5)
+
+      # 20 + 5 + 40 = 65
+      expect(container.intrinsic_height).to eq(65)
+    end
+
+    it 'takes max child intrinsic height for horizontal container' do
+      children = [sized_node(10, 20), sized_node(10, 40)]
+      container = described_class.new(direction: :horizontal, children: children)
+
+      expect(container.intrinsic_height).to eq(40)
+    end
+
+    it 'includes padding and border inset' do
+      child = sized_node(10, 30)
+      container = described_class.new(
+        direction: :vertical, children: [child],
+        padding: [8, 0, 4, 0], border: ChromaWave::Color::BLACK, border_width: 1
+      )
+
+      # child(30) + padding_v(12) + border(2*1) = 44
+      expect(container.intrinsic_height).to eq(44)
+    end
+  end
+
   describe 'border consistency validation' do
     it 'raises when border_width is set without a border color' do
       expect do

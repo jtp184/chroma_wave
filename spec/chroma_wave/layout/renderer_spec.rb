@@ -56,6 +56,20 @@ RSpec.describe ChromaWave::Layout::Renderer do
     end
   end
 
+  describe 'thick border rendering' do
+    it 'fills the box completely when border_width >= height/2' do
+      root = container_class.new(direction: :vertical, children: [], border: black, border_width: 30)
+      assign_box(root, x: 0, y: 0, width: 60, height: 60)
+
+      expect { renderer.render(root) }.not_to raise_error
+      # Top/bottom strips each cover 30px, filling the full 60px height.
+      # Interior pixel should also be border color (overlapping strips).
+      expect(canvas.get_pixel(30, 0)).to eq(black)
+      expect(canvas.get_pixel(30, 59)).to eq(black)
+      expect(canvas.get_pixel(30, 30)).to eq(black)
+    end
+  end
+
   describe 'spacer rendering' do
     it 'produces no visible pixels' do
       spacer = spacer_class.new
@@ -94,6 +108,22 @@ RSpec.describe ChromaWave::Layout::Renderer do
 
     it 'right-aligned text starts further right than left-aligned' do
       expect(render_aligned_text(:right)).to be > render_aligned_text(:left)
+    end
+  end
+
+  describe 'text vertical alignment' do
+    # Renders vertically aligned text and returns the y of the first non-white pixel.
+    def render_valigned_text(valign)
+      font = ChromaWave::Font.default(size: 12)
+      node = ChromaWave::Layout::TextContent.new(text: 'Hi', font: font, color: black, valign: valign)
+      pos = { node => box_class.new(x: 0, y: 0, width: 100, height: 60) }
+      cvs = ChromaWave::Canvas.new(width: 100, height: 60)
+      described_class.new(cvs, pos).render(node)
+      first_non_white_y(cvs)
+    end
+
+    it 'bottom-aligned text starts lower than top-aligned' do
+      expect(render_valigned_text(:bottom)).to be > render_valigned_text(:top)
     end
   end
 
