@@ -65,6 +65,23 @@ module ChromaWave
       parent.get_pixel(offset_x + x, offset_y + y)
     end
 
+    # Bulk-loads raw RGBA bytes into a rectangular sub-region of the layer.
+    #
+    # Translates local coordinates to parent coordinates and delegates
+    # to the parent's +load_rgba_bytes+.
+    #
+    # @param bytes [String] raw RGBA pixel data
+    # @param width [Integer] source width in pixels
+    # @param height [Integer] source height in pixels
+    # @param x [Integer] local x offset
+    # @param y [Integer] local y offset
+    # @return [self]
+    def load_rgba_bytes(bytes, width:, height:, x:, y:)
+      parent.load_rgba_bytes(bytes, width: width, height: height,
+                                    x: offset_x + x, y: offset_y + y)
+      self
+    end
+
     # Fills the layer region with the given color.
     #
     # Delegates to the parent's +fill_rect+, which writes scanline rows

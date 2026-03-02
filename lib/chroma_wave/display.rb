@@ -70,16 +70,16 @@ module ChromaWave
       Registry.model_names
     end
 
-    # Renders a Canvas and sends to the display, or sends a Framebuffer directly.
+    # Renders content and sends to the display.
     #
-    # Canvas input is rendered and automatically rotated to match the display's
-    # rotation setting. Framebuffer input operates in native coordinate space
-    # and must have dimensions matching {#native_width} x {#native_height},
-    # regardless of display rotation.
+    # Accepts Canvas, Layout, or Framebuffer input:
+    # - Canvas: rendered and automatically rotated to match display rotation.
+    # - Layout: rendered to a Canvas first, then displayed as Canvas.
+    # - Framebuffer: sent directly; must match native dimensions and format.
     #
     # Lazily initializes the EPD on first use.
     #
-    # @param canvas_or_fb [Canvas, Framebuffer] content to display
+    # @param canvas_or_fb [Canvas, Layout, Framebuffer] content to display
     # @return [self]
     # @raise [FormatMismatchError] if a Framebuffer's format does not match
     # @raise [ArgumentError] if a Framebuffer's dimensions do not match native display size
@@ -90,11 +90,13 @@ module ChromaWave
         fb = renderer.render(canvas_or_fb)
         fb = fb.rotate(rotation) unless rotation.zero?
         synchronize_device { device.send(:_epd_display, fb) }
+      when Layout
+        show(canvas_or_fb.render)
       when Framebuffer
         validate_framebuffer!(canvas_or_fb)
         synchronize_device { device.send(:_epd_display, canvas_or_fb) }
       else
-        raise TypeError, "expected Canvas or Framebuffer, got #{canvas_or_fb.class}"
+        raise TypeError, "expected Canvas, Layout, or Framebuffer, got #{canvas_or_fb.class}"
       end
       self
     end
