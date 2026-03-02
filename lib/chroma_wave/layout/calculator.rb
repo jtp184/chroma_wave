@@ -72,7 +72,7 @@ module ChromaWave
       # @param node [ContainerNode] the container to lay out
       def layout_children(node)
         content = content_area(node)
-        return if content[:width] <= 0 || content[:height] <= 0
+        return if content.width <= 0 || content.height <= 0
 
         if node.horizontal?
           distribute_horizontal(node, content)
@@ -84,31 +84,31 @@ module ChromaWave
       # Computes the content area inside border and padding.
       #
       # @param node [ContainerNode] the container
-      # @return [Hash] :x, :y, :width, :height of the content area
+      # @return [Box] positioned rectangle of the content area
       def content_area(node)
         inset = node.border_inset
         box = node.box
         pad = node.padding
-        {
+        Box.new(
           x: box.x + inset + pad.left,
           y: box.y + inset + pad.top,
           width: box.width - (2 * inset) - pad.horizontal,
           height: box.height - (2 * inset) - pad.vertical
-        }
+        )
       end
 
       # Distributes space horizontally (row layout).
       #
       # @param node [ContainerNode] the row container
-      # @param content [Hash] content area dimensions
+      # @param content [Box] content area dimensions
       def distribute_horizontal(node, content)
-        sizes = allocate_main_axis(node.children, content[:width], node.gap, :width)
-        cursor_x = content[:x]
+        sizes = allocate_main_axis(node.children, content.width, node.gap, :width)
+        cursor_x = content.x
 
         node.children.each_with_index do |child, i|
           child_w = sizes[i]
-          child_h = child_cross_size(child, content[:height], :height)
-          child_y = cross_offset(content[:y], content[:height], child_h, node.valign)
+          child_h = child_cross_size(child, content.height, :height)
+          child_y = cross_offset(content.y, content.height, child_h, node.valign)
 
           layout_node(child, cursor_x, child_y, child_w, child_h)
           cursor_x += child_w + node.gap
@@ -118,15 +118,15 @@ module ChromaWave
       # Distributes space vertically (column layout).
       #
       # @param node [ContainerNode] the column container
-      # @param content [Hash] content area dimensions
+      # @param content [Box] content area dimensions
       def distribute_vertical(node, content)
-        sizes = allocate_main_axis(node.children, content[:height], node.gap, :height)
-        cursor_y = content[:y]
+        sizes = allocate_main_axis(node.children, content.height, node.gap, :height)
+        cursor_y = content.y
 
         node.children.each_with_index do |child, i|
           child_h = sizes[i]
-          child_w = child_cross_size(child, content[:width], :width)
-          child_x = cross_offset(content[:x], content[:width], child_w, node.align)
+          child_w = child_cross_size(child, content.width, :width)
+          child_x = cross_offset(content.x, content.width, child_w, node.align)
 
           layout_node(child, child_x, cursor_y, child_w, child_h)
           cursor_y += child_h + node.gap
