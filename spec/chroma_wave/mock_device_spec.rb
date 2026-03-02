@@ -327,6 +327,49 @@ RSpec.describe ChromaWave::MockDevice do
     end
   end
 
+  describe '#last_red_framebuffer' do
+    let(:dual_model) do
+      ChromaWave::Native.model_names.find do |name|
+        (ChromaWave::Native.model_config(name)[:capabilities] || []).include?(:dual_buf)
+      end
+    end
+
+    it 'is nil before any dual show' do
+      skip 'no dual-buffer model available' unless dual_model
+      mock = described_class.new(model: dual_model)
+      expect(mock.last_red_framebuffer).to be_nil
+      mock.close
+    end
+
+    it 'is populated after a dual-buffer show' do
+      skip 'no dual-buffer model available' unless dual_model
+      mock = described_class.new(model: dual_model)
+      canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+      mock.show(canvas)
+      expect(mock.last_red_framebuffer).to be_a(ChromaWave::Framebuffer)
+      mock.close
+    end
+
+    it 'returns a dup (not the internal reference)' do
+      skip 'no dual-buffer model available' unless dual_model
+      mock = described_class.new(model: dual_model)
+      canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+      mock.show(canvas)
+      fb1 = mock.last_red_framebuffer
+      fb2 = mock.last_red_framebuffer
+      expect(fb1).not_to equal(fb2)
+      expect(fb1).to eq(fb2)
+      mock.close
+    end
+
+    it 'is nil for single-buffer models' do
+      mock = described_class.new(model: model)
+      mock.show(make_canvas(mock))
+      expect(mock.last_red_framebuffer).to be_nil
+      mock.close
+    end
+  end
+
   describe 'capability dispatch' do
     it 'logs partial refresh init and show' do
       mock = described_class.new(model: model)
@@ -514,6 +557,158 @@ RSpec.describe ChromaWave::MockDevice do
     it 'uses the specified model' do |example|
       mock = example.metadata[:mock_device]
       expect(mock.model).to eq(:epd_2in7_v2)
+    end
+  end
+
+  describe '.new with rotation' do
+    it 'accepts rotation: 0' do
+      mock = described_class.new(model: model, rotation: 0)
+      expect(mock.rotation).to eq(0)
+      expect(mock.width).to eq(config[:width])
+      expect(mock.height).to eq(config[:height])
+      mock.close
+    end
+
+    it 'swaps dimensions for rotation: 90' do
+      mock = described_class.new(model: model, rotation: 90)
+      expect(mock.width).to eq(config[:height])
+      expect(mock.height).to eq(config[:width])
+      mock.close
+    end
+
+    it 'preserves dimensions for rotation: 180' do
+      mock = described_class.new(model: model, rotation: 180)
+      expect(mock.width).to eq(config[:width])
+      expect(mock.height).to eq(config[:height])
+      mock.close
+    end
+
+    it 'swaps dimensions for rotation: 270' do
+      mock = described_class.new(model: model, rotation: 270)
+      expect(mock.width).to eq(config[:height])
+      expect(mock.height).to eq(config[:width])
+      mock.close
+    end
+
+    it 'always reports native dimensions' do
+      mock = described_class.new(model: model, rotation: 90)
+      expect(mock.native_width).to eq(config[:width])
+      expect(mock.native_height).to eq(config[:height])
+      mock.close
+    end
+
+    it 'raises ArgumentError for invalid rotation' do
+      expect { described_class.new(model: model, rotation: 45) }
+        .to raise_error(ArgumentError, /rotation must be/)
+    end
+  end
+
+  describe '.open with rotation' do
+    it 'passes rotation through' do
+      described_class.open(model: model, rotation: 90) do |mock|
+        expect(mock.rotation).to eq(90)
+      end
+    end
+  end
+
+  describe 'rotation render pipeline' do
+    it 'produces a native-dimension framebuffer after show with rotation' do
+      mock = described_class.new(model: model, rotation: 90)
+      canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+      mock.show(canvas)
+      fb = mock.last_framebuffer
+      expect(fb.width).to eq(config[:width])
+      expect(fb.height).to eq(config[:height])
+      mock.close
+    end
+
+    it 'rotates pixel content correctly through the pipeline' do
+      mock = described_class.new(model: model, rotation: 90)
+      canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+      canvas.set_pixel(0, 0, ChromaWave::Color::BLACK)
+      mock.show(canvas)
+      fb = mock.last_framebuffer
+      # Canvas (0,0) in 90° rotated display:
+      # Renderer produces logical framebuffer with black at (0,0)
+      # rotate(90) maps (0,0) -> (native_w-1, 0)
+      expect(fb.get_pixel(config[:width] - 1, 0)).to eq(:black)
+      mock.close
+    end
+  end
+
+  describe 'composite screen' do
+    it 'returns nil before any display operation' do
+      mock = described_class.new(model: model)
+      expect(mock.last_framebuffer).to be_nil
+      mock.close
+    end
+
+    it 'is replaced entirely by show' do
+      mock = described_class.new(model: model)
+      canvas = make_canvas(mock)
+      canvas.set_pixel(5, 5, ChromaWave::Color::BLACK)
+      mock.show(canvas)
+      fb = mock.last_framebuffer
+      expect(fb).to be_a(ChromaWave::Framebuffer)
+      expect(fb.width).to eq(mock.native_width)
+      expect(fb.height).to eq(mock.native_height)
+      mock.close
+    end
+
+    it 'is cleared to white by clear' do
+      mock = described_class.new(model: model)
+      canvas = make_canvas(mock)
+      canvas.set_pixel(5, 5, ChromaWave::Color::BLACK)
+      mock.show(canvas)
+      expect(mock.last_framebuffer.get_pixel(5, 5)).to eq(:black)
+
+      mock.clear
+      fb = mock.last_framebuffer
+      expect(fb.get_pixel(5, 5)).to eq(:white)
+      expect(fb.get_pixel(0, 0)).to eq(:white)
+      mock.close
+    end
+
+    context 'with regional refresh' do
+      let(:regional_model) do
+        ChromaWave::Native.model_names.find do |name|
+          (ChromaWave::Native.model_config(name)[:capabilities] || []).include?(:regional)
+        end
+      end
+      let(:mock) { described_class.new(model: regional_model) }
+
+      before { skip 'no regional model available' unless regional_model }
+      after { mock.close }
+
+      it 'accumulates regional updates via blit' do
+        mock.show(make_canvas(mock))
+
+        fb = ChromaWave::Framebuffer.new(mock.width, mock.height, mock.pixel_format)
+        8.times { |x| 8.times { |y| fb.set_pixel(x, y, :black) } }
+        mock.display_region(fb, x: 0, y: 0, width: 8, height: 8)
+
+        composite = mock.last_framebuffer
+        expect(composite.get_pixel(0, 0)).to eq(:black)
+        expect(composite.get_pixel(7, 7)).to eq(:black)
+        expect(composite.get_pixel(10, 10)).to eq(:white)
+      end
+    end
+
+    it 'survives clear_operations! (screen state is independent of log)' do
+      mock = described_class.new(model: model)
+      mock.show(make_canvas(mock))
+      mock.clear_operations!
+      expect(mock.last_framebuffer).to be_a(ChromaWave::Framebuffer)
+      mock.close
+    end
+
+    it 'creates a white screen on clear before any show' do
+      mock = described_class.new(model: model)
+      mock.clear
+      fb = mock.last_framebuffer
+      expect(fb).to be_a(ChromaWave::Framebuffer)
+      expect(fb.get_pixel(0, 0)).to eq(:white)
+      mock.close
     end
   end
 

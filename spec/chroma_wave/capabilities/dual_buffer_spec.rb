@@ -68,4 +68,50 @@ RSpec.describe ChromaWave::Capabilities::DualBuffer do
       expect { display.show('not a canvas') }.to raise_error(TypeError)
     end
   end
+
+  describe 'rotation support' do
+    [0, 90, 180, 270].each do |degrees|
+      context "with #{degrees}° rotation" do
+        let(:rotated_display) { ChromaWave::MockDevice.new(model: model, rotation: degrees) }
+
+        after { rotated_display.close }
+
+        it 'renders a canvas through the dual-buffer pipeline' do
+          canvas = ChromaWave::Canvas.new(width: rotated_display.width, height: rotated_display.height)
+          expect(rotated_display.show(canvas)).to eq(rotated_display)
+        end
+
+        it 'produces native-dimension framebuffers' do
+          canvas = ChromaWave::Canvas.new(width: rotated_display.width, height: rotated_display.height)
+          rotated_display.show(canvas)
+          fb = rotated_display.last_framebuffer
+          expect(fb.width).to eq(config[:width])
+          expect(fb.height).to eq(config[:height])
+        end
+
+        it 'clears with a non-white color using native dimensions' do
+          expect(rotated_display.clear(color: :black)).to eq(rotated_display)
+        end
+
+        it 'accepts show_raw with native-dimension framebuffers' do
+          nw = rotated_display.native_width
+          nh = rotated_display.native_height
+          black_fb = ChromaWave::Framebuffer.new(nw, nh, :mono)
+          red_fb   = ChromaWave::Framebuffer.new(nw, nh, :mono)
+          expect(rotated_display.show_raw(black_fb, red_fb)).to eq(rotated_display)
+        end
+
+        it 'rejects show_raw with logical-dimension framebuffers when rotated' do
+          skip 'dimensions are symmetric' if [0, 180].include?(degrees) || config[:width] == config[:height]
+
+          lw = rotated_display.width
+          lh = rotated_display.height
+          black_fb = ChromaWave::Framebuffer.new(lw, lh, :mono)
+          red_fb   = ChromaWave::Framebuffer.new(lw, lh, :mono)
+          expect { rotated_display.show_raw(black_fb, red_fb) }
+            .to raise_error(ArgumentError, /dimensions must match/)
+        end
+      end
+    end
+  end
 end

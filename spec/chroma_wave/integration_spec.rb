@@ -161,6 +161,35 @@ RSpec.describe ChromaWave::Display do # rubocop:disable RSpec/SpecFilePathFormat
     end
   end
 
+  describe 'rotation pipeline' do
+    # Helper: find the first model matching a pixel format.
+    def model_for_format(format)
+      ChromaWave::Native.model_names.find { |n| ChromaWave::Native.model_config(n)[:pixel_format] == format }
+    end
+
+    %i[mono gray4 color4 color7].each do |format|
+      context "with #{format} display" do
+        [0, 90, 180, 270].each do |degrees|
+          context "with #{degrees}° rotation" do
+            it 'renders a canvas and produces native-dimension output' do
+              model = model_for_format(format)
+              skip "no #{format} model available" unless model
+              config = ChromaWave::Native.model_config(model)
+
+              ChromaWave::MockDevice.open(model: model, rotation: degrees) do |mock|
+                canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+                canvas.set_pixel(0, 0, ChromaWave::Color::BLACK)
+                mock.show(canvas)
+                expect(mock.last_framebuffer.width).to eq(config[:width])
+                expect(mock.last_framebuffer.height).to eq(config[:height])
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
   describe 'Renderer standalone' do
     ChromaWave::PixelFormat::REGISTRY.each_value do |fmt|
       context "with #{fmt.name} format" do

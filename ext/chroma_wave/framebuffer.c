@@ -1,5 +1,6 @@
 #include "framebuffer.h"
 #include "ruby/encoding.h"
+#include <ruby/thread.h>
 
 /* Cached symbol ID for pinning framebuffer references in raw_buffer strings */
 static ID id_fb_source;
@@ -159,6 +160,73 @@ fb_pixel_format(VALUE self)
     return cw_pixel_format_to_sym(fb->pixel_format);
 }
 
+/* ---- Raw pixel helpers (no VALUE overhead, no bounds check) ---- */
+
+/* Reads a raw color index from the framebuffer at (x, y).
+ * Caller must ensure x/y are within bounds and buffer is initialized. */
+static inline uint8_t
+fb_get_pixel_raw(const framebuffer_t *fb, int x, int y)
+{
+    size_t addr;
+    uint8_t rdata;
+
+    switch (fb->pixel_format) {
+    case PIXEL_FORMAT_MONO:
+        addr = (size_t)(x / 8) + (size_t)y * fb->width_byte;
+        rdata = fb->buffer[addr];
+        return (rdata >> (7 - (x % 8))) & 0x01;
+
+    case PIXEL_FORMAT_GRAY4:
+        addr = (size_t)(x / 4) + (size_t)y * fb->width_byte;
+        rdata = fb->buffer[addr];
+        return (rdata >> (6 - (x % 4) * 2)) & 0x03;
+
+    case PIXEL_FORMAT_COLOR4:
+    case PIXEL_FORMAT_COLOR7:
+        addr = (size_t)(x / 2) + (size_t)y * fb->width_byte;
+        rdata = fb->buffer[addr];
+        return (rdata >> (4 - (x % 2) * 4)) & 0x0F;
+    }
+    return 0; /* unreachable */
+}
+
+/* Writes a raw color index into the framebuffer at (x, y).
+ * Caller must ensure x/y are within bounds and buffer is initialized. */
+static inline void
+fb_set_pixel_raw(framebuffer_t *fb, int x, int y, uint8_t color)
+{
+    size_t addr;
+    uint8_t rdata;
+
+    switch (fb->pixel_format) {
+    case PIXEL_FORMAT_MONO:
+        addr = (size_t)(x / 8) + (size_t)y * fb->width_byte;
+        rdata = fb->buffer[addr];
+        if (color == 0)
+            fb->buffer[addr] = rdata & ~(0x80 >> (x % 8));
+        else
+            fb->buffer[addr] = rdata | (0x80 >> (x % 8));
+        break;
+
+    case PIXEL_FORMAT_GRAY4:
+        addr = (size_t)(x / 4) + (size_t)y * fb->width_byte;
+        color = color & 0x03;
+        rdata = fb->buffer[addr];
+        rdata = rdata & ~(0xC0 >> ((x % 4) * 2));
+        fb->buffer[addr] = rdata | ((color << 6) >> ((x % 4) * 2));
+        break;
+
+    case PIXEL_FORMAT_COLOR4:
+    case PIXEL_FORMAT_COLOR7:
+        addr = (size_t)(x / 2) + (size_t)y * fb->width_byte;
+        color = color & 0x0F;
+        rdata = fb->buffer[addr];
+        rdata = rdata & ~(0xF0 >> ((x % 2) * 4));
+        fb->buffer[addr] = rdata | ((color << 4) >> ((x % 2) * 4));
+        break;
+    }
+}
+
 /* ---- set_pixel(x, y, color) ---- */
 static VALUE
 fb_set_pixel(VALUE self, VALUE rb_x, VALUE rb_y, VALUE rb_color)
@@ -178,37 +246,7 @@ fb_set_pixel(VALUE self, VALUE rb_x, VALUE rb_y, VALUE rb_color)
         return self;
 
     uint8_t color = (uint8_t)(NUM2INT(rb_color) & 0xFF);
-    size_t addr;
-    uint8_t rdata;
-
-    switch (fb->pixel_format) {
-    case PIXEL_FORMAT_MONO:
-        addr = (size_t)(x / 8) + (size_t)y * fb->width_byte;
-        rdata = fb->buffer[addr];
-        if (color == 0) /* BLACK: clear bit */
-            fb->buffer[addr] = rdata & ~(0x80 >> (x % 8));
-        else /* WHITE: set bit */
-            fb->buffer[addr] = rdata | (0x80 >> (x % 8));
-        break;
-
-    case PIXEL_FORMAT_GRAY4:
-        addr = (size_t)(x / 4) + (size_t)y * fb->width_byte;
-        color = color & 0x03; /* 2-bit color */
-        rdata = fb->buffer[addr];
-        rdata = rdata & ~(0xC0 >> ((x % 4) * 2));
-        fb->buffer[addr] = rdata | ((color << 6) >> ((x % 4) * 2));
-        break;
-
-    case PIXEL_FORMAT_COLOR4:
-    case PIXEL_FORMAT_COLOR7:
-        addr = (size_t)(x / 2) + (size_t)y * fb->width_byte;
-        color = color & 0x0F; /* 4-bit color */
-        rdata = fb->buffer[addr];
-        rdata = rdata & ~(0xF0 >> ((x % 2) * 4));
-        fb->buffer[addr] = rdata | ((color << 4) >> ((x % 2) * 4));
-        break;
-    }
-
+    fb_set_pixel_raw(fb, x, y, color);
     return self;
 }
 
@@ -230,31 +268,7 @@ fb_get_pixel(VALUE self, VALUE rb_x, VALUE rb_y)
     if (x < 0 || x >= fb->width || y < 0 || y >= fb->height)
         return Qnil;
 
-    size_t addr;
-    uint8_t rdata, color;
-
-    switch (fb->pixel_format) {
-    case PIXEL_FORMAT_MONO:
-        addr = (size_t)(x / 8) + (size_t)y * fb->width_byte;
-        rdata = fb->buffer[addr];
-        color = (rdata >> (7 - (x % 8))) & 0x01;
-        return INT2NUM(color);
-
-    case PIXEL_FORMAT_GRAY4:
-        addr = (size_t)(x / 4) + (size_t)y * fb->width_byte;
-        rdata = fb->buffer[addr];
-        color = (rdata >> (6 - (x % 4) * 2)) & 0x03;
-        return INT2NUM(color);
-
-    case PIXEL_FORMAT_COLOR4:
-    case PIXEL_FORMAT_COLOR7:
-        addr = (size_t)(x / 2) + (size_t)y * fb->width_byte;
-        rdata = fb->buffer[addr];
-        color = (rdata >> (4 - (x % 2) * 4)) & 0x0F;
-        return INT2NUM(color);
-    }
-
-    return Qnil; /* unreachable */
+    return INT2NUM(fb_get_pixel_raw(fb, x, y));
 }
 
 /* ---- clear(color) ---- */
@@ -290,6 +304,345 @@ fb_clear(VALUE self, VALUE rb_color)
     }
 
     memset(fb->buffer, fill, fb->buffer_size);
+    return self;
+}
+
+/* ---- rotate(degrees) ---- */
+
+/* Arguments for the GVL-released rotation worker. */
+typedef struct {
+    const framebuffer_t *src;
+    framebuffer_t *dst;
+    uint16_t dst_w;
+    uint16_t dst_h;
+    int degrees;
+} rotate_args_t;
+
+/* Pure-C rotation loop — called without the GVL. */
+static void *
+fb_rotate_worker(void *arg)
+{
+    rotate_args_t *ra = (rotate_args_t *)arg;
+    const framebuffer_t *src = ra->src;
+    framebuffer_t *dst = ra->dst;
+    uint16_t dst_w = ra->dst_w;
+    uint16_t dst_h = ra->dst_h;
+    int degrees = ra->degrees;
+
+    int sx, sy, dx = 0, dy = 0;
+    for (sy = 0; sy < src->height; sy++) {
+        for (sx = 0; sx < src->width; sx++) {
+            uint8_t color = fb_get_pixel_raw(src, sx, sy);
+
+            switch (degrees) {
+            case 90:
+                dx = dst_w - 1 - sy;
+                dy = sx;
+                break;
+            case 180:
+                dx = dst_w - 1 - sx;
+                dy = dst_h - 1 - sy;
+                break;
+            case 270:
+                dx = sy;
+                dy = dst_h - 1 - sx;
+                break;
+            default: break; /* degrees validated before GVL release; unreachable */
+            }
+
+            fb_set_pixel_raw(dst, dx, dy, color);
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * call-seq:
+ *   rotate(degrees) -> Framebuffer
+ *
+ * Returns a new Framebuffer whose pixels are rotated clockwise by
+ * +degrees+ (must be 0, 90, 180, or 270).
+ *
+ * A 0° rotation returns a +dup+. For 90° and 270° the destination
+ * dimensions are swapped (width ↔ height). The pixel format is
+ * preserved.
+ *
+ * The pixel-copy loop runs without the GVL so other Ruby threads
+ * can proceed concurrently. Callers must not mutate the source
+ * framebuffer from another thread during rotation.
+ *
+ * @param degrees [Integer] rotation angle (0, 90, 180, or 270)
+ * @return [Framebuffer] a new, rotated framebuffer
+ * @raise [ArgumentError] if +degrees+ is not a valid rotation
+ */
+static VALUE
+fb_rotate(VALUE self, VALUE rb_degrees)
+{
+    framebuffer_t *src;
+    TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, src);
+
+    if (!src->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
+    int degrees = NUM2INT(rb_degrees);
+    if (degrees != 0 && degrees != 90 && degrees != 180 && degrees != 270)
+        rb_raise(rb_eArgError, "rotation must be 0, 90, 180, or 270 (got %d)", degrees);
+
+    /* 0°: return a dup */
+    if (degrees == 0)
+        return rb_obj_dup(self);
+
+    /* Compute destination dimensions */
+    uint16_t dst_w, dst_h;
+    if (degrees == 90 || degrees == 270) {
+        dst_w = src->height;
+        dst_h = src->width;
+    } else { /* 180 */
+        dst_w = src->width;
+        dst_h = src->height;
+    }
+
+    /* Create new Framebuffer via rb_class_new_instance so
+     * PixelFormatBridge fires and @pixel_format_obj is set up. */
+    VALUE argv[3];
+    argv[0] = INT2NUM(dst_w);
+    argv[1] = INT2NUM(dst_h);
+    argv[2] = cw_pixel_format_to_sym(src->pixel_format);
+    VALUE dst_obj = rb_class_new_instance(3, argv, rb_obj_class(self));
+
+    framebuffer_t *dst;
+    TypedData_Get_Struct(dst_obj, framebuffer_t, &framebuffer_type, dst);
+
+    /* Run the pixel loop without the GVL so other Ruby threads can proceed. */
+    rotate_args_t ra = {
+        .src = src,
+        .dst = dst,
+        .dst_w = dst_w,
+        .dst_h = dst_h,
+        .degrees = degrees,
+    };
+    rb_thread_call_without_gvl(fb_rotate_worker, &ra, RUBY_UBF_IO, NULL);
+    RB_GC_GUARD(self);
+    RB_GC_GUARD(dst_obj);
+
+    return dst_obj;
+}
+
+/* ---- extract(x, y, width, height) ---- */
+
+/* Arguments for the GVL-released extraction worker. */
+typedef struct {
+    const framebuffer_t *src;
+    framebuffer_t *dst;
+    int src_x;
+    int src_y;
+} extract_args_t;
+
+/* Pure-C extraction loop — called without the GVL. */
+static void *
+fb_extract_worker(void *arg)
+{
+    extract_args_t *ea = (extract_args_t *)arg;
+    const framebuffer_t *src = ea->src;
+    framebuffer_t *dst = ea->dst;
+    int src_x = ea->src_x;
+    int src_y = ea->src_y;
+
+    int dx, dy;
+    for (dy = 0; dy < dst->height; dy++) {
+        for (dx = 0; dx < dst->width; dx++) {
+            uint8_t color = fb_get_pixel_raw(src, src_x + dx, src_y + dy);
+            fb_set_pixel_raw(dst, dx, dy, color);
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * call-seq:
+ *   extract(x, y, width, height) -> Framebuffer
+ *
+ * Returns a new Framebuffer containing the sub-region starting at
+ * (+x+, +y+) with the given +width+ and +height+. The pixel format
+ * is preserved.
+ *
+ * Raises ArgumentError if the region exceeds the framebuffer bounds
+ * or if dimensions are not positive.
+ *
+ * The pixel-copy loop runs without the GVL so other Ruby threads
+ * can proceed concurrently. Callers must not mutate the source
+ * framebuffer from another thread during extraction.
+ *
+ * @param x [Integer] left edge of the extraction region
+ * @param y [Integer] top edge of the extraction region
+ * @param width [Integer] region width in pixels
+ * @param height [Integer] region height in pixels
+ * @return [Framebuffer] a new framebuffer containing the sub-region
+ * @raise [ArgumentError] if the region is invalid or out of bounds
+ */
+static VALUE
+fb_extract(VALUE self, VALUE rb_x, VALUE rb_y, VALUE rb_w, VALUE rb_h)
+{
+    framebuffer_t *src;
+    TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, src);
+
+    if (!src->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
+    int x = NUM2INT(rb_x);
+    int y = NUM2INT(rb_y);
+    int w = NUM2INT(rb_w);
+    int h = NUM2INT(rb_h);
+
+    if (w <= 0 || h <= 0)
+        rb_raise(rb_eArgError,
+                 "extract dimensions must be positive (got %dx%d)", w, h);
+    if (x < 0 || y < 0 || x + w > src->width || y + h > src->height)
+        rb_raise(rb_eArgError,
+                 "extract region (%d,%d %dx%d) exceeds framebuffer "
+                 "bounds (%dx%d)",
+                 x, y, w, h, src->width, src->height);
+
+    /* Create new Framebuffer via rb_class_new_instance so
+     * PixelFormatBridge fires and @pixel_format_obj is set up. */
+    VALUE argv[3];
+    argv[0] = INT2NUM(w);
+    argv[1] = INT2NUM(h);
+    argv[2] = cw_pixel_format_to_sym(src->pixel_format);
+    VALUE dst_obj = rb_class_new_instance(3, argv, rb_obj_class(self));
+
+    framebuffer_t *dst;
+    TypedData_Get_Struct(dst_obj, framebuffer_t, &framebuffer_type, dst);
+
+    /* Run the pixel loop without the GVL so other Ruby threads can proceed. */
+    extract_args_t ea = {
+        .src = src,
+        .dst = dst,
+        .src_x = x,
+        .src_y = y,
+    };
+    rb_thread_call_without_gvl(fb_extract_worker, &ea, RUBY_UBF_IO, NULL);
+    RB_GC_GUARD(self);
+    RB_GC_GUARD(dst_obj);
+
+    return dst_obj;
+}
+
+/* ---- _fb_blit(source, x, y) ---- */
+
+/* Arguments for the GVL-released blit worker. */
+typedef struct {
+    const framebuffer_t *src;
+    framebuffer_t *dst;
+    int dst_x;
+    int dst_y;
+} blit_args_t;
+
+/* Pure-C blit loop — called without the GVL.
+ * Copies all pixels from src into dst at the given offset,
+ * clipping to dst bounds. Both framebuffers must share the
+ * same pixel format. */
+static void *
+fb_blit_worker(void *arg)
+{
+    blit_args_t *ba = (blit_args_t *)arg;
+    const framebuffer_t *src = ba->src;
+    framebuffer_t *dst = ba->dst;
+    int dst_x = ba->dst_x;
+    int dst_y = ba->dst_y;
+
+    /* Compute clipped source region */
+    int sx_start = (dst_x < 0) ? -dst_x : 0;
+    int sy_start = (dst_y < 0) ? -dst_y : 0;
+    int sx_end = src->width;
+    int sy_end = src->height;
+
+    if (dst_x + sx_end > dst->width)
+        sx_end = dst->width - dst_x;
+    if (dst_y + sy_end > dst->height)
+        sy_end = dst->height - dst_y;
+
+    int sx, sy;
+    for (sy = sy_start; sy < sy_end; sy++) {
+        for (sx = sx_start; sx < sx_end; sx++) {
+            uint8_t color = fb_get_pixel_raw(src, sx, sy);
+            fb_set_pixel_raw(dst, dst_x + sx, dst_y + sy, color);
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * call-seq:
+ *   _fb_blit(source, x, y) -> self
+ *
+ * Copies all pixels from +source+ into this framebuffer at offset
+ * (+x+, +y+), clipping to bounds. Both framebuffers must share the
+ * same pixel format.
+ *
+ * The pixel-copy loop runs without the GVL so other Ruby threads
+ * can proceed concurrently. Callers must not mutate the source
+ * or destination framebuffer from another thread during blit.
+ *
+ * This is a private accelerator called by the Ruby +blit+ method
+ * when the source is a Framebuffer with matching format.
+ *
+ * @param source [Framebuffer] the source framebuffer
+ * @param x [Integer] destination x offset
+ * @param y [Integer] destination y offset
+ * @return [self]
+ * @raise [ChromaWaveError] if either framebuffer is not initialized
+ * @raise [ArgumentError] if pixel formats do not match
+ */
+static VALUE
+fb_blit(VALUE self, VALUE rb_source, VALUE rb_x, VALUE rb_y)
+{
+    framebuffer_t *dst;
+    TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, dst);
+
+    if (!dst->buffer)
+        rb_raise(rb_eChromaWaveError, "destination framebuffer not initialized");
+
+    if (!rb_typeddata_is_kind_of(rb_source, &framebuffer_type))
+        rb_raise(rb_eTypeError, "source must be a Framebuffer");
+
+    framebuffer_t *src;
+    TypedData_Get_Struct(rb_source, framebuffer_t, &framebuffer_type, src);
+
+    if (!src->buffer)
+        rb_raise(rb_eChromaWaveError, "source framebuffer not initialized");
+
+    if (src->pixel_format != dst->pixel_format)
+        rb_raise(rb_eArgError, "pixel formats must match for blit");
+
+    int x = NUM2INT(rb_x);
+    int y = NUM2INT(rb_y);
+
+    /* Early exit if completely out of bounds.
+     * Use long arithmetic to avoid int overflow when x/y are very negative. */
+    {
+        long lx = (long)x;
+        long ly = (long)y;
+        if (lx >= dst->width || ly >= dst->height ||
+            lx + src->width <= 0 || ly + src->height <= 0)
+            return self;
+    }
+
+    blit_args_t ba = {
+        .src = src,
+        .dst = dst,
+        .dst_x = x,
+        .dst_y = y,
+    };
+    rb_thread_call_without_gvl(fb_blit_worker, &ba, RUBY_UBF_IO, NULL);
+    RB_GC_GUARD(self);
+    RB_GC_GUARD(rb_source);
+
     return self;
 }
 
@@ -408,6 +761,9 @@ Init_framebuffer(void)
     rb_define_method(rb_cFramebuffer, "set_pixel",       fb_set_pixel,       3);
     rb_define_method(rb_cFramebuffer, "get_pixel",       fb_get_pixel,       2);
     rb_define_method(rb_cFramebuffer, "clear",           fb_clear,           1);
+    rb_define_method(rb_cFramebuffer, "rotate",          fb_rotate,          1);
+    rb_define_method(rb_cFramebuffer, "extract",         fb_extract,         4);
+    rb_define_private_method(rb_cFramebuffer, "_fb_blit", fb_blit,           3);
     rb_define_method(rb_cFramebuffer, "bytes",           fb_bytes,           0);
     rb_define_method(rb_cFramebuffer, "raw_buffer",      fb_raw_buffer,      0);
     rb_define_method(rb_cFramebuffer, "==",              fb_eq,              1);

@@ -17,7 +17,10 @@ module ChromaWave
   #     display.show(canvas)
   #   end
   class Display
-    attr_reader :model, :width, :height, :pixel_format
+    # Valid rotation angles (degrees clockwise).
+    VALID_ROTATIONS = [0, 90, 180, 270].freeze
+
+    attr_reader :model, :width, :height, :pixel_format, :rotation, :native_width, :native_height
 
     # Factory method -- builds the correct Display subclass via {Registry}.
     #
@@ -25,18 +28,19 @@ module ChromaWave
     # internally by {Registry}).
     #
     # @param model [Symbol, String] model name (e.g. +:epd_2in13_v4+)
+    # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
     # @return [Display] a subclass instance with appropriate capabilities
     # @raise [ModelNotFoundError] if the model is not in the registry
-    def self.new(model: nil, **kwargs)
+    def self.new(model: nil, rotation: 0, **kwargs)
       if self == Display
         raise ArgumentError, 'missing keyword: :model' unless model
         raise ArgumentError, "unknown keyword(s): #{kwargs.keys.join(', ')}" unless kwargs.empty?
 
-        return Registry.build(model)
+        return Registry.build(model, rotation: rotation)
       end
 
       instance = allocate
-      instance.send(:initialize, **kwargs)
+      instance.send(:initialize, rotation: rotation, **kwargs)
       instance
     end
 
@@ -45,10 +49,11 @@ module ChromaWave
     # Without a block, returns the open display.
     #
     # @param model [Symbol, String] model name
+    # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
     # @yield [display] the opened display
     # @return [Display, Object] the display (no block) or the block's return value
-    def self.open(model:)
-      display = new(model: model)
+    def self.open(model:, rotation: 0)
+      display = new(model: model, rotation: rotation)
       return display unless block_given?
 
       begin
@@ -67,16 +72,23 @@ module ChromaWave
 
     # Renders a Canvas and sends to the display, or sends a Framebuffer directly.
     #
+    # Canvas input is rendered and automatically rotated to match the display's
+    # rotation setting. Framebuffer input operates in native coordinate space
+    # and must have dimensions matching {#native_width} x {#native_height},
+    # regardless of display rotation.
+    #
     # Lazily initializes the EPD on first use.
     #
     # @param canvas_or_fb [Canvas, Framebuffer] content to display
     # @return [self]
     # @raise [FormatMismatchError] if a Framebuffer's format does not match
+    # @raise [ArgumentError] if a Framebuffer's dimensions do not match native display size
     def show(canvas_or_fb)
       ensure_initialized!
       case canvas_or_fb
       when Canvas
         fb = renderer.render(canvas_or_fb)
+        fb = fb.rotate(rotation) unless rotation.zero?
         synchronize_device { device.send(:_epd_display, fb) }
       when Framebuffer
         validate_framebuffer!(canvas_or_fb)
@@ -101,7 +113,7 @@ module ChromaWave
       if color == :white
         synchronize_device { device.send(:_epd_clear) }
       else
-        fb = Framebuffer.new(width, height, pixel_format)
+        fb = Framebuffer.new(native_width, native_height, pixel_format)
         fb.clear(color)
         synchronize_device { device.send(:_epd_display, fb) }
       end
@@ -148,7 +160,9 @@ module ChromaWave
     #
     # @return [String]
     def inspect
-      "#<#{self.class} #{model} #{width}x#{height} #{pixel_format.name}>"
+      base = "#<#{self.class} #{model} #{width}x#{height} #{pixel_format.name}"
+      base += " rot=#{rotation}" unless rotation.zero?
+      "#{base}>"
     end
 
     protected
@@ -159,14 +173,19 @@ module ChromaWave
     #
     # @param model_name [Symbol, String] the model identifier
     # @param config [Hash] the model configuration from {Native.model_config}
-    def initialize(model_name:, config:)
+    # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
+    def initialize(model_name:, config:, rotation: 0)
+      validate_rotation!(rotation)
       @model = model_name.to_sym
-      @width = config[:width]
-      @height = config[:height]
+      @rotation = rotation
+      @native_width = config[:width]
+      @native_height = config[:height]
       @pixel_format = PixelFormat.from_name(config[:pixel_format])
       @device = Device.new(model_name.to_s)
       @initialized = false
       @current_mode = nil
+
+      apply_logical_dimensions!
     end
 
     private
@@ -197,15 +216,51 @@ module ChromaWave
       device.synchronize(&)
     end
 
-    # Validates that a framebuffer's pixel format matches this display.
+    # Validates that the rotation is a valid angle.
+    #
+    # @param degrees [Integer] the rotation angle
+    # @raise [ArgumentError] if the angle is not valid
+    def validate_rotation!(degrees)
+      return if VALID_ROTATIONS.include?(degrees)
+
+      raise ArgumentError, "rotation must be one of #{VALID_ROTATIONS.join(', ')} (got #{degrees})"
+    end
+
+    # Sets +@width+ and +@height+ from native dimensions and rotation.
+    #
+    # For 90/270 rotations the logical dimensions are swapped relative to
+    # the native (hardware) dimensions.
+    #
+    # @return [void]
+    def apply_logical_dimensions!
+      if [90, 270].include?(rotation)
+        @width = @native_height
+        @height = @native_width
+      else
+        @width = @native_width
+        @height = @native_height
+      end
+    end
+
+    # Validates that a framebuffer's pixel format and dimensions match this display.
+    #
+    # Framebuffers operate in native coordinate space, so their dimensions
+    # must match {#native_width} and {#native_height}, regardless of rotation.
     #
     # @param framebuffer [Framebuffer] the framebuffer to validate
-    # @raise [FormatMismatchError] if formats do not match
+    # @raise [FormatMismatchError] if the pixel format does not match
+    # @raise [ArgumentError] if dimensions do not match native display size
     def validate_framebuffer!(framebuffer)
-      return if framebuffer.pixel_format == pixel_format
+      unless framebuffer.pixel_format == pixel_format
+        raise FormatMismatchError,
+              "expected #{pixel_format.name} framebuffer, got #{framebuffer.pixel_format.name}"
+      end
 
-      raise FormatMismatchError,
-            "expected #{pixel_format.name} framebuffer, got #{framebuffer.pixel_format.name}"
+      return if framebuffer.width == native_width && framebuffer.height == native_height
+
+      raise ArgumentError,
+            "framebuffer dimensions #{framebuffer.width}x#{framebuffer.height} " \
+            "do not match native display size #{native_width}x#{native_height}"
     end
   end
 end

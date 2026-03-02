@@ -56,6 +56,24 @@ module ChromaWave
         super(resolve_color(color))
       end
 
+      # Copies pixels from +source+ onto this framebuffer at the given offset.
+      #
+      # When +source+ is a Framebuffer with matching pixel format, dispatches
+      # to a C accelerator that copies raw pixels without GVL. Otherwise
+      # falls back to the Ruby pixel-by-pixel Surface#blit.
+      #
+      # @param source [Surface] the surface to copy from
+      # @param x [Integer] destination x offset
+      # @param y [Integer] destination y offset
+      # @return [self]
+      def blit(source, x:, y:)
+        if source.is_a?(Framebuffer) && source.pixel_format == pixel_format
+          _fb_blit(source, x, y)
+        else
+          super
+        end
+      end
+
       # Deep-copies the framebuffer, preserving the PixelFormat object.
       #
       # @param other [Framebuffer] the source framebuffer
