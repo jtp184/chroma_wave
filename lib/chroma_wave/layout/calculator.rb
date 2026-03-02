@@ -19,6 +19,8 @@ module ChromaWave
     #   |  +---------------------------------------+    |
     #   +-----------------------------------------------+
     class Calculator
+      include Alignment
+
       # @return [Node] the root node of the layout tree
       attr_reader :root
 
@@ -153,12 +155,7 @@ module ChromaWave
       # @param alignment [Symbol, nil] :center, :right/:bottom, or default (start)
       # @return [Integer] aligned position
       def cross_offset(origin, total, child_size, alignment)
-        slack = [total - child_size, 0].max
-        case alignment
-        when :center then origin + (slack / 2)
-        when :right, :bottom then origin + slack
-        else origin
-        end
+        origin + align_offset(child_size, total, alignment)
       end
 
       # Allocates main-axis sizes to children using flex distribution.

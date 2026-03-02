@@ -7,6 +7,7 @@ require_relative 'layout/node'
 require_relative 'layout/container_node'
 require_relative 'layout/content'
 require_relative 'layout/dsl'
+require_relative 'layout/alignment'
 require_relative 'layout/calculator'
 require_relative 'layout/renderer'
 

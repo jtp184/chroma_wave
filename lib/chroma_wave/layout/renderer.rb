@@ -7,6 +7,8 @@ module ChromaWave
     # Walks the node tree and draws each node using a Layer at its absolute
     # position. Draws backgrounds, borders, and content in the correct order.
     class Renderer
+      include Alignment
+
       # @return [Canvas] the target canvas
       attr_reader :canvas
 
@@ -207,34 +209,16 @@ module ChromaWave
         scaled.crop(x: crop_x, y: crop_y, width: box_w, height: box_h)
       end
 
-      # Computes horizontal alignment offset.
-      #
-      # @param content_w [Integer] content width
-      # @param box_w [Integer] box width
-      # @param alignment [Symbol, nil] :center, :right, or default (:left)
-      # @return [Integer]
-      def align_offset(content_w, box_w, alignment)
-        slack = [box_w - content_w, 0].max
-        case alignment
-        when :center then slack / 2
-        when :right  then slack
-        else 0
-        end
-      end
-
       # Computes vertical alignment offset.
+      #
+      # Alias for {Alignment#align_offset} with vertical alignment names.
       #
       # @param content_h [Integer] content height
       # @param box_h [Integer] box height
       # @param alignment [Symbol, nil] :center, :bottom, or default (:top)
       # @return [Integer]
       def valign_offset(content_h, box_h, alignment)
-        slack = [box_h - content_h, 0].max
-        case alignment
-        when :center then slack / 2
-        when :bottom then slack
-        else 0
-        end
+        align_offset(content_h, box_h, alignment)
       end
     end
   end
