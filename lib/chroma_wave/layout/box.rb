@@ -2,19 +2,14 @@
 
 module ChromaWave
   class Layout
-    # Mutable positioned rectangle written by {Calculator} and read by {Renderer}.
+    # Positioned rectangle representing a node's computed layout bounds.
     #
-    # Unlike the immutable +Data.define+ value objects, Box is intentionally
-    # mutable because it is populated incrementally during the top-down layout
-    # pass. The Calculator assigns coordinates and dimensions as it walks the
-    # node tree.
+    # Created by the {Calculator} during the layout pass and stored
+    # in an external position map (+{Node => Box}+), keeping nodes
+    # free of mutable layout state.
     #
     # @example
-    #   box = Box.new
-    #   box.x = 10
-    #   box.y = 20
-    #   box.width = 100
-    #   box.height = 50
+    #   box = Box.new(x: 10, y: 20, width: 100, height: 50)
     class Box
       attr_accessor :x, :y, :width, :height
 

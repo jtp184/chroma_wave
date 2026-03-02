@@ -39,14 +39,15 @@ module ChromaWave
         @root = root
         @width = width
         @height = height
+        @positions = {}
       end
 
-      # Runs the layout computation, assigning boxes to all nodes.
+      # Runs the layout computation, building a position map.
       #
-      # @return [Node] the root node with computed boxes
+      # @return [Hash{Node => Box}] mapping from each node to its positioned box
       def compute
         layout_node(root, 0, 0, width, height)
-        root
+        @positions
       end
 
       private
@@ -59,10 +60,11 @@ module ChromaWave
       # @param available_w [Integer] available width
       # @param available_h [Integer] available height
       def layout_node(node, x, y, available_w, available_h)
-        node.box.x = x
-        node.box.y = y
-        node.box.width = [available_w, 0].max
-        node.box.height = [available_h, 0].max
+        @positions[node] = Box.new(
+          x: x, y: y,
+          width: [available_w, 0].max,
+          height: [available_h, 0].max
+        )
 
         return unless node.container? && !node.children.empty?
 
@@ -89,7 +91,7 @@ module ChromaWave
       # @return [Box] positioned rectangle of the content area
       def content_area(node)
         inset = node.border_inset
-        box = node.box
+        box = @positions[node]
         pad = node.padding
         Box.new(
           x: box.x + inset + pad.left,

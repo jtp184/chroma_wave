@@ -34,12 +34,6 @@ RSpec.describe ChromaWave::Layout::Node do
         expect(node).to have_attributes(align: :center, valign: :bottom)
       end
     end
-
-    it 'initializes with a default Box' do
-      node = described_class.new
-      expect(node.box).to be_a(ChromaWave::Layout::Box)
-      expect(node.box.width).to eq(0)
-    end
   end
 
   describe '#flex?' do

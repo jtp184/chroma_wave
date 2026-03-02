@@ -5,8 +5,8 @@ module ChromaWave
     # Abstract base class for all layout tree nodes.
     #
     # Holds common sizing properties (flex, fixed dimensions, constraints,
-    # alignment) and provides a {#box} accessor for the {Calculator} to
-    # write positioned rectangles during the layout pass.
+    # alignment). Positioned rectangles are computed externally by the
+    # {Calculator} and stored in a separate position map.
     #
     # Subclasses must override {#intrinsic_width} and {#intrinsic_height}
     # to report their natural (content-driven) sizes.
@@ -35,9 +35,6 @@ module ChromaWave
       # @return [Symbol, nil] vertical content alignment (:top, :center, :bottom)
       attr_reader :valign
 
-      # @return [Box] positioned rectangle, written by Calculator
-      attr_accessor :box
-
       # @param flex [Numeric, nil] flex factor
       # @param width [Integer, nil] fixed width
       # @param height [Integer, nil] fixed height
@@ -62,7 +59,6 @@ module ChromaWave
         )
         @align = align
         @valign = valign
-        @box = Box.new
       end
 
       # The node's natural width based on content.

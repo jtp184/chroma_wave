@@ -15,8 +15,10 @@ module ChromaWave
       # Creates a renderer targeting the given canvas.
       #
       # @param canvas [Canvas] the canvas to render onto
-      def initialize(canvas)
+      # @param positions [Hash{Node => Box}] position map from Calculator
+      def initialize(canvas, positions)
         @canvas = canvas
+        @positions = positions
       end
 
       # Renders the full layout tree onto the canvas.
@@ -34,8 +36,8 @@ module ChromaWave
       #
       # @param node [Node] the node to render
       def render_node(node)
-        box = node.box
-        return if box.width <= 0 || box.height <= 0
+        box = @positions[node]
+        return if box.nil? || box.width <= 0 || box.height <= 0
 
         layer = canvas.layer(x: box.x, y: box.y, width: box.width, height: box.height)
 

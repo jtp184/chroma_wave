@@ -8,7 +8,7 @@ RSpec.describe ChromaWave::Layout::Calculator do
   let(:spacer_class) { ChromaWave::Layout::SpacerContent }
   let(:node_class) { ChromaWave::Layout::Node }
 
-  # Helper: builds a container with children, computes layout, returns root
+  # Helper: builds a container with children, computes layout, returns position map
   def layout(root, width:, height:)
     described_class.new(root: root, width: width, height: height).compute
   end
@@ -19,12 +19,12 @@ RSpec.describe ChromaWave::Layout::Calculator do
       child_b = node_class.new(width: 200)
       root = container_class.new(direction: :horizontal, children: [child_a, child_b])
 
-      layout(root, width: 400, height: 100)
+      positions = layout(root, width: 400, height: 100)
 
-      expect(child_a.box.width).to eq(100)
-      expect(child_b.box.width).to eq(200)
-      expect(child_a.box.x).to eq(0)
-      expect(child_b.box.x).to eq(100)
+      expect(positions[child_a].width).to eq(100)
+      expect(positions[child_b].width).to eq(200)
+      expect(positions[child_a].x).to eq(0)
+      expect(positions[child_b].x).to eq(100)
     end
   end
 
@@ -37,11 +37,11 @@ RSpec.describe ChromaWave::Layout::Calculator do
       ]
       root = container_class.new(direction: :vertical, children: children)
 
-      layout(root, width: 100, height: 400)
+      positions = layout(root, width: 100, height: 400)
 
-      expect(children[0].box.height).to eq(100)
-      expect(children[1].box.height).to eq(200)
-      expect(children[2].box.height).to eq(100)
+      expect(positions[children[0]].height).to eq(100)
+      expect(positions[children[1]].height).to eq(200)
+      expect(positions[children[2]].height).to eq(100)
     end
   end
 
@@ -52,11 +52,11 @@ RSpec.describe ChromaWave::Layout::Calculator do
       child_c = node_class.new(width: 50)
       root = container_class.new(direction: :horizontal, children: [child_a, child_b, child_c])
 
-      layout(root, width: 300, height: 100)
+      positions = layout(root, width: 300, height: 100)
 
-      expect(child_a.box.width).to eq(100)
-      expect(child_b.box.width).to eq(150)
-      expect(child_c.box.width).to eq(50)
+      expect(positions[child_a].width).to eq(100)
+      expect(positions[child_b].width).to eq(150)
+      expect(positions[child_c].width).to eq(50)
     end
   end
 
@@ -65,12 +65,12 @@ RSpec.describe ChromaWave::Layout::Calculator do
       children = Array.new(3) { node_class.new(flex: 1) }
       root = container_class.new(direction: :horizontal, children: children, gap: 10)
 
-      layout(root, width: 310, height: 100)
+      positions = layout(root, width: 310, height: 100)
 
       # (310 - 2*10) / 3 = 96.67 -> rounding distributes evenly
-      total = children.sum { |c| c.box.width }
+      total = children.sum { |c| positions[c].width }
       expect(total).to eq(290)
-      children.each { |c| expect(c.box.width).to be_between(96, 98) }
+      children.each { |c| expect(positions[c].width).to be_between(96, 98) }
     end
   end
 
@@ -79,12 +79,12 @@ RSpec.describe ChromaWave::Layout::Calculator do
       child = node_class.new(flex: 1)
       root = container_class.new(direction: :vertical, children: [child], padding: 20)
 
-      layout(root, width: 200, height: 200)
+      positions = layout(root, width: 200, height: 200)
 
-      expect(child.box.x).to eq(20)
-      expect(child.box.y).to eq(20)
-      expect(child.box.width).to eq(160)
-      expect(child.box.height).to eq(160)
+      expect(positions[child].x).to eq(20)
+      expect(positions[child].y).to eq(20)
+      expect(positions[child].width).to eq(160)
+      expect(positions[child].height).to eq(160)
     end
   end
 
@@ -96,13 +96,13 @@ RSpec.describe ChromaWave::Layout::Calculator do
         border: ChromaWave::Color::BLACK, border_width: 2, padding: 5
       )
 
-      layout(root, width: 100, height: 100)
+      positions = layout(root, width: 100, height: 100)
 
       # content = 100 - 2*2 (border) - 2*5 (padding) = 86
-      expect(child.box.width).to eq(86)
-      expect(child.box.height).to eq(86)
-      expect(child.box.x).to eq(7) # 2 border + 5 padding
-      expect(child.box.y).to eq(7)
+      expect(positions[child].width).to eq(86)
+      expect(positions[child].height).to eq(86)
+      expect(positions[child].x).to eq(7) # 2 border + 5 padding
+      expect(positions[child].y).to eq(7)
     end
   end
 
@@ -114,10 +114,10 @@ RSpec.describe ChromaWave::Layout::Calculator do
       child_b = node_class.new(flex: 1)
       root = container_class.new(direction: :horizontal, children: [child_a, child_b])
 
-      layout(root, width: 200, height: 100)
+      positions = layout(root, width: 200, height: 100)
 
-      expect(child_a.box.width).to eq(130)
-      expect(child_b.box.width).to eq(70)
+      expect(positions[child_a].width).to eq(130)
+      expect(positions[child_b].width).to eq(70)
     end
 
     it 'clamps flex child to max_width and redistributes' do
@@ -125,10 +125,10 @@ RSpec.describe ChromaWave::Layout::Calculator do
       child_b = node_class.new(flex: 1)
       root = container_class.new(direction: :horizontal, children: [child_a, child_b])
 
-      layout(root, width: 200, height: 100)
+      positions = layout(root, width: 200, height: 100)
 
-      expect(child_a.box.width).to eq(60)
-      expect(child_b.box.width).to eq(140)
+      expect(positions[child_a].width).to eq(60)
+      expect(positions[child_b].width).to eq(140)
     end
   end
 
@@ -138,10 +138,10 @@ RSpec.describe ChromaWave::Layout::Calculator do
         child = node_class.new(width: 50, height: 40)
         root = container_class.new(direction: :horizontal, children: [child], child_valign: :center)
 
-        layout(root, width: 200, height: 100)
+        positions = layout(root, width: 200, height: 100)
 
-        expect(child.box.y).to eq(30)
-        expect(child.box.height).to eq(40)
+        expect(positions[child].y).to eq(30)
+        expect(positions[child].height).to eq(40)
       end
     end
 
@@ -150,9 +150,9 @@ RSpec.describe ChromaWave::Layout::Calculator do
         child = node_class.new(width: 50, height: 40)
         root = container_class.new(direction: :horizontal, children: [child], child_valign: :bottom)
 
-        layout(root, width: 200, height: 100)
+        positions = layout(root, width: 200, height: 100)
 
-        expect(child.box.y).to eq(60)
+        expect(positions[child].y).to eq(60)
       end
     end
 
@@ -161,9 +161,9 @@ RSpec.describe ChromaWave::Layout::Calculator do
         child = node_class.new(width: 60, height: 30)
         root = container_class.new(direction: :vertical, children: [child], child_align: :center)
 
-        layout(root, width: 200, height: 100)
+        positions = layout(root, width: 200, height: 100)
 
-        expect(child.box.x).to eq(70)
+        expect(positions[child].x).to eq(70)
       end
     end
   end
@@ -173,18 +173,18 @@ RSpec.describe ChromaWave::Layout::Calculator do
       leaf = node_class.new(flex: 1)
       inner_row = container_class.new(direction: :horizontal, children: [leaf], padding: 5, flex: 1)
       outer_col = container_class.new(direction: :vertical, children: [inner_row], padding: 10)
-      layout(outer_col, width: 200, height: 200)
+      positions = layout(outer_col, width: 200, height: 200)
 
-      expect(inner_row.box).to eq(ChromaWave::Layout::Box.new(x: 10, y: 10, width: 180, height: 180))
+      expect(positions[inner_row]).to eq(ChromaWave::Layout::Box.new(x: 10, y: 10, width: 180, height: 180))
     end
 
     it 'computes correct leaf positions through nesting' do
       leaf = node_class.new(flex: 1)
       inner_row = container_class.new(direction: :horizontal, children: [leaf], padding: 5, flex: 1)
       outer_col = container_class.new(direction: :vertical, children: [inner_row], padding: 10)
-      layout(outer_col, width: 200, height: 200)
+      positions = layout(outer_col, width: 200, height: 200)
 
-      expect(leaf.box).to eq(ChromaWave::Layout::Box.new(x: 15, y: 15, width: 170, height: 170))
+      expect(positions[leaf]).to eq(ChromaWave::Layout::Box.new(x: 15, y: 15, width: 170, height: 170))
     end
   end
 
@@ -193,18 +193,19 @@ RSpec.describe ChromaWave::Layout::Calculator do
       children = [node_class.new(width: 300), node_class.new(flex: 1)]
       root = container_class.new(direction: :horizontal, children: children)
 
-      expect { layout(root, width: 200, height: 100) }.not_to raise_error
-      expect(children[1].box.width).to eq(0)
+      positions = nil
+      expect { positions = layout(root, width: 200, height: 100) }.not_to raise_error
+      expect(positions[children[1]].width).to eq(0)
     end
   end
 
   describe 'empty container' do
     it 'assigns full box to container' do
       root = container_class.new(direction: :horizontal, children: [])
-      layout(root, width: 100, height: 50)
+      positions = layout(root, width: 100, height: 50)
 
-      expect(root.box.width).to eq(100)
-      expect(root.box.height).to eq(50)
+      expect(positions[root].width).to eq(100)
+      expect(positions[root].height).to eq(50)
     end
   end
 end

@@ -6,18 +6,17 @@ RSpec.describe ChromaWave::Layout::Renderer do
   let(:red) { ChromaWave::Color::RED }
   let(:gray) { ChromaWave::Color::LIGHT_GRAY }
   let(:canvas) { ChromaWave::Canvas.new(width: 100, height: 100) }
-  let(:renderer) { described_class.new(canvas) }
+  let(:positions) { {} }
+  let(:renderer) { described_class.new(canvas, positions) }
 
+  let(:box_class) { ChromaWave::Layout::Box }
   let(:container_class) { ChromaWave::Layout::ContainerNode }
   let(:node_class) { ChromaWave::Layout::Node }
   let(:spacer_class) { ChromaWave::Layout::SpacerContent }
 
-  # Helper: assign a box to a node
+  # Helper: register a positioned box for a node
   def assign_box(node, x:, y:, width:, height:)
-    node.box.x = x
-    node.box.y = y
-    node.box.width = width
-    node.box.height = height
+    positions[node] = box_class.new(x: x, y: y, width: width, height: height)
   end
 
   describe 'background rendering' do
@@ -83,28 +82,18 @@ RSpec.describe ChromaWave::Layout::Renderer do
   end
 
   describe 'text alignment' do
-    it 'right-aligned text starts further right than left-aligned' do
+    # Renders aligned text and returns the x of the first non-white pixel.
+    def render_aligned_text(align)
       font = ChromaWave::Font.default(size: 12)
+      node = ChromaWave::Layout::TextContent.new(text: 'Hi', font: font, color: black, align: align)
+      pos = { node => box_class.new(x: 0, y: 0, width: 100, height: 30) }
+      cvs = ChromaWave::Canvas.new(width: 100, height: 30)
+      described_class.new(cvs, pos).render(node)
+      first_non_white_x(cvs)
+    end
 
-      left_node = ChromaWave::Layout::TextContent.new(
-        text: 'Hi', font: font, color: black, align: :left
-      )
-      assign_box(left_node, x: 0, y: 0, width: 100, height: 30)
-
-      left_canvas = ChromaWave::Canvas.new(width: 100, height: 30)
-      described_class.new(left_canvas).render(left_node)
-      left_x = first_non_white_x(left_canvas)
-
-      right_node = ChromaWave::Layout::TextContent.new(
-        text: 'Hi', font: font, color: black, align: :right
-      )
-      assign_box(right_node, x: 0, y: 0, width: 100, height: 30)
-
-      right_canvas = ChromaWave::Canvas.new(width: 100, height: 30)
-      described_class.new(right_canvas).render(right_node)
-      right_x = first_non_white_x(right_canvas)
-
-      expect(right_x).to be > left_x
+    it 'right-aligned text starts further right than left-aligned' do
+      expect(render_aligned_text(:right)).to be > render_aligned_text(:left)
     end
   end
 
