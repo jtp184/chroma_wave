@@ -72,11 +72,17 @@ module ChromaWave
 
     # Renders a Canvas and sends to the display, or sends a Framebuffer directly.
     #
+    # Canvas input is rendered and automatically rotated to match the display's
+    # rotation setting. Framebuffer input operates in native coordinate space
+    # and must have dimensions matching {#native_width} x {#native_height},
+    # regardless of display rotation.
+    #
     # Lazily initializes the EPD on first use.
     #
     # @param canvas_or_fb [Canvas, Framebuffer] content to display
     # @return [self]
     # @raise [FormatMismatchError] if a Framebuffer's format does not match
+    # @raise [ArgumentError] if a Framebuffer's dimensions do not match native display size
     def show(canvas_or_fb)
       ensure_initialized!
       case canvas_or_fb
@@ -226,15 +232,25 @@ module ChromaWave
       raise ArgumentError, "rotation must be one of #{VALID_ROTATIONS.join(', ')} (got #{degrees})"
     end
 
-    # Validates that a framebuffer's pixel format matches this display.
+    # Validates that a framebuffer's pixel format and dimensions match this display.
+    #
+    # Framebuffers operate in native coordinate space, so their dimensions
+    # must match {#native_width} and {#native_height}, regardless of rotation.
     #
     # @param framebuffer [Framebuffer] the framebuffer to validate
-    # @raise [FormatMismatchError] if formats do not match
+    # @raise [FormatMismatchError] if the pixel format does not match
+    # @raise [ArgumentError] if dimensions do not match native display size
     def validate_framebuffer!(framebuffer)
-      return if framebuffer.pixel_format == pixel_format
+      unless framebuffer.pixel_format == pixel_format
+        raise FormatMismatchError,
+              "expected #{pixel_format.name} framebuffer, got #{framebuffer.pixel_format.name}"
+      end
 
-      raise FormatMismatchError,
-            "expected #{pixel_format.name} framebuffer, got #{framebuffer.pixel_format.name}"
+      return if framebuffer.width == native_width && framebuffer.height == native_height
+
+      raise ArgumentError,
+            "framebuffer dimensions #{framebuffer.width}x#{framebuffer.height} " \
+            "do not match native display size #{native_width}x#{native_height}"
     end
   end
 end

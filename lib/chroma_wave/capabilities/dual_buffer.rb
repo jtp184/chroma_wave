@@ -67,7 +67,8 @@ module ChromaWave
       # Sends pre-rendered dual framebuffers directly to the display.
       #
       # Both framebuffers must be MONO format with dimensions matching
-      # this display's width and height.
+      # this display's {Display#native_width} and {Display#native_height}
+      # (native coordinate space, unaffected by rotation).
       #
       # @param black_fb [Framebuffer] MONO framebuffer for the black (or old) plane
       # @param red_fb [Framebuffer] MONO framebuffer for the red (or new) plane

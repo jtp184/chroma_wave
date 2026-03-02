@@ -116,10 +116,18 @@ RSpec.describe ChromaWave::Display do
       end
     end
 
-    it 'accepts a Framebuffer with matching format' do
+    it 'accepts a Framebuffer with matching format and native dimensions' do
       described_class.open(model: model) do |display|
-        fb = ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format)
+        fb = ChromaWave::Framebuffer.new(display.native_width, display.native_height, display.pixel_format)
         expect(display.show(fb)).to eq(display)
+      end
+    end
+
+    it 'raises ArgumentError for wrong dimensions' do
+      described_class.open(model: model) do |display|
+        wrong_fb = ChromaWave::Framebuffer.new(10, 10, display.pixel_format)
+        expect { display.show(wrong_fb) }
+          .to raise_error(ArgumentError, /do not match native display size/)
       end
     end
 
@@ -236,6 +244,23 @@ RSpec.describe ChromaWave::Display do
     it 'raises ArgumentError for invalid rotation' do
       expect { described_class.new(model: model, rotation: 45) }
         .to raise_error(ArgumentError, /rotation must be/)
+    end
+
+    it 'rejects framebuffer with logical dimensions on a rotated display' do
+      described_class.open(model: model, rotation: 90) do |display|
+        # Logical dimensions are swapped (height x width), but the
+        # framebuffer must use native dimensions (width x height)
+        logical_fb = ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format)
+        expect { display.show(logical_fb) }
+          .to raise_error(ArgumentError, /do not match native display size/)
+      end
+    end
+
+    it 'accepts framebuffer with native dimensions on a rotated display' do
+      described_class.open(model: model, rotation: 90) do |display|
+        native_fb = ChromaWave::Framebuffer.new(display.native_width, display.native_height, display.pixel_format)
+        expect(display.show(native_fb)).to eq(display)
+      end
     end
   end
 
