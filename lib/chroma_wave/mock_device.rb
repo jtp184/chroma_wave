@@ -226,6 +226,11 @@ module ChromaWave
 
     # Lazily creates the composite screen buffer at native dimensions.
     #
+    # For dual-buffer (COLOR4) models, the composite screen is always
+    # MONO — it represents the black plane. The red plane is stored
+    # separately via {#store_red_plane}. This ensures {#last_framebuffer}
+    # always returns a consistent MONO framebuffer regardless of call order.
+    #
     # MONO already defaults to white (0xFF) on allocation; other formats
     # default to 0x00 and need an explicit clear.
     #
@@ -235,8 +240,11 @@ module ChromaWave
     def ensure_composite_screen!
       return @composite_screen if @composite_screen
 
-      @composite_screen = Framebuffer.new(native_width, native_height, pixel_format)
-      @composite_screen.clear(:white) unless pixel_format == PixelFormat::MONO
+      effective_format =
+        pixel_format == PixelFormat::COLOR4 ? PixelFormat::MONO : pixel_format
+
+      @composite_screen = Framebuffer.new(native_width, native_height, effective_format)
+      @composite_screen.clear(:white) unless effective_format == PixelFormat::MONO
       @composite_screen
     end
 
