@@ -44,6 +44,19 @@ module PixelHelpers
     false
   end
 
+  # Returns the y coordinate of the first non-white pixel.
+  #
+  # @param canvas [ChromaWave::Canvas] the canvas to inspect
+  # @return [Integer] y coordinate, or canvas.height if all white
+  def first_non_white_y(canvas)
+    canvas.height.times do |y|
+      canvas.width.times do |x|
+        return y unless canvas.get_pixel(x, y) == ChromaWave::Color::WHITE
+      end
+    end
+    canvas.height
+  end
+
   # Returns the x coordinate of the first non-white pixel.
   #
   # @param canvas [ChromaWave::Canvas] the canvas to inspect

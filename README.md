@@ -255,6 +255,31 @@ ChromaWave::Display.open(model: :epd_2in13_v4) do |d|
 end  # auto-closes, releases GPIO/SPI
 ```
 
+### Layout DSL
+
+Describe UI layouts with Ruby blocks instead of manual coordinate math. Rows and columns distribute space with flex proportions, padding, and gaps — like a lightweight flexbox:
+
+```ruby
+font  = ChromaWave::Font.default(size: 14)
+black = ChromaWave::Color::BLACK
+
+layout = ChromaWave::Layout.build(width: display.width, height: display.height) do
+  column(padding: 8, gap: 6) do
+    row(flex: 1, gap: 8) do
+      text "Hello, e-paper!", font: font, color: black
+      spacer                          # pushes "OK" to the right
+      text "OK", font: font, color: black
+    end
+
+    row(flex: 2, background: ChromaWave::Color::LIGHT_GRAY, padding: 10) do
+      text "This area gets twice the vertical space.", font: font, color: black
+    end
+  end
+end
+
+display.show(layout)
+```
+
 ---
 
 ## 🏗️ Architecture

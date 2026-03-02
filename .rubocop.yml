@@ -21,6 +21,7 @@ Style/StringLiteralsInInterpolation:
 
 # Files that reopen ChromaWave to add require_relative or const_set calls
 # are not missing documentation — the module is documented at its definition.
+# Layout sub-files reopen Layout to define nested classes/constants.
 Style/Documentation:
   Exclude:
     - 'lib/chroma_wave/color.rb'
@@ -30,6 +31,9 @@ Style/Documentation:
     - 'lib/chroma_wave/framebuffer.rb'
     - 'lib/chroma_wave/canvas.rb'
     - 'lib/chroma_wave/layer.rb'
+    - 'lib/chroma_wave/layout/padding.rb'
+    - 'lib/chroma_wave/layout/constraints.rb'
+    - 'lib/chroma_wave/layout/box.rb'
 
 # Domain-standard short names used across graphics/geometry code.
 # x0/y0/x1/y1 (line endpoints), xi/yi (midpoint iterators),
@@ -70,8 +74,12 @@ Naming/MethodParameterName:
 # Two drawing methods have irreducible geometric complexity:
 # draw_rounded_rect(x, y, w, h, radius:, pen:) and
 # draw_arc(cx, cy, r, start_angle, end_angle, pen:)
+# Layout nodes accept many keyword-only sizing/style parameters by design.
 Metrics/ParameterLists:
   Max: 6
+  Exclude:
+    - 'lib/chroma_wave/layout/node.rb'
+    - 'lib/chroma_wave/layout/container_node.rb'
 
 # Alpha compositing, drawing algorithms, and color distance formulas are
 # inherently math-heavy. Raised from default 17 to accommodate these.

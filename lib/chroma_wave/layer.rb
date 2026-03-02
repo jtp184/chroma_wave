@@ -14,7 +14,7 @@ module ChromaWave
   class Layer
     include Surface
 
-    attr_reader :width, :height
+    attr_reader :width, :height, :offset_x, :offset_y
 
     # Creates a new Layer scoped to a sub-region of the parent surface.
     #
@@ -65,6 +65,29 @@ module ChromaWave
       parent.get_pixel(offset_x + x, offset_y + y)
     end
 
+    # Bulk-loads raw RGBA bytes into a rectangular sub-region of the layer.
+    #
+    # Clips the source rectangle to this layer's bounds before delegating
+    # to the parent, enforcing the same clipping contract as +set_pixel+.
+    # Out-of-bounds regions are silently discarded.
+    #
+    # @param bytes [String] raw RGBA pixel data
+    # @param width [Integer] source width in pixels
+    # @param height [Integer] source height in pixels
+    # @param x [Integer] local x offset
+    # @param y [Integer] local y offset
+    # @return [self]
+    def load_rgba_bytes(bytes, width:, height:, x:, y:)
+      clip = clip_rect(x, y, width, height)
+      return self unless clip
+
+      cx, cy, cw, ch = clip
+      clipped_bytes = cw == width && ch == height ? bytes : clip_rgba_bytes(bytes, width, cx - x, cy - y, cw, ch)
+      parent.load_rgba_bytes(clipped_bytes, width: cw, height: ch,
+                                            x: offset_x + cx, y: offset_y + cy)
+      self
+    end
+
     # Fills the layer region with the given color.
     #
     # Delegates to the parent's +fill_rect+, which writes scanline rows
@@ -80,7 +103,46 @@ module ChromaWave
 
     private
 
-    attr_reader :parent, :offset_x, :offset_y
+    attr_reader :parent
+
+    # Clips a rectangle to this layer's bounds.
+    #
+    # @param x [Integer] left edge
+    # @param y [Integer] top edge
+    # @param w [Integer] width
+    # @param h [Integer] height
+    # @return [Array(Integer,Integer,Integer,Integer), nil] clipped (x, y, w, h) or nil if fully outside
+    def clip_rect(x, y, w, h)
+      x0 = [x, 0].max
+      y0 = [y, 0].max
+      x1 = [x + w, width].min
+      y1 = [y + h, height].min
+      return nil if x0 >= x1 || y0 >= y1
+
+      [x0, y0, x1 - x0, y1 - y0]
+    end
+
+    # Extracts a clipped sub-rectangle of RGBA bytes from a source buffer.
+    #
+    # @param bytes [String] raw RGBA source data
+    # @param src_width [Integer] full source width in pixels
+    # @param sx [Integer] source x offset to start copying from
+    # @param sy [Integer] source y offset to start copying from
+    # @param clip_w [Integer] clipped width in pixels
+    # @param clip_h [Integer] clipped height in pixels
+    # @return [String] the extracted RGBA bytes for the clipped region
+    def clip_rgba_bytes(bytes, src_width, sx, sy, clip_w, clip_h)
+      bpp = Canvas::BYTES_PER_PIXEL
+      src_stride = src_width * bpp
+      row_bytes = clip_w * bpp
+
+      String.new(capacity: row_bytes * clip_h, encoding: Encoding::BINARY).tap do |out|
+        clip_h.times do |i|
+          offset = ((sy + i) * src_stride) + (sx * bpp)
+          out << bytes.byteslice(offset, row_bytes)
+        end
+      end
+    end
 
     # Alpha-composites a glyph bitmap via the parent's C accelerator when possible.
     #
