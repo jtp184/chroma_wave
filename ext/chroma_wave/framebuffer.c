@@ -1,5 +1,6 @@
 #include "framebuffer.h"
 #include "ruby/encoding.h"
+#include <ruby/thread.h>
 
 /* Cached symbol ID for pinning framebuffer references in raw_buffer strings */
 static ID id_fb_source;
@@ -307,6 +308,54 @@ fb_clear(VALUE self, VALUE rb_color)
 }
 
 /* ---- rotate(degrees) ---- */
+
+/* Arguments for the GVL-released rotation worker. */
+typedef struct {
+    const framebuffer_t *src;
+    framebuffer_t *dst;
+    uint16_t dst_w;
+    uint16_t dst_h;
+    int degrees;
+} rotate_args_t;
+
+/* Pure-C rotation loop — called without the GVL. */
+static void *
+fb_rotate_worker(void *arg)
+{
+    rotate_args_t *ra = (rotate_args_t *)arg;
+    const framebuffer_t *src = ra->src;
+    framebuffer_t *dst = ra->dst;
+    uint16_t dst_w = ra->dst_w;
+    uint16_t dst_h = ra->dst_h;
+    int degrees = ra->degrees;
+
+    int sx, sy, dx, dy;
+    for (sy = 0; sy < src->height; sy++) {
+        for (sx = 0; sx < src->width; sx++) {
+            uint8_t color = fb_get_pixel_raw(src, sx, sy);
+
+            switch (degrees) {
+            case 90:
+                dx = dst_w - 1 - sy;
+                dy = sx;
+                break;
+            case 180:
+                dx = dst_w - 1 - sx;
+                dy = dst_h - 1 - sy;
+                break;
+            case 270:
+                dx = sy;
+                dy = dst_h - 1 - sx;
+                break;
+            }
+
+            fb_set_pixel_raw(dst, dx, dy, color);
+        }
+    }
+
+    return NULL;
+}
+
 static VALUE
 fb_rotate(VALUE self, VALUE rb_degrees)
 {
@@ -346,34 +395,15 @@ fb_rotate(VALUE self, VALUE rb_degrees)
     framebuffer_t *dst;
     TypedData_Get_Struct(dst_obj, framebuffer_t, &framebuffer_type, dst);
 
-    /* Iterate source pixels and write to rotated positions */
-    int sx, sy, dx, dy;
-    for (sy = 0; sy < src->height; sy++) {
-        for (sx = 0; sx < src->width; sx++) {
-            uint8_t color = fb_get_pixel_raw(src, sx, sy);
-
-            switch (degrees) {
-            case 90:
-                dx = dst_w - 1 - sy;
-                dy = sx;
-                break;
-            case 180:
-                dx = dst_w - 1 - sx;
-                dy = dst_h - 1 - sy;
-                break;
-            case 270:
-                dx = sy;
-                dy = dst_h - 1 - sx;
-                break;
-            default:
-                dx = sx;
-                dy = sy;
-                break;
-            }
-
-            fb_set_pixel_raw(dst, dx, dy, color);
-        }
-    }
+    /* Run the pixel loop without the GVL so other Ruby threads can proceed. */
+    rotate_args_t ra = {
+        .src = src,
+        .dst = dst,
+        .dst_w = dst_w,
+        .dst_h = dst_h,
+        .degrees = degrees,
+    };
+    rb_thread_call_without_gvl(fb_rotate_worker, &ra, RUBY_UBF_IO, NULL);
 
     return dst_obj;
 }
