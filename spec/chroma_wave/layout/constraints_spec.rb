@@ -27,6 +27,18 @@ RSpec.describe ChromaWave::Layout::Constraints do
     it 'accepts max equal to min' do
       expect { described_class.new(min_width: 100, max_width: 100) }.not_to raise_error
     end
+
+    it 'raises when min_width is negative' do
+      expect do
+        described_class.new(min_width: -5)
+      end.to raise_error(ArgumentError, /min_width must be non-negative/)
+    end
+
+    it 'raises when min_height is negative' do
+      expect do
+        described_class.new(min_height: -3)
+      end.to raise_error(ArgumentError, /min_height must be non-negative/)
+    end
   end
 
   describe '#clamp_width' do

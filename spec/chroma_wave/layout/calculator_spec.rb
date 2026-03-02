@@ -215,6 +215,19 @@ RSpec.describe ChromaWave::Layout::Calculator do
     end
   end
 
+  describe 'flex rounding correction' do
+    it 'never produces negative sizes from rounding overshoot' do
+      # Many small-flex children in tight space to stress rounding
+      children = Array.new(7) { node_class.new(flex: 1) }
+      root = container_class.new(direction: :horizontal, children: children)
+
+      positions = layout(root, width: 10, height: 10)
+
+      children.each { |c| expect(positions[c].width).to be >= 0 }
+      expect(children.sum { |c| positions[c].width }).to eq(10)
+    end
+  end
+
   describe 'empty container' do
     it 'assigns full box to container' do
       root = container_class.new(direction: :horizontal, children: [])

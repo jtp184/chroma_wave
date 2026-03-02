@@ -148,6 +148,7 @@ module ChromaWave
       def render_image(node, layer)
         source = node.source
         return if source.width.zero? || source.height.zero?
+        return if layer.width.zero? || layer.height.zero?
 
         fitted = fit_image(source, layer.width, layer.height, node.fit)
         draw_fitted_image(fitted, node, layer)

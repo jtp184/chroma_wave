@@ -23,6 +23,8 @@ module ChromaWave
       #   @return [Integer, nil] maximum height in pixels, or nil for unconstrained
 
       def initialize(min_width: 0, min_height: 0, max_width: nil, max_height: nil)
+        validate_non_negative!(min_width, :min_width)
+        validate_non_negative!(min_height, :min_height)
         validate_bounds!(min_width, max_width, :width)
         validate_bounds!(min_height, max_height, :height)
         super
@@ -61,6 +63,13 @@ module ChromaWave
       def clamp_dimension(value, min, max)
         effective_max = max || [value, min].max
         value.clamp(min, effective_max)
+      end
+
+      # @raise [ArgumentError] if value is negative
+      def validate_non_negative!(value, name)
+        return unless value.negative?
+
+        raise ArgumentError, "#{name} must be non-negative, got #{value}"
       end
 
       # @raise [ArgumentError] if max is less than min for the given axis

@@ -304,8 +304,9 @@ module ChromaWave
           last_unfrozen = i
         end
 
-        # Correct rounding error on the last unfrozen child
-        sizes[last_unfrozen] += budget - allocated if last_unfrozen
+        # Correct rounding error on the last unfrozen child, clamped to zero
+        # to prevent negative sizes from cumulative rounding overshoot.
+        sizes[last_unfrozen] = [sizes[last_unfrozen] + (budget - allocated), 0].max if last_unfrozen
       end
     end
   end

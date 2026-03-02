@@ -240,6 +240,24 @@ RSpec.describe ChromaWave::Layout::Renderer do
       expect { renderer.render(image_node) }.not_to raise_error
       expect(count_non_white(canvas)).to eq(0)
     end
+
+    it 'skips rendering when box has zero width' do
+      normal_image = instance_double(ChromaWave::Image, width: 10, height: 10)
+      image_node = ChromaWave::Layout::ImageContent.new(source: normal_image)
+      assign_box(image_node, x: 0, y: 0, width: 0, height: 50)
+
+      expect { renderer.render(image_node) }.not_to raise_error
+      expect(count_non_white(canvas)).to eq(0)
+    end
+
+    it 'skips rendering when box has zero height' do
+      normal_image = instance_double(ChromaWave::Image, width: 10, height: 10)
+      image_node = ChromaWave::Layout::ImageContent.new(source: normal_image)
+      assign_box(image_node, x: 0, y: 0, width: 50, height: 0)
+
+      expect { renderer.render(image_node) }.not_to raise_error
+      expect(count_non_white(canvas)).to eq(0)
+    end
   end
 
   describe 'zero-size nodes' do
