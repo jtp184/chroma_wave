@@ -189,14 +189,7 @@ module ChromaWave
       @operations_log = []
       @last_framebuffer = nil
       @device = DeviceStub.new(self)
-
-      if [90, 270].include?(rotation)
-        @width = @native_height
-        @height = @native_width
-      else
-        @width = @native_width
-        @height = @native_height
-      end
+      apply_logical_dimensions!
     end
 
     private

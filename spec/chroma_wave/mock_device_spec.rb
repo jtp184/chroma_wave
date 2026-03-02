@@ -585,10 +585,10 @@ RSpec.describe ChromaWave::MockDevice do
       canvas.set_pixel(0, 0, ChromaWave::Color::BLACK)
       mock.show(canvas)
       fb = mock.last_framebuffer
-      # Canvas (0,0) in 90° rotated 250x122 display:
-      # Renderer produces logical framebuffer at 250x122 with black at (0,0)
-      # rotate(90) maps (0,0) -> (native_w-1-0, 0) = (121, 0) in 122x250
-      expect(fb.get_pixel(121, 0)).to eq(:black)
+      # Canvas (0,0) in 90° rotated display:
+      # Renderer produces logical framebuffer with black at (0,0)
+      # rotate(90) maps (0,0) -> (native_w-1, 0)
+      expect(fb.get_pixel(config[:width] - 1, 0)).to eq(:black)
       mock.close
     end
   end

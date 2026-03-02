@@ -74,6 +74,7 @@ module ChromaWave
         when 90  then [native_width - y - h, x, h, w]
         when 180 then [native_width - x - w, native_height - y - h, w, h]
         when 270 then [y, native_height - x - w, h, w]
+        else raise ArgumentError, "unsupported rotation: #{rotation}"
         end
       end
 

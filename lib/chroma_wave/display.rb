@@ -185,13 +185,7 @@ module ChromaWave
       @initialized = false
       @current_mode = nil
 
-      if [90, 270].include?(rotation)
-        @width = @native_height
-        @height = @native_width
-      else
-        @width = @native_width
-        @height = @native_height
-      end
+      apply_logical_dimensions!
     end
 
     private
@@ -230,6 +224,22 @@ module ChromaWave
       return if VALID_ROTATIONS.include?(degrees)
 
       raise ArgumentError, "rotation must be one of #{VALID_ROTATIONS.join(', ')} (got #{degrees})"
+    end
+
+    # Sets +@width+ and +@height+ from native dimensions and rotation.
+    #
+    # For 90/270 rotations the logical dimensions are swapped relative to
+    # the native (hardware) dimensions.
+    #
+    # @return [void]
+    def apply_logical_dimensions!
+      if [90, 270].include?(rotation)
+        @width = @native_height
+        @height = @native_width
+      else
+        @width = @native_width
+        @height = @native_height
+      end
     end
 
     # Validates that a framebuffer's pixel format and dimensions match this display.
