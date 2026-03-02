@@ -161,6 +161,31 @@ RSpec.describe ChromaWave::Display do # rubocop:disable RSpec/SpecFilePathFormat
     end
   end
 
+  describe 'rotation pipeline' do
+    let(:mono_model) do
+      ChromaWave::Native.model_names.find { |n| ChromaWave::Native.model_config(n)[:pixel_format] == :mono }
+    end
+
+    [0, 90, 180, 270].each do |degrees|
+      context "with #{degrees}° rotation" do
+        it 'renders a canvas through the full pipeline' do
+          skip 'no mono model available' unless mono_model
+          config = ChromaWave::Native.model_config(mono_model)
+
+          mock = ChromaWave::MockDevice.new(model: mono_model, rotation: degrees)
+          canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+          canvas.set_pixel(0, 0, ChromaWave::Color::BLACK)
+          expect { mock.show(canvas) }.not_to raise_error
+
+          fb = mock.last_framebuffer
+          expect(fb.width).to eq(config[:width])
+          expect(fb.height).to eq(config[:height])
+          mock.close
+        end
+      end
+    end
+  end
+
   describe 'Renderer standalone' do
     ChromaWave::PixelFormat::REGISTRY.each_value do |fmt|
       context "with #{fmt.name} format" do

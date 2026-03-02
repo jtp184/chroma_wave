@@ -40,7 +40,7 @@ module ChromaWave
       end
 
       instance = allocate
-      instance.send(:initialize, **kwargs)
+      instance.send(:initialize, rotation: rotation, **kwargs)
       instance
     end
 

@@ -195,6 +195,59 @@ RSpec.describe ChromaWave::Display do
     end
   end
 
+  describe '.new with rotation' do
+    it 'accepts rotation: 0' do
+      display = described_class.new(model: model, rotation: 0)
+      expect(display.rotation).to eq(0)
+      expect(display.width).to eq(config[:width])
+      expect(display.height).to eq(config[:height])
+      display.close
+    end
+
+    it 'swaps dimensions for rotation: 90' do
+      display = described_class.new(model: model, rotation: 90)
+      expect(display.rotation).to eq(90)
+      expect(display.width).to eq(config[:height])
+      expect(display.height).to eq(config[:width])
+      display.close
+    end
+
+    it 'preserves dimensions for rotation: 180' do
+      display = described_class.new(model: model, rotation: 180)
+      expect(display.width).to eq(config[:width])
+      expect(display.height).to eq(config[:height])
+      display.close
+    end
+
+    it 'swaps dimensions for rotation: 270' do
+      display = described_class.new(model: model, rotation: 270)
+      expect(display.width).to eq(config[:height])
+      expect(display.height).to eq(config[:width])
+      display.close
+    end
+
+    it 'always reports native dimensions' do
+      display = described_class.new(model: model, rotation: 90)
+      expect(display.native_width).to eq(config[:width])
+      expect(display.native_height).to eq(config[:height])
+      display.close
+    end
+
+    it 'raises ArgumentError for invalid rotation' do
+      expect { described_class.new(model: model, rotation: 45) }
+        .to raise_error(ArgumentError, /rotation must be/)
+    end
+  end
+
+  describe '.open with rotation' do
+    it 'passes rotation through' do
+      described_class.open(model: model, rotation: 90) do |display|
+        expect(display.rotation).to eq(90)
+        expect(display.width).to eq(config[:height])
+      end
+    end
+  end
+
   describe '#inspect' do
     it 'includes model, dimensions, and format' do
       described_class.open(model: model) do |display|
@@ -202,6 +255,18 @@ RSpec.describe ChromaWave::Display do
         expect(text).to include('epd_2in13_v4')
         expect(text).to include('122x250')
         expect(text).to include('mono')
+      end
+    end
+
+    it 'includes rotation when non-zero' do
+      described_class.open(model: model, rotation: 90) do |display|
+        expect(display.inspect).to include('rot=90')
+      end
+    end
+
+    it 'excludes rotation when zero' do
+      described_class.open(model: model) do |display|
+        expect(display.inspect).not_to include('rot=')
       end
     end
   end

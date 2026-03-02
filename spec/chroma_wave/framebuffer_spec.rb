@@ -741,6 +741,91 @@ RSpec.describe ChromaWave::Framebuffer do
     end
   end
 
+  describe '#rotate' do
+    context 'with invalid degrees' do
+      it 'raises ArgumentError for 45' do
+        fb = described_class.new(4, 3, :mono)
+        expect { fb.rotate(45) }.to raise_error(ArgumentError, /rotation must be/)
+      end
+
+      it 'raises ArgumentError for -90' do
+        fb = described_class.new(4, 3, :mono)
+        expect { fb.rotate(-90) }.to raise_error(ArgumentError, /rotation must be/)
+      end
+
+      it 'raises ArgumentError for 360' do
+        fb = described_class.new(4, 3, :mono)
+        expect { fb.rotate(360) }.to raise_error(ArgumentError, /rotation must be/)
+      end
+    end
+
+    context 'with 0 degrees' do
+      it 'returns a dup with same dimensions' do
+        fb = described_class.new(4, 3, :mono)
+        fb.set_pixel(1, 0, :black)
+        rotated = fb.rotate(0)
+        expect(rotated.width).to eq(4)
+        expect(rotated.height).to eq(3)
+        expect(rotated).not_to equal(fb)
+        expect(rotated).to eq(fb)
+      end
+    end
+
+    shared_examples 'pixel-level rotation' do |fmt|
+      # Use a non-square framebuffer (4x3) to catch dimension-swap bugs.
+      # Place a marker pixel at (1, 0) and verify it lands at the correct
+      # rotated position.
+      let(:src_w) { 4 }
+      let(:src_h) { 3 }
+      let(:marker_color) { fmt == :mono ? :black : ChromaWave::PixelFormat.from_name(fmt).palette.color_at(1) }
+      let(:fb) do
+        described_class.new(src_w, src_h, fmt).tap do |f|
+          f.set_pixel(1, 0, marker_color)
+        end
+      end
+
+      it 'rotates 90 degrees' do
+        rotated = fb.rotate(90)
+        expect(rotated.width).to eq(src_h)
+        expect(rotated.height).to eq(src_w)
+        # (1, 0) -> (dst_w - 1 - 0, 1) = (2, 1)
+        expect(rotated.get_pixel(2, 1)).to eq(marker_color)
+      end
+
+      it 'rotates 180 degrees' do
+        rotated = fb.rotate(180)
+        expect(rotated.width).to eq(src_w)
+        expect(rotated.height).to eq(src_h)
+        # (1, 0) -> (dst_w - 1 - 1, dst_h - 1 - 0) = (2, 2)
+        expect(rotated.get_pixel(2, 2)).to eq(marker_color)
+      end
+
+      it 'rotates 270 degrees' do
+        rotated = fb.rotate(270)
+        expect(rotated.width).to eq(src_h)
+        expect(rotated.height).to eq(src_w)
+        # (1, 0) -> (0, dst_h - 1 - 1) = (0, 2)
+        expect(rotated.get_pixel(0, 2)).to eq(marker_color)
+      end
+
+      it 'preserves the pixel format' do
+        rotated = fb.rotate(90)
+        expect(rotated.pixel_format).to eq(fb.pixel_format)
+      end
+
+      it 'returns a PixelFormat object (not a symbol)' do
+        rotated = fb.rotate(90)
+        expect(rotated.pixel_format).to be_a(ChromaWave::PixelFormat)
+      end
+    end
+
+    %i[mono gray4 color4 color7].each do |fmt|
+      context "with #{fmt} format" do
+        include_examples 'pixel-level rotation', fmt
+      end
+    end
+  end
+
   describe 'GC stress test' do
     it 'handles creating and discarding many framebuffers' do
       expect do

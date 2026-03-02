@@ -517,6 +517,82 @@ RSpec.describe ChromaWave::MockDevice do
     end
   end
 
+  describe '.new with rotation' do
+    it 'accepts rotation: 0' do
+      mock = described_class.new(model: model, rotation: 0)
+      expect(mock.rotation).to eq(0)
+      expect(mock.width).to eq(config[:width])
+      expect(mock.height).to eq(config[:height])
+      mock.close
+    end
+
+    it 'swaps dimensions for rotation: 90' do
+      mock = described_class.new(model: model, rotation: 90)
+      expect(mock.width).to eq(config[:height])
+      expect(mock.height).to eq(config[:width])
+      mock.close
+    end
+
+    it 'preserves dimensions for rotation: 180' do
+      mock = described_class.new(model: model, rotation: 180)
+      expect(mock.width).to eq(config[:width])
+      expect(mock.height).to eq(config[:height])
+      mock.close
+    end
+
+    it 'swaps dimensions for rotation: 270' do
+      mock = described_class.new(model: model, rotation: 270)
+      expect(mock.width).to eq(config[:height])
+      expect(mock.height).to eq(config[:width])
+      mock.close
+    end
+
+    it 'always reports native dimensions' do
+      mock = described_class.new(model: model, rotation: 90)
+      expect(mock.native_width).to eq(config[:width])
+      expect(mock.native_height).to eq(config[:height])
+      mock.close
+    end
+
+    it 'raises ArgumentError for invalid rotation' do
+      expect { described_class.new(model: model, rotation: 45) }
+        .to raise_error(ArgumentError, /rotation must be/)
+    end
+  end
+
+  describe '.open with rotation' do
+    it 'passes rotation through' do
+      described_class.open(model: model, rotation: 90) do |mock|
+        expect(mock.rotation).to eq(90)
+      end
+    end
+  end
+
+  describe 'rotation render pipeline' do
+    it 'produces a native-dimension framebuffer after show with rotation' do
+      mock = described_class.new(model: model, rotation: 90)
+      canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+      mock.show(canvas)
+      fb = mock.last_framebuffer
+      expect(fb.width).to eq(config[:width])
+      expect(fb.height).to eq(config[:height])
+      mock.close
+    end
+
+    it 'rotates pixel content correctly through the pipeline' do
+      mock = described_class.new(model: model, rotation: 90)
+      canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+      canvas.set_pixel(0, 0, ChromaWave::Color::BLACK)
+      mock.show(canvas)
+      fb = mock.last_framebuffer
+      # Canvas (0,0) in 90° rotated 250x122 display:
+      # Renderer produces logical framebuffer at 250x122 with black at (0,0)
+      # rotate(90) maps (0,0) -> (native_w-1-0, 0) = (121, 0) in 122x250
+      expect(fb.get_pixel(121, 0)).to eq(:black)
+      mock.close
+    end
+  end
+
   describe '#renderer' do
     it 'returns a Renderer with the correct pixel format' do
       mock = described_class.new(model: model)
