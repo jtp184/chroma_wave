@@ -423,6 +423,8 @@ fb_rotate(VALUE self, VALUE rb_degrees)
         .degrees = degrees,
     };
     rb_thread_call_without_gvl(fb_rotate_worker, &ra, RUBY_UBF_IO, NULL);
+    RB_GC_GUARD(self);
+    RB_GC_GUARD(dst_obj);
 
     return dst_obj;
 }
@@ -522,6 +524,8 @@ fb_extract(VALUE self, VALUE rb_x, VALUE rb_y, VALUE rb_w, VALUE rb_h)
         .src_y = y,
     };
     rb_thread_call_without_gvl(fb_extract_worker, &ea, RUBY_UBF_IO, NULL);
+    RB_GC_GUARD(self);
+    RB_GC_GUARD(dst_obj);
 
     return dst_obj;
 }
@@ -628,6 +632,8 @@ fb_blit(VALUE self, VALUE rb_source, VALUE rb_x, VALUE rb_y)
         .dst_y = y,
     };
     rb_thread_call_without_gvl(fb_blit_worker, &ba, RUBY_UBF_IO, NULL);
+    RB_GC_GUARD(self);
+    RB_GC_GUARD(rb_source);
 
     return self;
 }
