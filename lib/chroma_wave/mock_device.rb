@@ -140,15 +140,17 @@ module ChromaWave
       self
     end
 
-    # Returns a dup of the last framebuffer sent to the device.
+    # Returns a dup of the composite screen buffer.
     #
-    # After {#show}, this is a full-screen native-orientation framebuffer.
-    # After {Capabilities::RegionalRefresh#display_region}, this is the
-    # extracted sub-region buffer (not the full screen).
+    # The composite screen faithfully simulates the physical display state:
+    # - {Display#show} and capability show methods replace the entire screen.
+    # - {Capabilities::RegionalRefresh#display_region} blits only the affected
+    #   sub-region onto the existing screen.
+    # - {Display#clear} resets the screen to white.
     #
-    # @return [Framebuffer, nil] nil if no show has occurred
+    # @return [Framebuffer, nil] nil if no display operation has occurred
     def last_framebuffer
-      @operations_mutex.synchronize { @last_framebuffer&.dup }
+      @operations_mutex.synchronize { @composite_screen&.dup }
     end
 
     # Exports the last framebuffer as a palette-accurate PNG.
@@ -162,7 +164,7 @@ module ChromaWave
     # @raise [RuntimeError] if no framebuffer has been displayed yet
     # @raise [DependencyError] if ruby-vips is not installed
     def save_png(path)
-      fb = @operations_mutex.synchronize { @last_framebuffer }
+      fb = @operations_mutex.synchronize { @composite_screen }
       raise 'no framebuffer to export — call show first' unless fb
 
       require_vips!
@@ -191,7 +193,7 @@ module ChromaWave
       @current_mode = nil
       @operations_mutex = Mutex.new
       @operations_log = []
-      @last_framebuffer = nil
+      @composite_screen = nil
       @device = DeviceStub.new(self)
       apply_logical_dimensions!
     end
@@ -210,12 +212,52 @@ module ChromaWave
       end
     end
 
-    # Stores a dup of the framebuffer for later inspection.
+    # Lazily creates the composite screen buffer at native dimensions.
     #
-    # @param framebuffer [Framebuffer] the framebuffer to store
+    # MONO already defaults to white (0xFF) on allocation; other formats
+    # default to 0x00 and need an explicit clear.
+    #
+    # Must be called while holding +@operations_mutex+.
+    #
+    # @return [Framebuffer]
+    def ensure_composite_screen!
+      return @composite_screen if @composite_screen
+
+      @composite_screen = Framebuffer.new(native_width, native_height, pixel_format)
+      @composite_screen.clear(:white) unless pixel_format == PixelFormat::MONO
+      @composite_screen
+    end
+
+    # Replaces the entire composite screen with a dup of the given framebuffer.
+    #
+    # @param framebuffer [Framebuffer] the full-screen framebuffer
     # @return [void]
-    def store_framebuffer(framebuffer)
-      @operations_mutex.synchronize { @last_framebuffer = framebuffer.dup }
+    def replace_composite_screen(framebuffer)
+      @operations_mutex.synchronize { @composite_screen = framebuffer.dup }
+    end
+
+    # Extracts a sub-region from the full-screen framebuffer and blits it
+    # onto the composite screen. Called by {DeviceStub#_epd_display_region}.
+    #
+    # @param framebuffer [Framebuffer] full-screen native-orientation framebuffer
+    # @param x [Integer] region x offset (byte-aligned)
+    # @param y [Integer] region y offset
+    # @param width [Integer] region width (byte-aligned)
+    # @param height [Integer] region height
+    # @return [void]
+    def blit_region_to_composite(framebuffer, x, y, width, height)
+      @operations_mutex.synchronize do
+        ensure_composite_screen!
+        region = framebuffer.extract(x, y, width, height)
+        @composite_screen.blit(region, x: x, y: y)
+      end
+    end
+
+    # Resets the composite screen to white. Called by {DeviceStub#_epd_clear}.
+    #
+    # @return [void]
+    def clear_composite_screen
+      @operations_mutex.synchronize { ensure_composite_screen!.clear(:white) }
     end
 
     # Simulates busy-wait by sleeping for the configured duration.
@@ -335,14 +377,14 @@ module ChromaWave
         )
       end
 
-      # Stub for single-buffer display — logs buffer size and stores framebuffer.
+      # Stub for single-buffer display — composites and logs.
       #
       # @param framebuffer [Framebuffer] the framebuffer to display
       # @return [void]
       # @raise [DeviceError] if the device is closed
       def _epd_display(framebuffer)
         assert_open!
-        @mock_device.send(:store_framebuffer, framebuffer)
+        @mock_device.send(:replace_composite_screen, framebuffer)
         @mock_device.send(
           :record_operation,
           op: :show, buffer_bytes: framebuffer.bytes.bytesize
@@ -350,7 +392,7 @@ module ChromaWave
         @mock_device.send(:simulate_busy)
       end
 
-      # Stub for dual-buffer display — logs both buffer sizes.
+      # Stub for dual-buffer display — composites black plane and logs.
       #
       # @param black_fb [Framebuffer] the black plane framebuffer
       # @param red_fb [Framebuffer] the red plane framebuffer
@@ -358,7 +400,7 @@ module ChromaWave
       # @raise [DeviceError] if the device is closed
       def _epd_display_dual(black_fb, red_fb)
         assert_open!
-        @mock_device.send(:store_framebuffer, black_fb)
+        @mock_device.send(:replace_composite_screen, black_fb)
         @mock_device.send(
           :record_operation,
           op: :show_dual,
@@ -368,7 +410,7 @@ module ChromaWave
         @mock_device.send(:simulate_busy)
       end
 
-      # Stub for regional display — logs the region coordinates.
+      # Stub for regional display — blits sub-region onto composite screen and logs.
       #
       # @param framebuffer [Framebuffer] the full-screen framebuffer
       # @param x [Integer] aligned x coordinate
@@ -379,7 +421,7 @@ module ChromaWave
       # @raise [DeviceError] if the device is closed
       def _epd_display_region(framebuffer, x, y, width, height)
         assert_open!
-        @mock_device.send(:store_framebuffer, framebuffer)
+        @mock_device.send(:blit_region_to_composite, framebuffer, x, y, width, height)
         @mock_device.send(
           :record_operation,
           op: :show_region, x: x, y: y, width: width, height: height
@@ -387,12 +429,13 @@ module ChromaWave
         @mock_device.send(:simulate_busy)
       end
 
-      # Stub for EPD clear — logs the operation.
+      # Stub for EPD clear — resets composite screen to white and logs.
       #
       # @return [void]
       # @raise [DeviceError] if the device is closed
       def _epd_clear
         assert_open!
+        @mock_device.send(:clear_composite_screen)
         @mock_device.send(:record_operation, op: :clear, color: :white)
         @mock_device.send(:simulate_busy)
       end

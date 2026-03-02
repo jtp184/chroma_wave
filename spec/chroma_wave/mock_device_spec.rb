@@ -593,6 +593,82 @@ RSpec.describe ChromaWave::MockDevice do
     end
   end
 
+  describe 'composite screen' do
+    it 'returns nil before any display operation' do
+      mock = described_class.new(model: model)
+      expect(mock.last_framebuffer).to be_nil
+      mock.close
+    end
+
+    it 'is replaced entirely by show' do
+      mock = described_class.new(model: model)
+      canvas = make_canvas(mock)
+      canvas.set_pixel(5, 5, ChromaWave::Color::BLACK)
+      mock.show(canvas)
+      fb = mock.last_framebuffer
+      expect(fb).to be_a(ChromaWave::Framebuffer)
+      expect(fb.width).to eq(mock.native_width)
+      expect(fb.height).to eq(mock.native_height)
+      mock.close
+    end
+
+    it 'is cleared to white by clear' do
+      mock = described_class.new(model: model)
+      canvas = make_canvas(mock)
+      canvas.set_pixel(5, 5, ChromaWave::Color::BLACK)
+      mock.show(canvas)
+      expect(mock.last_framebuffer.get_pixel(5, 5)).to eq(:black)
+
+      mock.clear
+      fb = mock.last_framebuffer
+      expect(fb.get_pixel(5, 5)).to eq(:white)
+      expect(fb.get_pixel(0, 0)).to eq(:white)
+      mock.close
+    end
+
+    context 'with regional refresh' do
+      let(:regional_model) do
+        ChromaWave::Native.model_names.find do |name|
+          (ChromaWave::Native.model_config(name)[:capabilities] || []).include?(:regional)
+        end
+      end
+      let(:mock) { described_class.new(model: regional_model) }
+
+      before { skip 'no regional model available' unless regional_model }
+      after { mock.close }
+
+      it 'accumulates regional updates via blit' do
+        mock.show(make_canvas(mock))
+
+        fb = ChromaWave::Framebuffer.new(mock.width, mock.height, mock.pixel_format)
+        8.times { |x| 8.times { |y| fb.set_pixel(x, y, :black) } }
+        mock.display_region(fb, x: 0, y: 0, width: 8, height: 8)
+
+        composite = mock.last_framebuffer
+        expect(composite.get_pixel(0, 0)).to eq(:black)
+        expect(composite.get_pixel(7, 7)).to eq(:black)
+        expect(composite.get_pixel(10, 10)).to eq(:white)
+      end
+    end
+
+    it 'survives clear_operations! (screen state is independent of log)' do
+      mock = described_class.new(model: model)
+      mock.show(make_canvas(mock))
+      mock.clear_operations!
+      expect(mock.last_framebuffer).to be_a(ChromaWave::Framebuffer)
+      mock.close
+    end
+
+    it 'creates a white screen on clear before any show' do
+      mock = described_class.new(model: model)
+      mock.clear
+      fb = mock.last_framebuffer
+      expect(fb).to be_a(ChromaWave::Framebuffer)
+      expect(fb.get_pixel(0, 0)).to eq(:white)
+      mock.close
+    end
+  end
+
   describe '#renderer' do
     it 'returns a Renderer with the correct pixel format' do
       mock = described_class.new(model: model)
