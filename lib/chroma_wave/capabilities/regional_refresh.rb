@@ -16,11 +16,15 @@ module ChromaWave
     module RegionalRefresh
       # Displays a framebuffer within a rectangular sub-region of the screen.
       #
-      # X and width are automatically aligned to 8-pixel byte boundaries.
-      # The framebuffer must be full-screen sized; only the region pixels
-      # are sent to the display controller.
+      # Coordinates and dimensions are in logical space (respecting the
+      # display's rotation). The framebuffer is automatically rotated to
+      # native orientation before being sent to the hardware.
       #
-      # @param framebuffer [Framebuffer] the full-screen framebuffer
+      # X and width are automatically aligned to 8-pixel byte boundaries
+      # in native space (the actual refreshed region may be slightly wider
+      # than requested).
+      #
+      # @param framebuffer [Framebuffer] the full-screen framebuffer (logical space)
       # @param x [Integer] left edge of the region (aligned down to 8px)
       # @param y [Integer] top edge of the region
       # @param width [Integer] region width in pixels (aligned up to 8px)
@@ -29,13 +33,14 @@ module ChromaWave
       # @raise [ArgumentError] if the region exceeds display bounds
       # @raise [FormatMismatchError] if the framebuffer format does not match
       def display_region(framebuffer, x:, y:, width:, height:)
-        validate_framebuffer!(framebuffer)
         validate_region!(x, y, width, height)
+        native_fb = rotation.zero? ? framebuffer : framebuffer.rotate(rotation)
+        validate_framebuffer!(native_fb)
         native_x, native_y, native_w, native_h = transform_region_to_native(x, y, width, height)
         aligned_x, aligned_w = align_x_to_byte_boundary(native_x, native_w)
         ensure_initialized!
         synchronize_device do
-          device.send(:_epd_display_region, framebuffer,
+          device.send(:_epd_display_region, native_fb,
                       aligned_x, native_y, aligned_w, native_h)
         end
         self
