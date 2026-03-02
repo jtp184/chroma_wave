@@ -31,11 +31,12 @@ module ChromaWave
       def display_region(framebuffer, x:, y:, width:, height:)
         validate_framebuffer!(framebuffer)
         validate_region!(x, y, width, height)
-        aligned_x, aligned_w = align_x_to_byte_boundary(x, width)
+        native_x, native_y, native_w, native_h = transform_region_to_native(x, y, width, height)
+        aligned_x, aligned_w = align_x_to_byte_boundary(native_x, native_w)
         ensure_initialized!
         synchronize_device do
           device.send(:_epd_display_region, framebuffer,
-                      aligned_x, y, aligned_w, height)
+                      aligned_x, native_y, aligned_w, native_h)
         end
         self
       end
@@ -60,11 +61,27 @@ module ChromaWave
         raise ArgumentError, 'region height exceeds display' unless y + h <= max_h
       end
 
+      # Transforms a logical region to native display coordinates.
+      #
+      # @param x [Integer] logical left edge
+      # @param y [Integer] logical top edge
+      # @param w [Integer] logical region width
+      # @param h [Integer] logical region height
+      # @return [Array(Integer, Integer, Integer, Integer)] native [x, y, width, height]
+      def transform_region_to_native(x, y, w, h)
+        case rotation
+        when 0   then [x, y, w, h]
+        when 90  then [native_width - y - h, x, h, w]
+        when 180 then [native_width - x - w, native_height - y - h, w, h]
+        when 270 then [y, native_height - x - w, h, w]
+        end
+      end
+
       # Aligns X coordinate and width to 8-pixel byte boundaries.
       #
       # Floors X to the nearest lower multiple of 8, and ceils the end
       # (X + width) to the nearest higher multiple of 8. Clamps the
-      # result to the display width.
+      # result to the native display width.
       #
       # @param x [Integer] original X coordinate
       # @param w [Integer] original width
@@ -72,7 +89,7 @@ module ChromaWave
       def align_x_to_byte_boundary(x, w)
         aligned_x = x & ~7 # floor to 8px
         aligned_end = ((x + w + 7) & ~7) # ceil end to 8px
-        aligned_end = [aligned_end, width].min # clamp to display
+        aligned_end = [aligned_end, native_width].min # clamp to display
         [aligned_x, aligned_end - aligned_x]
       end
     end
