@@ -40,9 +40,9 @@ RSpec.describe ChromaWave::Layout::ContainerNode do
       end.not_to raise_error
     end
 
-    it 'accepts positive border_width' do
+    it 'accepts positive border_width with a border color' do
       expect do
-        described_class.new(direction: :horizontal, border_width: 2)
+        described_class.new(direction: :horizontal, border: ChromaWave::Color::BLACK, border_width: 2)
       end.not_to raise_error
     end
 
@@ -50,6 +50,26 @@ RSpec.describe ChromaWave::Layout::ContainerNode do
       expect do
         described_class.new(direction: :horizontal, border_width: -1)
       end.to raise_error(ArgumentError, /border_width must be non-negative/)
+    end
+  end
+
+  describe 'border consistency validation' do
+    it 'raises when border_width is set without a border color' do
+      expect do
+        described_class.new(direction: :horizontal, border_width: 2)
+      end.to raise_error(ArgumentError, /no border color was provided/)
+    end
+
+    it 'accepts border_width with a border color' do
+      expect do
+        described_class.new(direction: :horizontal, border: ChromaWave::Color::BLACK, border_width: 2)
+      end.not_to raise_error
+    end
+
+    it 'accepts zero border_width without a border color' do
+      expect do
+        described_class.new(direction: :horizontal, border_width: 0)
+      end.not_to raise_error
     end
   end
 end

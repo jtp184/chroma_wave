@@ -58,6 +58,7 @@ module ChromaWave
         validate_direction!(direction)
         validate_gap!(gap)
         validate_border_width!(border_width)
+        validate_border_consistency!(border, border_width)
         @direction = direction
         @children = children
         @padding = Padding.parse(padding)
@@ -176,6 +177,13 @@ module ChromaWave
         return unless border_width.negative?
 
         raise ArgumentError, "border_width must be non-negative, got #{border_width}"
+      end
+
+      # @raise [ArgumentError] if border_width is set without a border color
+      def validate_border_consistency!(border, border_width)
+        return unless border.nil? && border_width.positive?
+
+        raise ArgumentError, "border_width is #{border_width} but no border color was provided"
       end
     end
   end
