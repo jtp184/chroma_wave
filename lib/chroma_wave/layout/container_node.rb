@@ -38,6 +38,9 @@ module ChromaWave
       # @return [Symbol, nil] vertical alignment for children (:top, :center, :bottom)
       attr_reader :child_valign
 
+      # Valid main-axis direction values.
+      DIRECTIONS = %i[horizontal vertical].freeze
+
       # @param direction [:horizontal, :vertical] main axis
       # @param children [Array<Node>] child nodes
       # @param padding [nil, Integer, Array, Padding] edge insets
@@ -45,9 +48,6 @@ module ChromaWave
       # @param background [Color, nil] fill color
       # @param border [Color, nil] border color
       # @param border_width [Integer] border thickness
-      # Valid main-axis direction values.
-      DIRECTIONS = %i[horizontal vertical].freeze
-
       # @param child_align [Symbol, nil] cross-axis horizontal alignment for children
       # @param child_valign [Symbol, nil] cross-axis vertical alignment for children
       # @param kwargs [Hash] forwarded to {Node#initialize}
@@ -86,6 +86,13 @@ module ChromaWave
       # @return [true]
       def container?
         true
+      end
+
+      # Human-readable description.
+      #
+      # @return [String]
+      def inspect
+        "#<#{self.class} #{direction} children=#{children.length}>"
       end
 
       # The total border inset on each side.
