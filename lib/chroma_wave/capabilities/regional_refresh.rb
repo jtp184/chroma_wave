@@ -100,6 +100,13 @@ module ChromaWave
       # first use. Reused across {#build_native_region_fb} calls to avoid
       # allocating a full-screen buffer on every rotated region refresh.
       #
+      # NOTE: Not protected by a mutex — concurrent calls to {#display_region}
+      # could race on this buffer. In practice the device mutex serializes
+      # hardware access, and e-paper refresh cycles are measured in seconds,
+      # making concurrent region updates unrealistic. If concurrent region
+      # writes become a requirement, wrap {#build_native_region_fb} in the
+      # device lock or use a per-call buffer.
+      #
       # @return [Framebuffer]
       def native_scratch_fb
         @native_scratch_fb ||= Framebuffer.new(native_width, native_height, pixel_format)

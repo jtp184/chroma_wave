@@ -162,25 +162,29 @@ RSpec.describe ChromaWave::Display do # rubocop:disable RSpec/SpecFilePathFormat
   end
 
   describe 'rotation pipeline' do
-    let(:mono_model) do
-      ChromaWave::Native.model_names.find { |n| ChromaWave::Native.model_config(n)[:pixel_format] == :mono }
+    # Helper: find the first model matching a pixel format.
+    def model_for_format(format)
+      ChromaWave::Native.model_names.find { |n| ChromaWave::Native.model_config(n)[:pixel_format] == format }
     end
 
-    [0, 90, 180, 270].each do |degrees|
-      context "with #{degrees}° rotation" do
-        it 'renders a canvas through the full pipeline' do
-          skip 'no mono model available' unless mono_model
-          config = ChromaWave::Native.model_config(mono_model)
+    %i[mono gray4 color4 color7].each do |format|
+      context "with #{format} display" do
+        [0, 90, 180, 270].each do |degrees|
+          context "with #{degrees}° rotation" do
+            it 'renders a canvas and produces native-dimension output' do
+              model = model_for_format(format)
+              skip "no #{format} model available" unless model
+              config = ChromaWave::Native.model_config(model)
 
-          mock = ChromaWave::MockDevice.new(model: mono_model, rotation: degrees)
-          canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
-          canvas.set_pixel(0, 0, ChromaWave::Color::BLACK)
-          expect { mock.show(canvas) }.not_to raise_error
-
-          fb = mock.last_framebuffer
-          expect(fb.width).to eq(config[:width])
-          expect(fb.height).to eq(config[:height])
-          mock.close
+              ChromaWave::MockDevice.open(model: model, rotation: degrees) do |mock|
+                canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+                canvas.set_pixel(0, 0, ChromaWave::Color::BLACK)
+                mock.show(canvas)
+                expect(mock.last_framebuffer.width).to eq(config[:width])
+                expect(mock.last_framebuffer.height).to eq(config[:height])
+              end
+            end
+          end
         end
       end
     end
