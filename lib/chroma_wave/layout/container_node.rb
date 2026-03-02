@@ -45,12 +45,12 @@ module ChromaWave
       # @param background [Color, nil] fill color
       # @param border [Color, nil] border color
       # @param border_width [Integer] border thickness
-      # @param child_align [Symbol, nil] cross-axis horizontal alignment for children
-      # @param child_valign [Symbol, nil] cross-axis vertical alignment for children
-      # @param kwargs [Hash] forwarded to {Node#initialize}
       # Valid main-axis direction values.
       DIRECTIONS = %i[horizontal vertical].freeze
 
+      # @param child_align [Symbol, nil] cross-axis horizontal alignment for children
+      # @param child_valign [Symbol, nil] cross-axis vertical alignment for children
+      # @param kwargs [Hash] forwarded to {Node#initialize}
       def initialize(direction:, children: [], padding: nil, gap: 0,
                      background: nil, border: nil, border_width: 0,
                      child_align: nil, child_valign: nil, **)

@@ -30,6 +30,13 @@ module ChromaWave
         @color = color
       end
 
+      # Human-readable description.
+      #
+      # @return [String]
+      def inspect
+        "#<#{self.class} #{text.inspect} #{intrinsic_width}x#{intrinsic_height}>"
+      end
+
       # Memoized font measurement for the text content.
       #
       # @return [Font::Metrics] cached measurement result
@@ -73,6 +80,13 @@ module ChromaWave
         @name = name
         @font = font
         @color = color
+      end
+
+      # Human-readable description.
+      #
+      # @return [String]
+      def inspect
+        "#<#{self.class} #{name.inspect} #{intrinsic_width}x#{intrinsic_height}>"
       end
 
       # Memoized icon measurement.
@@ -129,6 +143,13 @@ module ChromaWave
         source.height
       end
 
+      # Human-readable description.
+      #
+      # @return [String]
+      def inspect
+        "#<#{self.class} #{intrinsic_width}x#{intrinsic_height} fit=#{fit}>"
+      end
+
       private
 
       # @raise [ArgumentError] if fit is not a recognized mode
@@ -151,6 +172,13 @@ module ChromaWave
       def initialize(flex: 1, **)
         super
       end
+
+      # Human-readable description.
+      #
+      # @return [String]
+      def inspect
+        "#<#{self.class} flex=#{flex}>"
+      end
     end
 
     # Canvas block content leaf node.
@@ -169,6 +197,13 @@ module ChromaWave
       def initialize(block:, **)
         super(**)
         @block = block
+      end
+
+      # Human-readable description.
+      #
+      # @return [String]
+      def inspect
+        "#<#{self.class}>"
       end
     end
   end

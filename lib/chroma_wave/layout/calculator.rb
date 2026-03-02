@@ -141,9 +141,8 @@ module ChromaWave
       # @return [Integer] the child's cross-axis size
       def child_cross_size(child, available, axis)
         fixed = axis == :width ? child.fixed_width : child.fixed_height
-        clamp = axis == :width ? :clamp_width : :clamp_height
         size = fixed || available
-        child.constraints.send(clamp, [size, 0].max)
+        clamp_axis(child, [size, 0].max, axis)
       end
 
       # Computes cross-axis offset for alignment.
