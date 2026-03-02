@@ -29,6 +29,10 @@ module ChromaWave
         if canvas_or_fb.is_a?(Canvas) && pixel_format == PixelFormat::COLOR4
           ensure_initialized!
           black_fb, red_fb = renderer.render_dual(canvas_or_fb)
+          unless rotation.zero?
+            black_fb = black_fb.rotate(rotation)
+            red_fb = red_fb.rotate(rotation)
+          end
           synchronize_device { device.send(:_epd_display_dual, black_fb, red_fb) }
           self
         else
@@ -51,8 +55,8 @@ module ChromaWave
           ensure_initialized!
           pixel_format.palette.index_of(color) # validate; raises KeyError
           black_val, red_val = renderer.route_for_color(color)
-          black_fb = Framebuffer.new(width, height, PixelFormat::MONO).tap { |fb| fb.clear(black_val) }
-          red_fb   = Framebuffer.new(width, height, PixelFormat::MONO).tap { |fb| fb.clear(red_val) }
+          black_fb = Framebuffer.new(native_width, native_height, PixelFormat::MONO).tap { |fb| fb.clear(black_val) }
+          red_fb   = Framebuffer.new(native_width, native_height, PixelFormat::MONO).tap { |fb| fb.clear(red_val) }
           synchronize_device { device.send(:_epd_display_dual, black_fb, red_fb) }
           self
         else
@@ -97,11 +101,13 @@ module ChromaWave
           end
         end
 
-        return if black_fb.width == width && black_fb.height == height &&
-                  red_fb.width == width && red_fb.height == height
+        nw = native_width
+        nh = native_height
+        return if black_fb.width == nw && black_fb.height == nh &&
+                  red_fb.width == nw && red_fb.height == nh
 
         raise ArgumentError,
-              "framebuffer dimensions must match display (#{width}x#{height})"
+              "framebuffer dimensions must match display (#{nw}x#{nh})"
       end
     end
   end
