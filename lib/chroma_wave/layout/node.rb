@@ -48,6 +48,8 @@ module ChromaWave
                      min_width: 0, min_height: 0, max_width: nil, max_height: nil,
                      align: nil, valign: nil)
         validate_flex!(flex)
+        validate_dimension!(width, :width)
+        validate_dimension!(height, :height)
         validate_align!(align)
         validate_valign!(valign)
         @flex = flex
@@ -114,6 +116,13 @@ module ChromaWave
       end
 
       private
+
+      # @raise [ArgumentError] if dimension is negative
+      def validate_dimension!(value, name)
+        return if value.nil? || !value.negative?
+
+        raise ArgumentError, "#{name} must be non-negative, got #{value}"
+      end
 
       # @raise [ArgumentError] if flex is not positive
       def validate_flex!(flex)
