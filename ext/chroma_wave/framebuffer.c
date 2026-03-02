@@ -369,7 +369,8 @@ fb_rotate_worker(void *arg)
  * preserved.
  *
  * The pixel-copy loop runs without the GVL so other Ruby threads
- * can proceed concurrently.
+ * can proceed concurrently. Callers must not mutate the source
+ * framebuffer from another thread during rotation.
  *
  * @param degrees [Integer] rotation angle (0, 90, 180, or 270)
  * @return [Framebuffer] a new, rotated framebuffer
@@ -472,7 +473,8 @@ fb_extract_worker(void *arg)
  * or if dimensions are not positive.
  *
  * The pixel-copy loop runs without the GVL so other Ruby threads
- * can proceed concurrently.
+ * can proceed concurrently. Callers must not mutate the source
+ * framebuffer from another thread during extraction.
  *
  * @param x [Integer] left edge of the extraction region
  * @param y [Integer] top edge of the extraction region
@@ -584,7 +586,8 @@ fb_blit_worker(void *arg)
  * same pixel format.
  *
  * The pixel-copy loop runs without the GVL so other Ruby threads
- * can proceed concurrently.
+ * can proceed concurrently. Callers must not mutate the source
+ * or destination framebuffer from another thread during blit.
  *
  * This is a private accelerator called by the Ruby +blit+ method
  * when the source is a Framebuffer with matching format.
@@ -620,10 +623,15 @@ fb_blit(VALUE self, VALUE rb_source, VALUE rb_x, VALUE rb_y)
     int x = NUM2INT(rb_x);
     int y = NUM2INT(rb_y);
 
-    /* Early exit if completely out of bounds */
-    if (x >= dst->width || y >= dst->height ||
-        x + src->width <= 0 || y + src->height <= 0)
-        return self;
+    /* Early exit if completely out of bounds.
+     * Use long arithmetic to avoid int overflow when x/y are very negative. */
+    {
+        long lx = (long)x;
+        long ly = (long)y;
+        if (lx >= dst->width || ly >= dst->height ||
+            lx + src->width <= 0 || ly + src->height <= 0)
+            return self;
+    }
 
     blit_args_t ba = {
         .src = src,
