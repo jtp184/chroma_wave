@@ -150,6 +150,10 @@ module ChromaWave
 
       # Draws a fitted image at its aligned position within the layer.
       #
+      # Draws directly onto the canvas at absolute coordinates because
+      # +Image#draw_onto+ writes raw pixel data and does not understand
+      # the Layer abstraction. We translate manually via +layer.offset_x/y+.
+      #
       # @param image [Image] the fitted/scaled image
       # @param node [ImageContent] the image node (for alignment)
       # @param layer [Layer] the drawing surface
