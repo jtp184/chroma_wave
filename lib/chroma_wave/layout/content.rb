@@ -32,12 +32,21 @@ module ChromaWave
 
       # @return [Integer] measured text width
       def intrinsic_width
-        font.measure(text).width
+        text_metrics.width
       end
 
       # @return [Integer] measured text height
       def intrinsic_height
-        font.measure(text).height
+        text_metrics.height
+      end
+
+      private
+
+      # Memoized font measurement for the text content.
+      #
+      # @return [Font::Metrics] cached measurement result
+      def text_metrics
+        @text_metrics ||= font.measure(text)
       end
     end
 
@@ -70,12 +79,21 @@ module ChromaWave
 
       # @return [Integer] measured icon width
       def intrinsic_width
-        font.measure_icon(name).width
+        icon_metrics.width
       end
 
       # @return [Integer] measured icon height
       def intrinsic_height
-        font.measure_icon(name).height
+        icon_metrics.height
+      end
+
+      private
+
+      # Memoized icon measurement.
+      #
+      # @return [IconFont::Metrics] cached measurement result
+      def icon_metrics
+        @icon_metrics ||= font.measure_icon(name)
       end
     end
 
