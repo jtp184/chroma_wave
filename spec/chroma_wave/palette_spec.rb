@@ -112,7 +112,7 @@ RSpec.describe ChromaWave::Palette do
       expect(palette.nearest_color(near_red)).to eq(:red)
     end
 
-    it 'maps dark blue to :blue not :black (redmean accuracy)' do
+    it 'maps dark blue to :blue not :black (perceptual accuracy)' do
       dark_blue = ChromaWave::Color.new(r: 0, g: 0, b: 180)
       expect(palette.nearest_color(dark_blue)).to eq(:blue)
     end
@@ -122,6 +122,33 @@ RSpec.describe ChromaWave::Palette do
       result1 = palette.nearest_color(color)
       result2 = palette.nearest_color(color)
       expect(result1).to equal(result2)
+    end
+
+    it 'maps each named color to itself' do
+      palette.each do |name|
+        color = ChromaWave::Color.from_name(name)
+        expect(palette.nearest_color(color)).to eq(name),
+                                                "expected #{name} to map to itself"
+      end
+    end
+
+    context 'with COLOR7 palette' do
+      subject(:palette) do
+        described_class[:black, :white, :green, :blue, :red, :yellow, :orange]
+      end
+
+      it 'maps all seven named colors to themselves' do
+        palette.each do |name|
+          color = ChromaWave::Color.from_name(name)
+          expect(palette.nearest_color(color)).to eq(name),
+                                                  "expected #{name} to map to itself in COLOR7"
+        end
+      end
+
+      it 'maps dark green (0,128,0) to :green not :black' do
+        dark_green = ChromaWave::Color.new(r: 0, g: 128, b: 0)
+        expect(palette.nearest_color(dark_green)).to eq(:green)
+      end
     end
   end
 
