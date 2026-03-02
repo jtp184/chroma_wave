@@ -233,7 +233,7 @@ module ChromaWave
     #
     # @return [void]
     def apply_logical_dimensions!
-      if [90, 270].include?(rotation)
+      if rotation == 90 || rotation == 270
         @width = @native_height
         @height = @native_width
       else

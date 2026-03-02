@@ -35,6 +35,8 @@ module ChromaWave
       # @raise [FormatMismatchError] if the framebuffer format does not match
       def display_region(framebuffer, x:, y:, width:, height:)
         validate_region!(x, y, width, height)
+        # Validates logical (rotated) dimensions — distinct from Display#validate_framebuffer!
+        # which checks native dimensions for raw framebuffer input.
         validate_logical_framebuffer!(framebuffer)
         native_x, native_y, native_w, native_h = transform_region_to_native(x, y, width, height)
         aligned_x, aligned_w = align_x_to_byte_boundary(native_x, native_w)

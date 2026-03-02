@@ -347,6 +347,7 @@ fb_rotate_worker(void *arg)
                 dx = sy;
                 dy = dst_h - 1 - sx;
                 break;
+            default: break;
             }
 
             fb_set_pixel_raw(dst, dx, dy, color);
