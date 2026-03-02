@@ -91,6 +91,16 @@ module ChromaWave
       format('#%<r>02X%<g>02X%<b>02X', r: r, g: g, b: b)
     end
 
+    # Returns the CIE L*a*b* representation of this color.
+    #
+    # Results are cached at the class level by structural equality,
+    # so repeated calls for equal Colors return the same Array object.
+    #
+    # @return [Array(Float, Float, Float)] [L*, a*, b*]
+    def to_lab
+      Color.lab_cache[self] ||= Color.compute_lab(r, g, b)
+    end
+
     private
 
     # Validates that a channel value is an Integer in 0..255.
@@ -116,6 +126,17 @@ module ChromaWave
 
   # Regex for 3-digit shorthand hex color strings (#RGB).
   Color.const_set(:HEX3_PATTERN, /\A#([0-9a-f])([0-9a-f])([0-9a-f])\z/i)
+
+  # CIE D65 standard illuminant tristimulus values (2° observer).
+  Color.const_set(:D65_XN, 0.95047)
+  Color.const_set(:D65_YN, 1.00000)
+  Color.const_set(:D65_ZN, 1.08883)
+
+  # CIE Lab transfer function threshold: (6/29)^3.
+  Color.const_set(:LAB_EPSILON, (6.0 / 29)**3)
+
+  # CIE Lab transfer function scale factor: 1/3 * (29/6)^2.
+  Color.const_set(:LAB_KAPPA, (1.0 / 3) * (29.0 / 6)**2)
 
   class << Color
     # Unpacks a 4-byte RGBA string into a Color.
@@ -159,6 +180,80 @@ module ChromaWave
     # @raise [KeyError] if the name is not registered
     def from_name(name)
       self::NAME_MAP.fetch(name)
+    end
+
+    # Returns the class-level Lab cache (keyed by Color structural equality).
+    #
+    # @return [Hash{Color => Array(Float, Float, Float)}]
+    def lab_cache
+      @lab_cache ||= {}
+    end
+
+    # Computes CIE L*a*b* values from sRGB channels.
+    #
+    # Orchestrates the full pipeline: sRGB → linear RGB → XYZ → Lab.
+    #
+    # @param r [Integer] red channel (0..255)
+    # @param g [Integer] green channel (0..255)
+    # @param b [Integer] blue channel (0..255)
+    # @return [Array(Float, Float, Float)] [L*, a*, b*]
+    def compute_lab(r, g, b)
+      x, y, z = srgb_to_xyz(r, g, b)
+      xyz_to_lab(x, y, z)
+    end
+
+    # Converts sRGB (0..255) to CIE XYZ using IEC 61966-2-1 matrix.
+    #
+    # @param r [Integer] red channel (0..255)
+    # @param g [Integer] green channel (0..255)
+    # @param b [Integer] blue channel (0..255)
+    # @return [Array(Float, Float, Float)] [X, Y, Z] tristimulus values
+    def srgb_to_xyz(r, g, b)
+      rl = gamma_decode(r / 255.0)
+      gl = gamma_decode(g / 255.0)
+      bl = gamma_decode(b / 255.0)
+
+      x = (0.4124564 * rl) + (0.3575761 * gl) + (0.1804375 * bl)
+      y = (0.2126729 * rl) + (0.7151522 * gl) + (0.0721750 * bl)
+      z = (0.0193339 * rl) + (0.1191920 * gl) + (0.9503041 * bl)
+
+      [x, y, z]
+    end
+
+    # Converts CIE XYZ to CIE L*a*b* relative to D65 illuminant.
+    #
+    # @param x [Float] X tristimulus value
+    # @param y [Float] Y tristimulus value
+    # @param z [Float] Z tristimulus value
+    # @return [Array(Float, Float, Float)] [L*, a*, b*]
+    def xyz_to_lab(x, y, z)
+      fx = lab_f(x / self::D65_XN)
+      fy = lab_f(y / self::D65_YN)
+      fz = lab_f(z / self::D65_ZN)
+
+      l = (116.0 * fy) - 16.0
+      a = 500.0 * (fx - fy)
+      b = 200.0 * (fy - fz)
+
+      [l, a, b]
+    end
+
+    private
+
+    # sRGB inverse companding (gamma decode).
+    #
+    # @param c [Float] normalized sRGB channel (0.0..1.0)
+    # @return [Float] linear RGB value
+    def gamma_decode(c)
+      c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055)**2.4
+    end
+
+    # CIE Lab transfer function.
+    #
+    # @param t [Float] normalized tristimulus ratio
+    # @return [Float] compressed value
+    def lab_f(t)
+      t > self::LAB_EPSILON ? t**(1.0 / 3) : (self::LAB_KAPPA * t) + (4.0 / 29)
     end
   end
 
