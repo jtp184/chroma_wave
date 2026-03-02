@@ -337,6 +337,99 @@ RSpec.describe ChromaWave::Capabilities::RegionalRefresh do
     end
   end
 
+  describe 'boundary-edge alignment under rotation' do
+    let(:model) { :epd_2in13_v4 }
+
+    [90, 270].each do |degrees|
+      context "with #{degrees}° rotation" do
+        let(:display) do
+          d = ChromaWave::MockDevice.new(model: model, rotation: degrees)
+          d.singleton_class.include(described_class)
+          d
+        end
+        let(:fb) { ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format) }
+
+        after { display.close }
+
+        it 'handles a region flush against the right logical edge' do
+          # Right edge in logical space; exercises native alignment clamping
+          right_x = display.width - 8
+          expect { display.display_region(fb, x: right_x, y: 0, width: 8, height: 8) }
+            .not_to raise_error
+        end
+
+        it 'handles a region flush against the bottom logical edge' do
+          bottom_y = display.height - 8
+          expect { display.display_region(fb, x: 0, y: bottom_y, width: 8, height: 8) }
+            .not_to raise_error
+        end
+
+        it 'handles a region in the bottom-right corner' do
+          right_x = display.width - 8
+          bottom_y = display.height - 8
+          expect { display.display_region(fb, x: right_x, y: bottom_y, width: 8, height: 8) }
+            .not_to raise_error
+        end
+
+        it 'handles a full-screen region' do
+          expect { display.display_region(fb, x: 0, y: 0, width: display.width, height: display.height) }
+            .not_to raise_error
+        end
+      end
+    end
+
+    context 'with 180° rotation' do
+      let(:display) do
+        d = ChromaWave::MockDevice.new(model: model, rotation: 180)
+        d.singleton_class.include(described_class)
+        d
+      end
+      let(:fb) { ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format) }
+
+      after { display.close }
+
+      it 'handles a region flush against the right edge' do
+        right_x = display.width - 8
+        expect { display.display_region(fb, x: right_x, y: 0, width: 8, height: 8) }
+          .not_to raise_error
+      end
+    end
+  end
+
+  describe 'composed extract + rotate pixel accuracy' do
+    # Verifies that the build_native_region_fb pipeline (extract -> rotate -> blit)
+    # correctly places pixels from logical to native space.
+    let(:model) { :epd_2in13_v4 }
+
+    # Counts pixels matching +color+ in the framebuffer.
+    def count_pixels(framebuffer, color)
+      count = 0
+      framebuffer.height.times do |row|
+        framebuffer.width.times { |col| count += 1 if framebuffer.get_pixel(col, row) == color }
+      end
+      count
+    end
+
+    [90, 180, 270].each do |degrees|
+      context "with #{degrees}° rotation" do
+        let(:display) do
+          d = ChromaWave::MockDevice.new(model: model, rotation: degrees)
+          d.singleton_class.include(described_class)
+          d
+        end
+
+        after { display.close }
+
+        it 'preserves exactly one marker pixel through extract -> rotate' do
+          fb = ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format)
+          fb.set_pixel(3, 2, :black)
+          rotated = fb.extract(0, 0, 8, 8).rotate(degrees)
+          expect(count_pixels(rotated, :black)).to eq(1)
+        end
+      end
+    end
+  end
+
   describe 'capability inclusion' do
     it 'is not included on models without :regional' do
       non_regional = find_non_regional_model

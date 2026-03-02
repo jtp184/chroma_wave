@@ -931,6 +931,68 @@ RSpec.describe ChromaWave::Framebuffer do
     end
   end
 
+  describe '#blit (C-accelerated)' do
+    it 'copies pixels at the correct offset' do
+      dst = described_class.new(16, 8, :mono)
+      src = described_class.new(4, 3, :mono)
+      src.set_pixel(1, 1, :black)
+      dst.blit(src, x: 4, y: 2)
+      expect(dst.get_pixel(5, 3)).to eq(:black)
+    end
+
+    it 'clips source pixels that fall outside destination' do
+      dst = described_class.new(8, 8, :mono)
+      src = described_class.new(4, 4, :mono)
+      src.set_pixel(3, 3, :black)
+      # Offset puts (3,3) at (9,9), outside 8x8 dst
+      dst.blit(src, x: 6, y: 6)
+      expect(dst.get_pixel(7, 7)).to eq(:white)
+    end
+
+    it 'clips with negative offset' do
+      dst = described_class.new(8, 8, :mono)
+      src = described_class.new(4, 4, :mono)
+      src.set_pixel(2, 2, :black)
+      dst.blit(src, x: -1, y: -1)
+      expect(dst.get_pixel(1, 1)).to eq(:black)
+    end
+
+    it 'returns self for chaining' do
+      dst = described_class.new(8, 8, :mono)
+      src = described_class.new(4, 4, :mono)
+      expect(dst.blit(src, x: 0, y: 0)).to equal(dst)
+    end
+
+    it 'handles completely out-of-bounds source (no-op)' do
+      dst = described_class.new(8, 8, :mono)
+      src = described_class.new(4, 4, :mono)
+      src.set_pixel(0, 0, :black)
+      dst.blit(src, x: 100, y: 100)
+      # dst should remain all white
+      expect(dst.get_pixel(0, 0)).to eq(:white)
+    end
+
+    %i[mono gray4 color4 color7].each do |fmt|
+      it "works with #{fmt} format" do
+        pf = ChromaWave::PixelFormat.from_name(fmt)
+        marker = fmt == :mono ? :black : pf.palette.color_at(1)
+        dst = described_class.new(16, 8, fmt)
+        src = described_class.new(4, 4, fmt)
+        src.set_pixel(1, 1, marker)
+        dst.blit(src, x: 2, y: 3)
+        expect(dst.get_pixel(3, 4)).to eq(marker)
+      end
+    end
+
+    it 'falls back to Ruby Surface#blit for mismatched pixel formats' do
+      dst = described_class.new(8, 8, :mono)
+      src = described_class.new(8, 8, :gray4)
+      # Different formats bypass C path, falls back to Surface#blit (Ruby)
+      # gray4 color_at(0) is :black which mono resolves fine
+      expect { dst.blit(src, x: 0, y: 0) }.not_to raise_error
+    end
+  end
+
   describe 'GC stress test' do
     it 'handles creating and discarding many framebuffers' do
       expect do
