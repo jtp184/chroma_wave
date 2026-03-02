@@ -148,9 +148,20 @@ module ChromaWave
     #   sub-region onto the existing screen.
     # - {Display#clear} resets the screen to white.
     #
+    # For dual-buffer (COLOR4) displays, this returns the black plane only.
+    # Use {#last_red_framebuffer} to inspect the red plane separately.
+    #
     # @return [Framebuffer, nil] nil if no display operation has occurred
     def last_framebuffer
       @operations_mutex.synchronize { @composite_screen&.dup }
+    end
+
+    # Returns a dup of the last red-plane framebuffer from a dual-buffer show,
+    # or +nil+ for single-buffer displays or if no dual show has occurred.
+    #
+    # @return [Framebuffer, nil]
+    def last_red_framebuffer
+      @operations_mutex.synchronize { @last_red_plane&.dup }
     end
 
     # Exports the last framebuffer as a palette-accurate PNG.
@@ -194,6 +205,7 @@ module ChromaWave
       @operations_mutex = Mutex.new
       @operations_log = []
       @composite_screen = nil
+      @last_red_plane = nil
       @device = DeviceStub.new(self)
       apply_logical_dimensions!
     end
@@ -234,6 +246,11 @@ module ChromaWave
     # @return [void]
     def replace_composite_screen(framebuffer)
       @operations_mutex.synchronize { @composite_screen = framebuffer.dup }
+    end
+
+    # Stores a dup of the red-plane framebuffer for {#last_red_framebuffer}.
+    def store_red_plane(framebuffer)
+      @operations_mutex.synchronize { @last_red_plane = framebuffer.dup }
     end
 
     # Extracts a sub-region from the full-screen framebuffer and blits it
@@ -392,7 +409,11 @@ module ChromaWave
         @mock_device.send(:simulate_busy)
       end
 
-      # Stub for dual-buffer display — composites black plane and logs.
+      # Stub for dual-buffer display — composites both planes and logs.
+      #
+      # The black plane replaces the composite screen (inspectable via
+      # {MockDevice#last_framebuffer}). The red plane is stored separately
+      # (inspectable via {MockDevice#last_red_framebuffer}).
       #
       # @param black_fb [Framebuffer] the black plane framebuffer
       # @param red_fb [Framebuffer] the red plane framebuffer
@@ -401,6 +422,7 @@ module ChromaWave
       def _epd_display_dual(black_fb, red_fb)
         assert_open!
         @mock_device.send(:replace_composite_screen, black_fb)
+        @mock_device.send(:store_red_plane, red_fb)
         @mock_device.send(
           :record_operation,
           op: :show_dual,

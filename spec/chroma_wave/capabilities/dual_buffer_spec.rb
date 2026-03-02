@@ -102,7 +102,7 @@ RSpec.describe ChromaWave::Capabilities::DualBuffer do
         end
 
         it 'rejects show_raw with logical-dimension framebuffers when rotated' do
-          next if [0, 180].include?(degrees) || config[:width] == config[:height]
+          skip 'dimensions are symmetric' if [0, 180].include?(degrees) || config[:width] == config[:height]
 
           lw = rotated_display.width
           lh = rotated_display.height

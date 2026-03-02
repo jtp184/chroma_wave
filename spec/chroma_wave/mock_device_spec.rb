@@ -327,6 +327,49 @@ RSpec.describe ChromaWave::MockDevice do
     end
   end
 
+  describe '#last_red_framebuffer' do
+    let(:dual_model) do
+      ChromaWave::Native.model_names.find do |name|
+        (ChromaWave::Native.model_config(name)[:capabilities] || []).include?(:dual_buf)
+      end
+    end
+
+    it 'is nil before any dual show' do
+      skip 'no dual-buffer model available' unless dual_model
+      mock = described_class.new(model: dual_model)
+      expect(mock.last_red_framebuffer).to be_nil
+      mock.close
+    end
+
+    it 'is populated after a dual-buffer show' do
+      skip 'no dual-buffer model available' unless dual_model
+      mock = described_class.new(model: dual_model)
+      canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+      mock.show(canvas)
+      expect(mock.last_red_framebuffer).to be_a(ChromaWave::Framebuffer)
+      mock.close
+    end
+
+    it 'returns a dup (not the internal reference)' do
+      skip 'no dual-buffer model available' unless dual_model
+      mock = described_class.new(model: dual_model)
+      canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
+      mock.show(canvas)
+      fb1 = mock.last_red_framebuffer
+      fb2 = mock.last_red_framebuffer
+      expect(fb1).not_to equal(fb2)
+      expect(fb1).to eq(fb2)
+      mock.close
+    end
+
+    it 'is nil for single-buffer models' do
+      mock = described_class.new(model: model)
+      mock.show(make_canvas(mock))
+      expect(mock.last_red_framebuffer).to be_nil
+      mock.close
+    end
+  end
+
   describe 'capability dispatch' do
     it 'logs partial refresh init and show' do
       mock = described_class.new(model: model)
