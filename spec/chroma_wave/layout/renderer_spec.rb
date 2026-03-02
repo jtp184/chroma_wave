@@ -82,6 +82,32 @@ RSpec.describe ChromaWave::Layout::Renderer do
     end
   end
 
+  describe 'text alignment' do
+    it 'right-aligned text starts further right than left-aligned' do
+      font = ChromaWave::Font.default(size: 12)
+
+      left_node = ChromaWave::Layout::TextContent.new(
+        text: 'Hi', font: font, color: black, align: :left
+      )
+      assign_box(left_node, x: 0, y: 0, width: 100, height: 30)
+
+      left_canvas = ChromaWave::Canvas.new(width: 100, height: 30)
+      described_class.new(left_canvas).render(left_node)
+      left_x = first_non_white_x(left_canvas)
+
+      right_node = ChromaWave::Layout::TextContent.new(
+        text: 'Hi', font: font, color: black, align: :right
+      )
+      assign_box(right_node, x: 0, y: 0, width: 100, height: 30)
+
+      right_canvas = ChromaWave::Canvas.new(width: 100, height: 30)
+      described_class.new(right_canvas).render(right_node)
+      right_x = first_non_white_x(right_canvas)
+
+      expect(right_x).to be > left_x
+    end
+  end
+
   describe 'canvas_block rendering' do
     it 'calls the block with a layer' do
       received_layer = nil

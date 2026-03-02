@@ -110,18 +110,22 @@ module ChromaWave
 
       # Renders text content with alignment support.
       #
+      # Computes horizontal alignment in the Renderer (like icons/images)
+      # rather than delegating to +draw_text+'s +align:+ parameter. This
+      # ensures all content types use the same alignment mechanism.
+      #
       # @param node [TextContent] the text node
       # @param layer [Layer] the drawing surface
       def render_text(node, layer)
+        x_offset = align_offset(node.metrics.width, layer.width, node.align)
         y_offset = valign_offset(node.metrics.height, layer.height, node.valign)
 
         layer.draw_text(
           node.text,
-          x: 0, y: y_offset,
+          x: x_offset, y: y_offset,
           font: node.font,
           color: node.color,
-          align: node.align || :left,
-          max_width: layer.width
+          max_width: layer.width - x_offset
         )
       end
 
