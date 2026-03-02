@@ -297,4 +297,67 @@ RSpec.describe ChromaWave::Color do
       expect { described_class.from_name(:magenta) }.to raise_error(KeyError)
     end
   end
+
+  describe '#to_lab' do
+    it 'returns a three-element Array' do
+      lab = described_class::RED.to_lab
+      expect(lab).to be_an(Array)
+      expect(lab.size).to eq(3)
+    end
+
+    it 'converts BLACK to L*=0, a*=0, b*=0' do
+      l, a, b = described_class::BLACK.to_lab
+      expect(l).to be_within(0.01).of(0.0)
+      expect(a).to be_within(0.01).of(0.0)
+      expect(b).to be_within(0.01).of(0.0)
+    end
+
+    it 'converts WHITE to L*=100, a*≈0, b*≈0' do
+      l, a, b = described_class::WHITE.to_lab
+      expect(l).to be_within(0.01).of(100.0)
+      expect(a).to be_within(0.5).of(0.0)
+      expect(b).to be_within(0.5).of(0.0)
+    end
+
+    it 'converts RED to expected Lab values' do
+      l, a, b = described_class::RED.to_lab
+      expect(l).to be_within(0.5).of(53.23)
+      expect(a).to be_within(0.5).of(80.11)
+      expect(b).to be_within(0.5).of(67.22)
+    end
+
+    it 'converts GREEN (0,255,0) to expected Lab values' do
+      l, a, b = described_class::GREEN.to_lab
+      expect(l).to be_within(0.5).of(87.74)
+      expect(a).to be_within(0.5).of(-86.18)
+      expect(b).to be_within(0.5).of(83.18)
+    end
+
+    it 'converts BLUE to expected Lab values' do
+      l, a, b = described_class::BLUE.to_lab
+      expect(l).to be_within(0.5).of(32.30)
+      expect(a).to be_within(0.5).of(79.20)
+      expect(b).to be_within(0.5).of(-107.86)
+    end
+
+    it 'produces a*=0 and b*=0 for neutral grays' do
+      [85, 128, 170].each do |v|
+        _l, a, b = described_class.new(r: v, g: v, b: v).to_lab
+        expect(a).to be_within(0.01).of(0.0), "a* for gray(#{v}) was #{a}"
+        expect(b).to be_within(0.01).of(0.0), "b* for gray(#{v}) was #{b}"
+      end
+    end
+
+    it 'returns the same Array object for the same Color (cache identity)' do
+      lab1 = described_class::RED.to_lab
+      lab2 = described_class::RED.to_lab
+      expect(lab1).to equal(lab2)
+    end
+
+    it 'shares cache entries for structurally equal Colors' do
+      a = described_class.new(r: 42, g: 100, b: 200)
+      b = described_class.new(r: 42, g: 100, b: 200)
+      expect(a.to_lab).to equal(b.to_lab)
+    end
+  end
 end
