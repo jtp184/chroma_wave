@@ -197,6 +197,22 @@ RSpec.describe ChromaWave::Layout::Calculator do
       expect { positions = layout(root, width: 200, height: 100) }.not_to raise_error
       expect(positions[children[1]].width).to eq(0)
     end
+
+    it 'handles border + padding exceeding container size' do
+      child = node_class.new(flex: 1)
+      root = container_class.new(
+        direction: :vertical, children: [child],
+        border: ChromaWave::Color::BLACK, border_width: 30, padding: 20
+      )
+
+      positions = nil
+      expect { positions = layout(root, width: 80, height: 80) }.not_to raise_error
+
+      # border(30*2) + padding(20*2) = 100 > 80, content area clamped to 0
+      # Container gets its full box, children are skipped (no position assigned)
+      expect(positions[root].width).to eq(80)
+      expect(positions).not_to have_key(child)
+    end
   end
 
   describe 'empty container' do
