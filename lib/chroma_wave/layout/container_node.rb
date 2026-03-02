@@ -40,9 +40,14 @@ module ChromaWave
       # @param border [Color, nil] border color
       # @param border_width [Integer] border thickness
       # @param kwargs [Hash] forwarded to {Node#initialize}
+      # Valid main-axis direction values.
+      DIRECTIONS = %i[horizontal vertical].freeze
+
       def initialize(direction:, children: [], padding: nil, gap: 0,
                      background: nil, border: nil, border_width: 0, **)
         super(**)
+        validate_direction!(direction)
+        validate_border_width!(border_width)
         @direction = direction
         @children = children
         @padding = Padding.parse(padding)
@@ -131,6 +136,20 @@ module ChromaWave
       # @return [Integer]
       def children_cross_axis_max(method)
         children.map(&method).max || 0
+      end
+
+      # @raise [ArgumentError] if direction is not :horizontal or :vertical
+      def validate_direction!(direction)
+        return if DIRECTIONS.include?(direction)
+
+        raise ArgumentError, "direction must be :horizontal or :vertical, got #{direction.inspect}"
+      end
+
+      # @raise [ArgumentError] if border_width is negative
+      def validate_border_width!(border_width)
+        return unless border_width.negative?
+
+        raise ArgumentError, "border_width must be non-negative, got #{border_width}"
       end
     end
   end

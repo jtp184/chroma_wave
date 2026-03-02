@@ -25,6 +25,32 @@ module ChromaWave
       # @!attribute [r] left
       #   @return [Integer] left edge inset in pixels
 
+      # Zero padding singleton.
+      const_set(:ZERO, new(top: 0, right: 0, bottom: 0, left: 0).freeze)
+
+      # @raise [ArgumentError] if any edge value is negative
+      def initialize(top:, right:, bottom:, left:)
+        [top, right, bottom, left].each do |v|
+          raise ArgumentError, "padding values must be non-negative, got #{v}" if v.negative?
+        end
+        super
+      end
+
+      # Parses various input formats into a Padding instance.
+      #
+      # @param value [nil, Integer, Array<Integer>, Padding] the input to parse
+      # @return [Padding]
+      # @raise [ArgumentError] if the input format is not recognized
+      def self.parse(value)
+        case value
+        when nil      then self::ZERO
+        when Padding  then value
+        when Integer  then value.zero? ? self::ZERO : new(top: value, right: value, bottom: value, left: value)
+        when Array    then parse_array(value)
+        else raise ArgumentError, "cannot parse #{value.inspect} as Padding"
+        end
+      end
+
       # Total horizontal inset (left + right).
       #
       # @return [Integer]
@@ -38,35 +64,13 @@ module ChromaWave
       def vertical
         top + bottom
       end
-    end
-
-    class << Padding
-      # Zero padding singleton.
-      ZERO = Padding.new(top: 0, right: 0, bottom: 0, left: 0)
-
-      # Parses various input formats into a Padding instance.
-      #
-      # @param value [nil, Integer, Array<Integer>, Padding] the input to parse
-      # @return [Padding]
-      # @raise [ArgumentError] if the input format is not recognized
-      def parse(value)
-        case value
-        when nil      then ZERO
-        when Padding  then value
-        when Integer  then value.zero? ? ZERO : new(top: value, right: value, bottom: value, left: value)
-        when Array    then parse_array(value)
-        else raise ArgumentError, "cannot parse #{value.inspect} as Padding"
-        end
-      end
-
-      private
 
       # Parses an array into Padding, supporting CSS-style shorthand.
       #
       # @param ary [Array<Integer>] 1, 2, or 4 element array
       # @return [Padding]
       # @raise [ArgumentError] if array length is not 1, 2, or 4
-      def parse_array(ary)
+      private_class_method def self.parse_array(ary)
         case ary.length
         when 1 then parse(ary[0])
         when 2 then new(top: ary[0], right: ary[1], bottom: ary[0], left: ary[1])
