@@ -37,6 +37,13 @@ RSpec.describe ChromaWave::Layout::Padding do
       end
     end
 
+    context 'with a 3-element Array' do
+      it 'returns top/horizontal/bottom padding' do
+        padding = described_class.parse([5, 10, 15])
+        expect(padding).to eq(described_class.new(top: 5, right: 10, bottom: 15, left: 10))
+      end
+    end
+
     context 'with a 1-element Array' do
       it 'returns uniform padding' do
         padding = described_class.parse([8])
@@ -53,7 +60,7 @@ RSpec.describe ChromaWave::Layout::Padding do
 
     context 'with an invalid Array length' do
       it 'raises ArgumentError' do
-        expect { described_class.parse([1, 2, 3]) }.to raise_error(ArgumentError, /expected 1, 2, or 4/)
+        expect { described_class.parse([1, 2, 3, 4, 5]) }.to raise_error(ArgumentError, /expected 1, 2, 3, or 4/)
       end
     end
 
