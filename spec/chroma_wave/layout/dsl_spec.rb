@@ -158,12 +158,20 @@ RSpec.describe ChromaWave::Layout::DSL do
       end
     end
 
-    context 'with negative flex' do
-      it 'raises ArgumentError' do
+    context 'with non-positive flex' do
+      it 'raises ArgumentError for negative flex' do
         f = font
         c = color
         expect do
           described_class.evaluate { text 'hi', font: f, color: c, flex: -1 }
+        end.to raise_error(ArgumentError, /flex must be positive/)
+      end
+
+      it 'raises ArgumentError for zero flex' do
+        f = font
+        c = color
+        expect do
+          described_class.evaluate { text 'hi', font: f, color: c, flex: 0 }
         end.to raise_error(ArgumentError, /flex must be positive/)
       end
     end

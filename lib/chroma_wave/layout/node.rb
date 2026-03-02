@@ -107,11 +107,21 @@ module ChromaWave
         !fixed_height.nil?
       end
 
+      # Human-readable description.
+      #
+      # @return [String]
+      def inspect
+        dims = [fixed_width || '?', fixed_height || '?'].join('x')
+        parts = [self.class.name, dims]
+        parts << "flex=#{flex}" if flex
+        "#<#{parts.join(' ')}>"
+      end
+
       private
 
-      # @raise [ArgumentError] if flex is negative
+      # @raise [ArgumentError] if flex is not positive
       def validate_flex!(flex)
-        return if flex.nil? || !flex.negative?
+        return if flex.nil? || flex.positive?
 
         raise ArgumentError, "flex must be positive, got #{flex}"
       end
