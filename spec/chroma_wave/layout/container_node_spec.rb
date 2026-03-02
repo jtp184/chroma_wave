@@ -53,6 +53,42 @@ RSpec.describe ChromaWave::Layout::ContainerNode do
     end
   end
 
+  describe 'child_align validation' do
+    it 'accepts valid child_align values' do
+      %i[left center right].each do |a|
+        expect { described_class.new(direction: :horizontal, child_align: a) }.not_to raise_error
+      end
+    end
+
+    it 'accepts nil child_align' do
+      expect { described_class.new(direction: :horizontal, child_align: nil) }.not_to raise_error
+    end
+
+    it 'rejects invalid child_align' do
+      expect do
+        described_class.new(direction: :horizontal, child_align: :middle)
+      end.to raise_error(ArgumentError, /child_align must be one of/)
+    end
+  end
+
+  describe 'child_valign validation' do
+    it 'accepts valid child_valign values' do
+      %i[top center bottom].each do |v|
+        expect { described_class.new(direction: :horizontal, child_valign: v) }.not_to raise_error
+      end
+    end
+
+    it 'accepts nil child_valign' do
+      expect { described_class.new(direction: :horizontal, child_valign: nil) }.not_to raise_error
+    end
+
+    it 'rejects invalid child_valign' do
+      expect do
+        described_class.new(direction: :horizontal, child_valign: :middle)
+      end.to raise_error(ArgumentError, /child_valign must be one of/)
+    end
+  end
+
   describe 'border consistency validation' do
     it 'raises when border_width is set without a border color' do
       expect do

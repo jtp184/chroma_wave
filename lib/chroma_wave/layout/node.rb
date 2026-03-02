@@ -127,17 +127,21 @@ module ChromaWave
       end
 
       # @raise [ArgumentError] if align is not a recognized value
-      def validate_align!(align)
+      # @param align [Symbol, nil] the value to validate
+      # @param label [String] the parameter name for error messages
+      def validate_align!(align, label: 'align')
         return if align.nil? || ALIGN_VALUES.include?(align)
 
-        raise ArgumentError, "align must be one of #{ALIGN_VALUES.inspect}, got #{align.inspect}"
+        raise ArgumentError, "#{label} must be one of #{ALIGN_VALUES.inspect}, got #{align.inspect}"
       end
 
       # @raise [ArgumentError] if valign is not a recognized value
-      def validate_valign!(valign)
+      # @param valign [Symbol, nil] the value to validate
+      # @param label [String] the parameter name for error messages
+      def validate_valign!(valign, label: 'valign')
         return if valign.nil? || VALIGN_VALUES.include?(valign)
 
-        raise ArgumentError, "valign must be one of #{VALIGN_VALUES.inspect}, got #{valign.inspect}"
+        raise ArgumentError, "#{label} must be one of #{VALIGN_VALUES.inspect}, got #{valign.inspect}"
       end
     end
   end

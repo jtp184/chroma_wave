@@ -59,6 +59,8 @@ module ChromaWave
         validate_gap!(gap)
         validate_border_width!(border_width)
         validate_border_consistency!(border, border_width)
+        validate_align!(child_align, label: 'child_align')
+        validate_valign!(child_valign, label: 'child_valign')
         @direction = direction
         @children = children
         @padding = Padding.parse(padding)
