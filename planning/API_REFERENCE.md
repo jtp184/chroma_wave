@@ -132,15 +132,15 @@ module ChromaWave
       height.times { |y| width.times { |x| set_pixel(x, y, color) } }
     end
 
-    def draw_line(x0, y0, x1, y1, color:)
+    def draw_line(x0, y0, x1, y1, pen:)
       # Bresenham — delegates to self.set_pixel
     end
 
-    def draw_rect(x, y, w, h, color:, fill: false)
+    def draw_rect(x, y, w, h, pen:)
       # Outline or filled rectangle
     end
 
-    def draw_circle(cx, cy, r, color:, fill: false)
+    def draw_circle(cx, cy, r, pen:)
       # Midpoint circle algorithm
     end
 
@@ -325,12 +325,14 @@ Framebuffer (C-backed, TypedData)
 > fb.get_pixel(10, 20)             # → :black
 > ```
 >
-> The `Surface` mixin's drawing primitives accept a `color:` keyword. On a Canvas, this is a
-> `Color` (RGBA). On a Framebuffer, this is a palette entry. The `Surface` protocol doesn't
-> constrain the type — it just passes whatever `color:` value through to `set_pixel`. This
-> duck-typing means the same `draw_rect` call works on both, with the color type matching the
-> surface's storage format. The `Renderer` is the bridge: it maps `Color` → palette entry
-> during quantization, writing palette entries into the Framebuffer.
+> The `Surface` mixin's drawing primitives accept a `pen:` keyword — a `Pen` value object
+> bundling stroke color, fill color, and stroke width. The `Pen`'s color fields are
+> duck-typed and passed straight through to `set_pixel`. On a Canvas, these are `Color`
+> (RGBA) objects. On a Framebuffer, these are palette entry symbols (`:black`, `:red`,
+> etc.). The `Surface` protocol doesn't constrain the type — the same `draw_rect` call
+> works on both surfaces, with the color type matching the surface's storage format.
+> The `Renderer` is the bridge: it maps `Color` → palette entry during quantization,
+> writing palette entries into the Framebuffer.
 
 > **Padding invariant:** For non-byte-aligned widths, the trailing bits in the last byte of
 > each row are **always zero**. This applies to all sub-byte formats: MONO (1 bpp, e.g.,
@@ -750,7 +752,7 @@ canvas.blit(chart, x: 10, y: 70)
 # Sidebar — another independent region
 canvas.layer(x: 410, y: 70, width: 380, height: 400) do |sidebar|
   sidebar.draw_text("Status: OK", x: 10, y: 10, color: Color::BLACK, font: body_font)
-  sidebar.draw_rect(0, 0, sidebar.width, sidebar.height, color: Color::BLACK)
+  sidebar.draw_rect(0, 0, sidebar.width, sidebar.height, pen: Pen.stroke(Color::BLACK))
 end
 
 # Single render pass: RGB canvas → quantized framebuffer → hardware
@@ -762,8 +764,8 @@ display.show(canvas)
 ```ruby
 # Common path: draw on a Canvas, let Display handle rendering
 canvas = ChromaWave::Canvas.new(width: display.width, height: display.height)
-canvas.draw_rect(10, 10, 100, 50, color: Color::BLACK)
-canvas.draw_circle(60, 60, 30, color: Color::RED)
+canvas.draw_rect(10, 10, 100, 50, pen: Pen.stroke(Color::BLACK))
+canvas.draw_circle(60, 60, 30, pen: Pen.stroke(Color::RED))
 display.show(canvas)                                 # renders + sends to hardware
 
 # Power path: control rendering directly

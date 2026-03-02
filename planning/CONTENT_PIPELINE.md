@@ -125,51 +125,50 @@ Framebuffer and Display never see alpha — they work with opaque palette indice
 
 ## 2. Shape Primitives
 
-The `Surface` module provides a practical set of drawing primitives. All shapes support
-`stroke_width:` for thick outlines and `fill:` for solid fills:
+The `Surface` module provides a practical set of drawing primitives. Drawing style is
+controlled by a `Pen` value object that bundles stroke color, fill color, and stroke width:
 
 ```ruby
 module ChromaWave
   module Surface
     # --- Lines ---
 
-    def draw_line(x0, y0, x1, y1, color:, stroke_width: 1)
+    def draw_line(x0, y0, x1, y1, pen:)
       # Bresenham for 1px, offset parallel lines for thick strokes
     end
 
-    def draw_polyline(points, color:, stroke_width: 1, closed: false)
+    def draw_polyline(points, pen:, closed: false)
       # Connected line segments. points = [[x0,y0], [x1,y1], ...]
       # closed: true connects last point back to first
     end
 
     # --- Rectangles ---
 
-    def draw_rect(x, y, width, height, color:, stroke_width: 1, fill: false)
+    def draw_rect(x, y, width, height, pen:)
       # Outline or filled rectangle
     end
 
-    def draw_rounded_rect(x, y, width, height, radius:, color:,
-                          stroke_width: 1, fill: false)
+    def draw_rounded_rect(x, y, width, height, radius:, pen:)
       # Rectangle with rounded corners (quarter-circle arcs)
     end
 
     # --- Curves ---
 
-    def draw_circle(cx, cy, r, color:, stroke_width: 1, fill: false)
+    def draw_circle(cx, cy, r, pen:)
       # Midpoint circle algorithm
     end
 
-    def draw_ellipse(cx, cy, rx, ry, color:, stroke_width: 1, fill: false)
+    def draw_ellipse(cx, cy, rx, ry, pen:)
       # Midpoint ellipse algorithm
     end
 
-    def draw_arc(cx, cy, r, start_angle, end_angle, color:, stroke_width: 1)
+    def draw_arc(cx, cy, r, start_angle, end_angle, pen:)
       # Circular arc segment (angles in radians)
     end
 
     # --- Polygons ---
 
-    def draw_polygon(points, color:, stroke_width: 1, fill: false)
+    def draw_polygon(points, pen:)
       # Closed polygon. Outline via draw_polyline(closed: true).
       # Fill via scanline fill algorithm.
     end
@@ -187,10 +186,12 @@ module ChromaWave
 end
 ```
 
-> **Stroke width implementation:** For `stroke_width: 1` (the default), standard Bresenham
-> and midpoint algorithms are used. For thicker strokes, lines use offset parallel lines,
-> and curves use the inner/outer radius technique (draw two concentric curves and fill
-> between them). This is simpler and faster than general stroke expansion.
+> **Pen value object:** `Pen` bundles stroke color, fill color, and stroke width into a
+> single immutable object. Use `Pen.stroke(color, width: n)` for outlines,
+> `Pen.fill(color)` for solid fills, or `Pen.new(stroke:, fill:, stroke_width:)` for both.
+> For 1px strokes (the default), standard Bresenham and midpoint algorithms are used.
+> For thicker strokes, lines use offset parallel lines, and curves use the inner/outer
+> radius technique (draw two concentric curves and fill between them).
 
 > **Coordinate convention:** All coordinates are integer pixels, origin at top-left, x
 > increases right, y increases down. This matches the display's physical pixel grid and

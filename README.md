@@ -7,8 +7,7 @@ ChromaWave::Display.open(model: :epd_2in13_v4) do |display|
   ChromaWave::Canvas.new(width: display.width, height: display.height).tap do |canvas|
     canvas.draw_rect(
       10, 10, 100, 50,
-      color: Color::BLACK,
-      fill: true
+      pen: Pen.fill(Color::BLACK)
     )
 
     canvas.draw_text(
@@ -155,13 +154,19 @@ Every surface — Canvas, Framebuffer, Layer — shares the same drawing API thr
 ```ruby
 canvas = ChromaWave::Canvas.new(width: 800, height: 480)
 
+# Drawing style is controlled by a Pen value object
+pen_black  = Pen.stroke(Color::BLACK)              # stroke-only, 1px
+pen_thick  = Pen.stroke(Color::BLACK, width: 2)    # stroke-only, 2px
+pen_fill   = Pen.fill(Color::RED)                  # fill-only
+pen_both   = Pen.new(stroke: Color::BLACK, fill: Color::DARK_GRAY, stroke_width: 2)
+
 # Shapes
-canvas.draw_line(0, 0, 200, 100, color: Color::BLACK)
-canvas.draw_rect(10, 10, 200, 100, color: Color::BLACK, stroke_width: 2)
-canvas.draw_rounded_rect(10, 120, 200, 80, radius: 12, color: Color::RED, fill: true)
-canvas.draw_circle(400, 240, 60, color: Color::BLUE, fill: true)
-canvas.draw_ellipse(600, 240, 80, 40, color: Color::BLACK)
-canvas.draw_polygon([[10, 400], [100, 350], [190, 400]], color: Color::BLACK, fill: true)
+canvas.draw_line(0, 0, 200, 100, pen: Pen.stroke(Color::BLACK))
+canvas.draw_rect(10, 10, 200, 100, pen: Pen.stroke(Color::BLACK, width: 2))
+canvas.draw_rounded_rect(10, 120, 200, 80, radius: 12, pen: Pen.fill(Color::RED))
+canvas.draw_circle(400, 240, 60, pen: Pen.fill(Color::BLUE))
+canvas.draw_ellipse(600, 240, 80, 40, pen: Pen.stroke(Color::BLACK))
+canvas.draw_polygon([[10, 400], [100, 350], [190, 400]], pen: Pen.fill(Color::BLACK))
 
 # Text with TrueType fonts
 font = ChromaWave::Font.new("DejaVuSans", size: 24)
@@ -194,7 +199,7 @@ canvas.layer(x: 0, y: 0, width: 800, height: 60) do |header|
 end
 
 canvas.layer(x: 10, y: 70, width: 380, height: 200) do |chart_area|
-  chart_area.draw_rect(0, 0, chart_area.width, chart_area.height, color: Color::BLACK)
+  chart_area.draw_rect(0, 0, chart_area.width, chart_area.height, pen: Pen.stroke(Color::BLACK))
   # Draw chart contents in local coordinates...
 end
 
@@ -307,7 +312,7 @@ ChromaWave is designed to be developed, tested, and previewed without a physical
 mock = ChromaWave::MockDevice.new(model: :epd_7in5_v2)
 
 canvas = ChromaWave::Canvas.new(width: mock.width, height: mock.height)
-canvas.draw_rect(10, 10, 100, 50, color: Color::BLACK, fill: true)
+canvas.draw_rect(10, 10, 100, 50, pen: Pen.fill(Color::BLACK))
 mock.show(canvas)
 
 # Inspect what happened
