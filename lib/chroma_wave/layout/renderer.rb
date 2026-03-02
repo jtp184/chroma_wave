@@ -111,8 +111,7 @@ module ChromaWave
       # @param node [TextContent] the text node
       # @param layer [Layer] the drawing surface
       def render_text(node, layer)
-        metrics = node.font.measure(node.text)
-        y_offset = valign_offset(metrics.height, layer.height, node.valign)
+        y_offset = valign_offset(node.metrics.height, layer.height, node.valign)
 
         layer.draw_text(
           node.text,
@@ -129,9 +128,8 @@ module ChromaWave
       # @param node [IconContent] the icon node
       # @param layer [Layer] the drawing surface
       def render_icon(node, layer)
-        metrics = node.font.measure_icon(node.name)
-        x_offset = align_offset(metrics.width, layer.width, node.align)
-        y_offset = valign_offset(metrics.height, layer.height, node.valign)
+        x_offset = align_offset(node.metrics.width, layer.width, node.align)
+        y_offset = valign_offset(node.metrics.height, layer.height, node.valign)
 
         node.font.draw(layer, node.name, x: x_offset, y: y_offset, color: node.color)
       end
@@ -141,12 +139,24 @@ module ChromaWave
       # @param node [ImageContent] the image node
       # @param layer [Layer] the drawing surface
       def render_image(node, layer)
-        fitted = fit_image(node.source, layer.width, layer.height, node.fit)
-        x_offset = align_offset(fitted.width, layer.width, node.align)
-        y_offset = valign_offset(fitted.height, layer.height, node.valign)
+        source = node.source
+        return if source.width.zero? || source.height.zero?
 
-        fitted.draw_onto(canvas, x: layer.offset_x + x_offset,
-                                 y: layer.offset_y + y_offset)
+        fitted = fit_image(source, layer.width, layer.height, node.fit)
+        draw_fitted_image(fitted, node, layer)
+      end
+
+      # Draws a fitted image at its aligned position within the layer.
+      #
+      # @param image [Image] the fitted/scaled image
+      # @param node [ImageContent] the image node (for alignment)
+      # @param layer [Layer] the drawing surface
+      def draw_fitted_image(image, node, layer)
+        x_offset = align_offset(image.width, layer.width, node.align)
+        y_offset = valign_offset(image.height, layer.height, node.valign)
+
+        image.draw_onto(canvas, x: layer.offset_x + x_offset,
+                                y: layer.offset_y + y_offset)
       end
 
       # Executes a canvas block with the layer as the drawing context.

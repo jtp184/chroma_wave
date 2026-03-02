@@ -17,6 +17,22 @@ RSpec.describe ChromaWave::Layout::ContainerNode do
     end
   end
 
+  describe 'gap validation' do
+    it 'accepts zero gap' do
+      expect { described_class.new(direction: :horizontal, gap: 0) }.not_to raise_error
+    end
+
+    it 'accepts positive gap' do
+      expect { described_class.new(direction: :horizontal, gap: 10) }.not_to raise_error
+    end
+
+    it 'rejects negative gap' do
+      expect do
+        described_class.new(direction: :horizontal, gap: -5)
+      end.to raise_error(ArgumentError, /gap must be non-negative/)
+    end
+  end
+
   describe 'border_width validation' do
     it 'accepts zero border_width' do
       expect do

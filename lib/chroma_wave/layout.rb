@@ -84,6 +84,9 @@ module ChromaWave
 
     # Computes layout and renders the tree to a new Canvas.
     #
+    # @note Mutates the node tree in place — each node's {Node#box} is
+    #   overwritten with freshly computed coordinates and dimensions.
+    #
     # @return [Canvas] the rendered canvas
     def render
       Calculator.new(root: root, width: width, height: height).compute

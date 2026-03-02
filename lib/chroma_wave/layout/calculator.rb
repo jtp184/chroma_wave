@@ -108,7 +108,7 @@ module ChromaWave
         node.children.each_with_index do |child, i|
           child_w = sizes[i]
           child_h = child_cross_size(child, content.height, :height)
-          child_y = cross_offset(content.y, content.height, child_h, node.valign)
+          child_y = cross_offset(content.y, content.height, child_h, node.child_valign)
 
           layout_node(child, cursor_x, child_y, child_w, child_h)
           cursor_x += child_w + node.gap
@@ -126,7 +126,7 @@ module ChromaWave
         node.children.each_with_index do |child, i|
           child_h = sizes[i]
           child_w = child_cross_size(child, content.width, :width)
-          child_x = cross_offset(content.x, content.width, child_w, node.align)
+          child_x = cross_offset(content.x, content.width, child_w, node.child_align)
 
           layout_node(child, child_x, cursor_y, child_w, child_h)
           cursor_y += child_h + node.gap

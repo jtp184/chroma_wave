@@ -177,6 +177,26 @@ RSpec.describe ChromaWave::Layout::Renderer do
     end
   end
 
+  describe 'zero-dimension image' do
+    it 'skips rendering for zero-width source image' do
+      zero_image = instance_double(ChromaWave::Image, width: 0, height: 10)
+      image_node = ChromaWave::Layout::ImageContent.new(source: zero_image)
+      assign_box(image_node, x: 0, y: 0, width: 50, height: 50)
+
+      expect { renderer.render(image_node) }.not_to raise_error
+      expect(count_non_white(canvas)).to eq(0)
+    end
+
+    it 'skips rendering for zero-height source image' do
+      zero_image = instance_double(ChromaWave::Image, width: 10, height: 0)
+      image_node = ChromaWave::Layout::ImageContent.new(source: zero_image)
+      assign_box(image_node, x: 0, y: 0, width: 50, height: 50)
+
+      expect { renderer.render(image_node) }.not_to raise_error
+      expect(count_non_white(canvas)).to eq(0)
+    end
+  end
+
   describe 'zero-size nodes' do
     it 'skips rendering for zero-width nodes' do
       root = container_class.new(direction: :vertical, children: [], background: black)

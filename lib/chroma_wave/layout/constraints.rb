@@ -23,6 +23,8 @@ module ChromaWave
       #   @return [Integer, nil] maximum height in pixels, or nil for unconstrained
 
       def initialize(min_width: 0, min_height: 0, max_width: nil, max_height: nil)
+        validate_bounds!(min_width, max_width, :width)
+        validate_bounds!(min_height, max_height, :height)
         super
       end
 
@@ -49,6 +51,15 @@ module ChromaWave
       # @return [Boolean]
       def unconstrained?
         min_width.zero? && min_height.zero? && max_width.nil? && max_height.nil?
+      end
+
+      private
+
+      # @raise [ArgumentError] if max is less than min for the given axis
+      def validate_bounds!(min, max, axis)
+        return if max.nil? || max >= min
+
+        raise ArgumentError, "max_#{axis} (#{max}) must be >= min_#{axis} (#{min})"
       end
 
       # Default unconstrained instance.

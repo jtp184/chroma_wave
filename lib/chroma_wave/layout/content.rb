@@ -30,23 +30,21 @@ module ChromaWave
         @color = color
       end
 
+      # Memoized font measurement for the text content.
+      #
+      # @return [Font::Metrics] cached measurement result
+      def metrics
+        @metrics ||= font.measure(text)
+      end
+
       # @return [Integer] measured text width
       def intrinsic_width
-        text_metrics.width
+        metrics.width
       end
 
       # @return [Integer] measured text height
       def intrinsic_height
-        text_metrics.height
-      end
-
-      private
-
-      # Memoized font measurement for the text content.
-      #
-      # @return [Font::Metrics] cached measurement result
-      def text_metrics
-        @text_metrics ||= font.measure(text)
+        metrics.height
       end
     end
 
@@ -77,23 +75,21 @@ module ChromaWave
         @color = color
       end
 
+      # Memoized icon measurement.
+      #
+      # @return [IconFont::Metrics] cached measurement result
+      def metrics
+        @metrics ||= font.measure_icon(name)
+      end
+
       # @return [Integer] measured icon width
       def intrinsic_width
-        icon_metrics.width
+        metrics.width
       end
 
       # @return [Integer] measured icon height
       def intrinsic_height
-        icon_metrics.height
-      end
-
-      private
-
-      # Memoized icon measurement.
-      #
-      # @return [IconFont::Metrics] cached measurement result
-      def icon_metrics
-        @icon_metrics ||= font.measure_icon(name)
+        metrics.height
       end
     end
 
@@ -104,6 +100,9 @@ module ChromaWave
     # @example
     #   ImageContent.new(source: image, fit: :contain)
     class ImageContent < Node
+      # Valid image fit modes.
+      FIT_MODES = %i[contain cover stretch].freeze
+
       # @return [Image] the source image
       attr_reader :source
 
@@ -115,6 +114,7 @@ module ChromaWave
       # @param kwargs [Hash] forwarded to {Node#initialize}
       def initialize(source:, fit: :contain, **)
         super(**)
+        validate_fit!(fit)
         @source = source
         @fit = fit
       end
@@ -128,6 +128,15 @@ module ChromaWave
       def intrinsic_height
         source.height
       end
+
+      private
+
+      # @raise [ArgumentError] if fit is not a recognized mode
+      def validate_fit!(fit)
+        return if FIT_MODES.include?(fit)
+
+        raise ArgumentError, "fit must be one of #{FIT_MODES.inspect}, got #{fit.inspect}"
+      end
     end
 
     # Spacer content leaf node.
@@ -137,9 +146,9 @@ module ChromaWave
     # @example Push content to the right in a row
     #   row { text "left"; spacer; text "right" }
     class SpacerContent < Node
+      # @param flex [Numeric] flex factor, defaults to 1
       # @param kwargs [Hash] forwarded to {Node#initialize}
-      def initialize(**kwargs)
-        kwargs[:flex] ||= 1
+      def initialize(flex: 1, **)
         super
       end
     end

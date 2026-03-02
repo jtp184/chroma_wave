@@ -11,6 +11,24 @@ RSpec.describe ChromaWave::Layout::Constraints do
     end
   end
 
+  describe 'bounds validation' do
+    it 'raises when max_width < min_width' do
+      expect do
+        described_class.new(min_width: 200, max_width: 100)
+      end.to raise_error(ArgumentError, /max_width.*must be >= min_width/)
+    end
+
+    it 'raises when max_height < min_height' do
+      expect do
+        described_class.new(min_height: 80, max_height: 40)
+      end.to raise_error(ArgumentError, /max_height.*must be >= min_height/)
+    end
+
+    it 'accepts max equal to min' do
+      expect { described_class.new(min_width: 100, max_width: 100) }.not_to raise_error
+    end
+  end
+
   describe '#clamp_width' do
     context 'with min constraint' do
       it 'clamps up to minimum' do

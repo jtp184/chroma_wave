@@ -11,6 +11,12 @@ module ChromaWave
     # Subclasses must override {#intrinsic_width} and {#intrinsic_height}
     # to report their natural (content-driven) sizes.
     class Node
+      # Valid horizontal content alignment values.
+      ALIGN_VALUES = %i[left center right].freeze
+
+      # Valid vertical content alignment values.
+      VALIGN_VALUES = %i[top center bottom].freeze
+
       # @return [Numeric, nil] flex factor for proportional sizing
       attr_reader :flex
 
@@ -23,10 +29,10 @@ module ChromaWave
       # @return [Constraints] min/max sizing constraints
       attr_reader :constraints
 
-      # @return [Symbol, nil] horizontal alignment (:left, :center, :right)
+      # @return [Symbol, nil] horizontal content alignment (:left, :center, :right)
       attr_reader :align
 
-      # @return [Symbol, nil] vertical alignment (:top, :center, :bottom)
+      # @return [Symbol, nil] vertical content alignment (:top, :center, :bottom)
       attr_reader :valign
 
       # @return [Box] positioned rectangle, written by Calculator
@@ -39,11 +45,13 @@ module ChromaWave
       # @param min_height [Integer] minimum height constraint
       # @param max_width [Integer, nil] maximum width constraint
       # @param max_height [Integer, nil] maximum height constraint
-      # @param align [Symbol, nil] horizontal alignment
-      # @param valign [Symbol, nil] vertical alignment
+      # @param align [Symbol, nil] horizontal content alignment
+      # @param valign [Symbol, nil] vertical content alignment
       def initialize(flex: nil, width: nil, height: nil,
                      min_width: 0, min_height: 0, max_width: nil, max_height: nil,
                      align: nil, valign: nil)
+        validate_align!(align)
+        validate_valign!(valign)
         @flex = flex
         @fixed_width = width
         @fixed_height = height
@@ -96,6 +104,22 @@ module ChromaWave
       # @return [Boolean]
       def fixed_height?
         !fixed_height.nil?
+      end
+
+      private
+
+      # @raise [ArgumentError] if align is not a recognized value
+      def validate_align!(align)
+        return if align.nil? || ALIGN_VALUES.include?(align)
+
+        raise ArgumentError, "align must be one of #{ALIGN_VALUES.inspect}, got #{align.inspect}"
+      end
+
+      # @raise [ArgumentError] if valign is not a recognized value
+      def validate_valign!(valign)
+        return if valign.nil? || VALIGN_VALUES.include?(valign)
+
+        raise ArgumentError, "valign must be one of #{VALIGN_VALUES.inspect}, got #{valign.inspect}"
       end
     end
   end

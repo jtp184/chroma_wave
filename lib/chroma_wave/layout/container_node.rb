@@ -32,6 +32,12 @@ module ChromaWave
       # @return [Integer] border width in pixels
       attr_reader :border_width
 
+      # @return [Symbol, nil] horizontal alignment for children (:left, :center, :right)
+      attr_reader :child_align
+
+      # @return [Symbol, nil] vertical alignment for children (:top, :center, :bottom)
+      attr_reader :child_valign
+
       # @param direction [:horizontal, :vertical] main axis
       # @param children [Array<Node>] child nodes
       # @param padding [nil, Integer, Array, Padding] edge insets
@@ -39,14 +45,18 @@ module ChromaWave
       # @param background [Color, nil] fill color
       # @param border [Color, nil] border color
       # @param border_width [Integer] border thickness
+      # @param child_align [Symbol, nil] cross-axis horizontal alignment for children
+      # @param child_valign [Symbol, nil] cross-axis vertical alignment for children
       # @param kwargs [Hash] forwarded to {Node#initialize}
       # Valid main-axis direction values.
       DIRECTIONS = %i[horizontal vertical].freeze
 
       def initialize(direction:, children: [], padding: nil, gap: 0,
-                     background: nil, border: nil, border_width: 0, **)
+                     background: nil, border: nil, border_width: 0,
+                     child_align: nil, child_valign: nil, **)
         super(**)
         validate_direction!(direction)
+        validate_gap!(gap)
         validate_border_width!(border_width)
         @direction = direction
         @children = children
@@ -55,6 +65,8 @@ module ChromaWave
         @background = background
         @border = border
         @border_width = border_width
+        @child_align = child_align
+        @child_valign = child_valign
       end
 
       # Whether the main axis is horizontal.
@@ -143,6 +155,13 @@ module ChromaWave
         return if DIRECTIONS.include?(direction)
 
         raise ArgumentError, "direction must be :horizontal or :vertical, got #{direction.inspect}"
+      end
+
+      # @raise [ArgumentError] if gap is negative
+      def validate_gap!(gap)
+        return unless gap.negative?
+
+        raise ArgumentError, "gap must be non-negative, got #{gap}"
       end
 
       # @raise [ArgumentError] if border_width is negative

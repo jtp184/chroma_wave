@@ -22,7 +22,7 @@ RSpec.describe ChromaWave::Layout do # rubocop:disable RSpec/SpecFilePathFormat
         node.intrinsic_width
         node.intrinsic_height
 
-        expect(node.send(:text_metrics)).to equal(node.send(:text_metrics))
+        expect(node.metrics).to equal(node.metrics)
       end
     end
   end
@@ -48,7 +48,7 @@ RSpec.describe ChromaWave::Layout do # rubocop:disable RSpec/SpecFilePathFormat
         node.intrinsic_width
         node.intrinsic_height
 
-        expect(node.send(:icon_metrics)).to equal(node.send(:icon_metrics))
+        expect(node.metrics).to equal(node.metrics)
       end
     end
   end
@@ -77,6 +77,12 @@ RSpec.describe ChromaWave::Layout do # rubocop:disable RSpec/SpecFilePathFormat
       it 'accepts a custom fit mode' do
         node = described_class.new(source: source, fit: :cover)
         expect(node.fit).to eq(:cover)
+      end
+
+      it 'rejects an invalid fit mode' do
+        expect do
+          described_class.new(source: source, fit: :banana)
+        end.to raise_error(ArgumentError, /fit must be one of/)
       end
     end
   end

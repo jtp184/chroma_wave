@@ -51,20 +51,6 @@ RSpec.describe ChromaWave::Layout::DSL do
       end
     end
 
-    context 'with columns alias' do
-      it 'creates a horizontal ContainerNode' do
-        children = described_class.evaluate { columns {} }
-        expect(children.first).to be_horizontal
-      end
-    end
-
-    context 'with rows alias' do
-      it 'creates a vertical ContainerNode' do
-        children = described_class.evaluate { rows {} }
-        expect(children.first).to be_vertical
-      end
-    end
-
     context 'with nested containers' do
       it 'builds correct tree depth' do
         f = font
@@ -133,6 +119,14 @@ RSpec.describe ChromaWave::Layout::DSL do
         expect(node.border).to eq(bd)
         expect(node.border_width).to eq(2)
       end
+
+      it 'captures child_align and child_valign' do
+        node = described_class.evaluate do
+          row(child_align: :center, child_valign: :bottom) {}
+        end.first
+        expect(node.child_align).to eq(:center)
+        expect(node.child_valign).to eq(:bottom)
+      end
     end
 
     context 'with an icon element' do
@@ -161,6 +155,24 @@ RSpec.describe ChromaWave::Layout::DSL do
         source = instance_double(ChromaWave::Image, width: 50, height: 50)
         children = described_class.evaluate { image source }
         expect(children.first.fit).to eq(:contain)
+      end
+    end
+
+    context 'with invalid align/valign values' do
+      it 'raises ArgumentError for invalid align' do
+        f = font
+        c = color
+        expect do
+          described_class.evaluate { text 'hi', font: f, color: c, align: :middle }
+        end.to raise_error(ArgumentError, /align must be one of/)
+      end
+
+      it 'raises ArgumentError for invalid valign' do
+        f = font
+        c = color
+        expect do
+          described_class.evaluate { text 'hi', font: f, color: c, valign: :middle }
+        end.to raise_error(ArgumentError, /valign must be one of/)
       end
     end
 

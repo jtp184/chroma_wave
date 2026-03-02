@@ -52,12 +52,6 @@ module ChromaWave
         add_container(:vertical, **, &)
       end
 
-      # Alias for {#row} — creates a horizontal container.
-      alias columns row
-
-      # Alias for {#column} — creates a vertical container.
-      alias rows column
-
       # Creates a text content node.
       #
       # @param text [String] the text to display

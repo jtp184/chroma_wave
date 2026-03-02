@@ -133,10 +133,10 @@ RSpec.describe ChromaWave::Layout::Calculator do
   end
 
   describe 'cross-axis alignment' do
-    context 'with row valign: :center' do
+    context 'with row child_valign: :center' do
       it 'centers children vertically' do
         child = node_class.new(width: 50, height: 40)
-        root = container_class.new(direction: :horizontal, children: [child], valign: :center)
+        root = container_class.new(direction: :horizontal, children: [child], child_valign: :center)
 
         layout(root, width: 200, height: 100)
 
@@ -145,10 +145,10 @@ RSpec.describe ChromaWave::Layout::Calculator do
       end
     end
 
-    context 'with row valign: :bottom' do
+    context 'with row child_valign: :bottom' do
       it 'aligns children to bottom' do
         child = node_class.new(width: 50, height: 40)
-        root = container_class.new(direction: :horizontal, children: [child], valign: :bottom)
+        root = container_class.new(direction: :horizontal, children: [child], child_valign: :bottom)
 
         layout(root, width: 200, height: 100)
 
@@ -156,10 +156,10 @@ RSpec.describe ChromaWave::Layout::Calculator do
       end
     end
 
-    context 'with column align: :center' do
+    context 'with column child_align: :center' do
       it 'centers children horizontally' do
         child = node_class.new(width: 60, height: 30)
-        root = container_class.new(direction: :vertical, children: [child], align: :center)
+        root = container_class.new(direction: :vertical, children: [child], child_align: :center)
 
         layout(root, width: 200, height: 100)
 
