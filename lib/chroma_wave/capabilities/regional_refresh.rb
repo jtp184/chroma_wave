@@ -74,9 +74,10 @@ module ChromaWave
       #
       # For rotation == 0, returns the original framebuffer unchanged (no copy).
       # For other rotations, extracts the aligned logical sub-region,
-      # rotates only that piece, and blits it into a fresh native-sized
-      # framebuffer at the correct offset. This avoids rotating the entire
-      # full-screen buffer.
+      # rotates only that piece, and blits it into a cached native-sized
+      # scratch framebuffer at the correct offset. This avoids rotating the
+      # entire full-screen buffer and reuses the scratch allocation across calls
+      # to reduce GC pressure.
       #
       # @param framebuffer [Framebuffer] full-screen logical framebuffer
       # @param aligned_x [Integer] byte-aligned native X coordinate
@@ -89,9 +90,19 @@ module ChromaWave
 
         lx, ly, lw, lh = transform_native_to_logical(aligned_x, native_y, aligned_w, native_h)
         rotated_region = framebuffer.extract(lx, ly, lw, lh).rotate(rotation)
-        native_fb = Framebuffer.new(native_width, native_height, pixel_format)
+        native_fb = native_scratch_fb
+        native_fb.clear(:white)
         native_fb.blit(rotated_region, x: aligned_x, y: native_y)
         native_fb
+      end
+
+      # Returns a cached native-sized scratch framebuffer, creating one on
+      # first use. Reused across {#build_native_region_fb} calls to avoid
+      # allocating a full-screen buffer on every rotated region refresh.
+      #
+      # @return [Framebuffer]
+      def native_scratch_fb
+        @native_scratch_fb ||= Framebuffer.new(native_width, native_height, pixel_format)
       end
 
       # Validates that the given region fits within the display bounds.
