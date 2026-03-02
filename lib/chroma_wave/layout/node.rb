@@ -1,0 +1,102 @@
+# frozen_string_literal: true
+
+module ChromaWave
+  class Layout
+    # Abstract base class for all layout tree nodes.
+    #
+    # Holds common sizing properties (flex, fixed dimensions, constraints,
+    # alignment) and provides a {#box} accessor for the {Calculator} to
+    # write positioned rectangles during the layout pass.
+    #
+    # Subclasses must override {#intrinsic_width} and {#intrinsic_height}
+    # to report their natural (content-driven) sizes.
+    class Node
+      # @return [Numeric, nil] flex factor for proportional sizing
+      attr_reader :flex
+
+      # @return [Integer, nil] explicit fixed width
+      attr_reader :fixed_width
+
+      # @return [Integer, nil] explicit fixed height
+      attr_reader :fixed_height
+
+      # @return [Constraints] min/max sizing constraints
+      attr_reader :constraints
+
+      # @return [Symbol, nil] horizontal alignment (:left, :center, :right)
+      attr_reader :align
+
+      # @return [Symbol, nil] vertical alignment (:top, :center, :bottom)
+      attr_reader :valign
+
+      # @return [Box] positioned rectangle, written by Calculator
+      attr_accessor :box
+
+      # @param flex [Numeric, nil] flex factor
+      # @param width [Integer, nil] fixed width
+      # @param height [Integer, nil] fixed height
+      # @param min_width [Integer] minimum width constraint
+      # @param min_height [Integer] minimum height constraint
+      # @param max_width [Integer, nil] maximum width constraint
+      # @param max_height [Integer, nil] maximum height constraint
+      # @param align [Symbol, nil] horizontal alignment
+      # @param valign [Symbol, nil] vertical alignment
+      def initialize(flex: nil, width: nil, height: nil,
+                     min_width: 0, min_height: 0, max_width: nil, max_height: nil,
+                     align: nil, valign: nil)
+        @flex = flex
+        @fixed_width = width
+        @fixed_height = height
+        @constraints = Constraints.new(
+          min_width: min_width, min_height: min_height,
+          max_width: max_width, max_height: max_height
+        )
+        @align = align
+        @valign = valign
+        @box = Box.new
+      end
+
+      # The node's natural width based on content.
+      #
+      # @return [Integer]
+      def intrinsic_width
+        0
+      end
+
+      # The node's natural height based on content.
+      #
+      # @return [Integer]
+      def intrinsic_height
+        0
+      end
+
+      # Whether this node contains children.
+      #
+      # @return [Boolean]
+      def container?
+        false
+      end
+
+      # Whether this node participates in flex distribution.
+      #
+      # @return [Boolean]
+      def flex?
+        !flex.nil? && flex.positive?
+      end
+
+      # Whether this node has an explicit fixed width.
+      #
+      # @return [Boolean]
+      def fixed_width?
+        !fixed_width.nil?
+      end
+
+      # Whether this node has an explicit fixed height.
+      #
+      # @return [Boolean]
+      def fixed_height?
+        !fixed_height.nil?
+      end
+    end
+  end
+end
