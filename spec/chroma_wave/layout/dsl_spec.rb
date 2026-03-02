@@ -134,6 +134,57 @@ RSpec.describe ChromaWave::Layout::DSL do
         expect(node.border_width).to eq(2)
       end
     end
+
+    context 'with an icon element' do
+      it 'creates an IconContent node' do
+        icon_font = ChromaWave::IconFont.lucide(size: 16)
+        c = color
+        children = described_class.evaluate { icon :house, font: icon_font, color: c }
+        node = children.first
+        expect(node).to be_a(ChromaWave::Layout::IconContent)
+        expect(node.name).to eq(:house)
+        expect(node.font).to eq(icon_font)
+      end
+    end
+
+    context 'with an image element' do
+      it 'creates an ImageContent node' do
+        source = instance_double(ChromaWave::Image, width: 100, height: 80)
+        children = described_class.evaluate { image source, fit: :cover }
+        node = children.first
+        expect(node).to be_a(ChromaWave::Layout::ImageContent)
+        expect(node.source).to eq(source)
+        expect(node.fit).to eq(:cover)
+      end
+
+      it 'defaults to fit: :contain' do
+        source = instance_double(ChromaWave::Image, width: 50, height: 50)
+        children = described_class.evaluate { image source }
+        expect(children.first.fit).to eq(:contain)
+      end
+    end
+
+    context 'with unknown keyword arguments' do
+      it 'raises ArgumentError for unknown text kwargs' do
+        f = font
+        c = color
+        expect do
+          described_class.evaluate { text 'hi', font: f, color: c, typo: 1 }
+        end.to raise_error(ArgumentError, /unknown keyword/)
+      end
+
+      it 'raises ArgumentError for unknown container kwargs' do
+        expect do
+          described_class.evaluate { row(typo: 1) {} }
+        end.to raise_error(ArgumentError, /unknown keyword/)
+      end
+
+      it 'raises ArgumentError for unknown spacer kwargs' do
+        expect do
+          described_class.evaluate { spacer(typo: 1) }
+        end.to raise_error(ArgumentError, /unknown keyword/)
+      end
+    end
   end
   # rubocop:enable Lint/EmptyBlock
 end

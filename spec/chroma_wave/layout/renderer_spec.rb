@@ -98,6 +98,85 @@ RSpec.describe ChromaWave::Layout::Renderer do
     end
   end
 
+  describe 'icon rendering' do
+    it 'draws an icon onto the canvas' do
+      icon_font = ChromaWave::IconFont.lucide(size: 24)
+      icon_node = ChromaWave::Layout::IconContent.new(
+        name: :house, font: icon_font, color: black
+      )
+      assign_box(icon_node, x: 5, y: 5, width: 30, height: 30)
+
+      renderer.render(icon_node)
+
+      expect(count_non_white(canvas)).to be > 0
+    end
+  end
+
+  describe 'image rendering' do
+    # Build a small 10x10 red image as raw RGBA bytes for testing
+    let(:image_canvas) do
+      ChromaWave::Canvas.new(width: 10, height: 10).tap do |c|
+        c.clear(red)
+      end
+    end
+
+    let(:mock_image) do
+      rgba = String.new(encoding: Encoding::BINARY)
+      10.times do
+        10.times do
+          rgba << [red.r, red.g, red.b, red.a].pack('C4')
+        end
+      end
+
+      img = instance_double(ChromaWave::Image, width: 10, height: 10)
+      allow(img).to receive_messages(resize: img, crop: img)
+      allow(img).to receive(:draw_onto) do |target_canvas, x:, y:|
+        target_canvas.load_rgba_bytes(rgba, width: 10, height: 10, x: x, y: y)
+      end
+      img
+    end
+
+    it 'renders an image with :stretch fit' do
+      image_node = ChromaWave::Layout::ImageContent.new(
+        source: mock_image, fit: :stretch
+      )
+      assign_box(image_node, x: 10, y: 10, width: 10, height: 10)
+
+      renderer.render(image_node)
+
+      expect(mock_image).to have_received(:resize).with(width: 10, height: 10)
+    end
+
+    it 'renders an image with :contain fit' do
+      image_node = ChromaWave::Layout::ImageContent.new(
+        source: mock_image, fit: :contain
+      )
+      assign_box(image_node, x: 0, y: 0, width: 20, height: 20)
+
+      renderer.render(image_node)
+
+      # contain scales to fit, preserving aspect ratio
+      expect(mock_image).to have_received(:resize).with(width: 20, height: 20)
+    end
+
+    it 'renders an image with :cover fit' do
+      wide_image = instance_double(ChromaWave::Image, width: 20, height: 10)
+      allow(wide_image).to receive(:resize).and_return(mock_image)
+      allow(mock_image).to receive(:crop).and_return(mock_image)
+
+      image_node = ChromaWave::Layout::ImageContent.new(
+        source: wide_image, fit: :cover
+      )
+      assign_box(image_node, x: 0, y: 0, width: 10, height: 10)
+
+      renderer.render(image_node)
+
+      # cover scales to fill, then crops excess
+      expect(wide_image).to have_received(:resize)
+      expect(mock_image).to have_received(:crop)
+    end
+  end
+
   describe 'zero-size nodes' do
     it 'skips rendering for zero-width nodes' do
       root = container_class.new(direction: :vertical, children: [], background: black)

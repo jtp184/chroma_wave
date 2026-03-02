@@ -64,6 +64,32 @@ RSpec.describe ChromaWave::Layout::Padding do
     end
   end
 
+  describe 'negative value validation' do
+    it 'raises ArgumentError for negative uniform padding' do
+      expect { described_class.parse(-5) }.to raise_error(ArgumentError, /non-negative/)
+    end
+
+    it 'raises ArgumentError for negative values in array' do
+      expect { described_class.parse([1, -2, 3, 4]) }.to raise_error(ArgumentError, /non-negative/)
+    end
+
+    it 'raises ArgumentError for negative values via constructor' do
+      expect do
+        described_class.new(top: 0, right: 0, bottom: -1, left: 0)
+      end.to raise_error(ArgumentError, /non-negative/)
+    end
+  end
+
+  describe '::ZERO' do
+    it 'is accessible as Padding::ZERO' do
+      expect(described_class::ZERO).to eq(described_class.new(top: 0, right: 0, bottom: 0, left: 0))
+    end
+
+    it 'is frozen' do
+      expect(described_class::ZERO).to be_frozen
+    end
+  end
+
   describe '#horizontal' do
     it 'returns left + right' do
       padding = described_class.new(top: 1, right: 10, bottom: 3, left: 5)
