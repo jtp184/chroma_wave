@@ -101,6 +101,93 @@ RSpec.describe ChromaWave::Layer do
     end
   end
 
+  describe '#load_rgba_bytes' do
+    subject(:layer) { described_class.new(parent: canvas, x: 5, y: 5, width: 5, height: 5) }
+
+    let(:red_2x2) { red.to_rgba_bytes * 4 }
+
+    it 'loads RGBA data with coordinate translation' do
+      layer.load_rgba_bytes(red_2x2, width: 2, height: 2, x: 1, y: 1)
+
+      # local (1,1) → canvas (6,6)
+      expect(canvas.get_pixel(6, 6)).to eq(red)
+      expect(canvas.get_pixel(7, 7)).to eq(red)
+      expect(canvas.get_pixel(5, 5)).to eq(white) # not overwritten
+    end
+
+    it 'clips source that overflows right edge' do
+      wide_data = red.to_rgba_bytes * 10 # 10x1
+      layer.load_rgba_bytes(wide_data, width: 10, height: 1, x: 3, y: 0)
+
+      # Only pixels at layer x=3,4 should be written (layer width is 5)
+      expect(canvas.get_pixel(8, 5)).to eq(red)  # layer x=3 → canvas x=8
+      expect(canvas.get_pixel(9, 5)).to eq(red)  # layer x=4 → canvas x=9
+      expect(canvas.get_pixel(10, 5)).to eq(white) # past layer edge
+    end
+
+    it 'clips source that overflows bottom edge' do
+      tall_data = red.to_rgba_bytes * 10 # 1x10
+      layer.load_rgba_bytes(tall_data, width: 1, height: 10, x: 0, y: 3)
+
+      # Only pixels at layer y=3,4 should be written (layer height is 5)
+      expect(canvas.get_pixel(5, 8)).to eq(red)  # layer y=3 → canvas y=8
+      expect(canvas.get_pixel(5, 9)).to eq(red)  # layer y=4 → canvas y=9
+      expect(canvas.get_pixel(5, 10)).to eq(white) # past layer edge
+    end
+
+    it 'clips source with negative x offset' do
+      data = red.to_rgba_bytes * 6 # 3x2
+      layer.load_rgba_bytes(data, width: 3, height: 2, x: -1, y: 0)
+
+      # Source columns 1,2 are visible (column 0 is clipped off-left)
+      expect(canvas.get_pixel(5, 5)).to eq(red)  # layer x=0
+      expect(canvas.get_pixel(6, 5)).to eq(red)  # layer x=1
+      expect(canvas.get_pixel(4, 5)).to eq(white) # before layer
+    end
+
+    it 'clips source with negative y offset' do
+      data = red.to_rgba_bytes * 6 # 2x3
+      layer.load_rgba_bytes(data, width: 2, height: 3, x: 0, y: -1)
+
+      # Source rows 1,2 are visible (row 0 is clipped off-top)
+      expect(canvas.get_pixel(5, 5)).to eq(red)  # layer y=0
+      expect(canvas.get_pixel(5, 6)).to eq(red)  # layer y=1
+      expect(canvas.get_pixel(5, 4)).to eq(white) # before layer
+    end
+
+    it 'discards entirely out-of-bounds writes' do
+      layer.load_rgba_bytes(red_2x2, width: 2, height: 2, x: 10, y: 10)
+
+      # Nothing should be written anywhere on the canvas
+      canvas.width.times do |cx|
+        canvas.height.times do |cy|
+          expect(canvas.get_pixel(cx, cy))
+            .to eq(white), "expected white at (#{cx},#{cy})"
+        end
+      end
+    end
+
+    it 'returns self for chaining' do
+      expect(layer.load_rgba_bytes(red_2x2, width: 2, height: 2, x: 0, y: 0)).to equal(layer)
+    end
+
+    it 'does not write outside layer region even when parent has room' do
+      big_data = red.to_rgba_bytes * 100 # 10x10
+      layer.load_rgba_bytes(big_data, width: 10, height: 10, x: 0, y: 0)
+
+      # Check pixels just outside the layer region on the canvas
+      # Layer occupies canvas (5,5) to (9,9)
+      canvas.width.times do |cx|
+        canvas.height.times do |cy|
+          next if cx.between?(5, 9) && cy.between?(5, 9)
+
+          expect(canvas.get_pixel(cx, cy))
+            .to eq(white), "pixel at (#{cx},#{cy}) outside layer was modified"
+        end
+      end
+    end
+  end
+
   describe 'nested Layers' do
     it 'composes offsets additively' do
       outer = described_class.new(parent: canvas, x: 3, y: 2, width: 10, height: 10)
