@@ -17,7 +17,10 @@ module ChromaWave
   #     display.show(canvas)
   #   end
   class Display
-    attr_reader :model, :width, :height, :pixel_format
+    # Valid rotation angles (degrees clockwise).
+    VALID_ROTATIONS = [0, 90, 180, 270].freeze
+
+    attr_reader :model, :width, :height, :pixel_format, :rotation, :native_width, :native_height
 
     # Factory method -- builds the correct Display subclass via {Registry}.
     #
@@ -25,14 +28,15 @@ module ChromaWave
     # internally by {Registry}).
     #
     # @param model [Symbol, String] model name (e.g. +:epd_2in13_v4+)
+    # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
     # @return [Display] a subclass instance with appropriate capabilities
     # @raise [ModelNotFoundError] if the model is not in the registry
-    def self.new(model: nil, **kwargs)
+    def self.new(model: nil, rotation: 0, **kwargs)
       if self == Display
         raise ArgumentError, 'missing keyword: :model' unless model
         raise ArgumentError, "unknown keyword(s): #{kwargs.keys.join(', ')}" unless kwargs.empty?
 
-        return Registry.build(model)
+        return Registry.build(model, rotation: rotation)
       end
 
       instance = allocate
@@ -45,10 +49,11 @@ module ChromaWave
     # Without a block, returns the open display.
     #
     # @param model [Symbol, String] model name
+    # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
     # @yield [display] the opened display
     # @return [Display, Object] the display (no block) or the block's return value
-    def self.open(model:)
-      display = new(model: model)
+    def self.open(model:, rotation: 0)
+      display = new(model: model, rotation: rotation)
       return display unless block_given?
 
       begin
@@ -77,6 +82,7 @@ module ChromaWave
       case canvas_or_fb
       when Canvas
         fb = renderer.render(canvas_or_fb)
+        fb = fb.rotate(rotation) unless rotation.zero?
         synchronize_device { device.send(:_epd_display, fb) }
       when Framebuffer
         validate_framebuffer!(canvas_or_fb)
@@ -101,7 +107,7 @@ module ChromaWave
       if color == :white
         synchronize_device { device.send(:_epd_clear) }
       else
-        fb = Framebuffer.new(width, height, pixel_format)
+        fb = Framebuffer.new(native_width, native_height, pixel_format)
         fb.clear(color)
         synchronize_device { device.send(:_epd_display, fb) }
       end
@@ -148,7 +154,9 @@ module ChromaWave
     #
     # @return [String]
     def inspect
-      "#<#{self.class} #{model} #{width}x#{height} #{pixel_format.name}>"
+      base = "#<#{self.class} #{model} #{width}x#{height} #{pixel_format.name}"
+      base += " rot=#{rotation}" unless rotation.zero?
+      "#{base}>"
     end
 
     protected
@@ -159,14 +167,25 @@ module ChromaWave
     #
     # @param model_name [Symbol, String] the model identifier
     # @param config [Hash] the model configuration from {Native.model_config}
-    def initialize(model_name:, config:)
+    # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
+    def initialize(model_name:, config:, rotation: 0)
+      validate_rotation!(rotation)
       @model = model_name.to_sym
-      @width = config[:width]
-      @height = config[:height]
+      @rotation = rotation
+      @native_width = config[:width]
+      @native_height = config[:height]
       @pixel_format = PixelFormat.from_name(config[:pixel_format])
       @device = Device.new(model_name.to_s)
       @initialized = false
       @current_mode = nil
+
+      if rotation == 90 || rotation == 270
+        @width = @native_height
+        @height = @native_width
+      else
+        @width = @native_width
+        @height = @native_height
+      end
     end
 
     private
@@ -195,6 +214,16 @@ module ChromaWave
     # @return the block's return value
     def synchronize_device(&)
       device.synchronize(&)
+    end
+
+    # Validates that the rotation is a valid angle.
+    #
+    # @param degrees [Integer] the rotation angle
+    # @raise [ArgumentError] if the angle is not valid
+    def validate_rotation!(degrees)
+      return if VALID_ROTATIONS.include?(degrees)
+
+      raise ArgumentError, "rotation must be one of #{VALID_ROTATIONS.join(', ')} (got #{degrees})"
     end
 
     # Validates that a framebuffer's pixel format matches this display.

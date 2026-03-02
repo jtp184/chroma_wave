@@ -26,9 +26,10 @@ module ChromaWave
       # Builds a Display subclass instance for the given model.
       #
       # @param model [Symbol, String] model name (e.g. +:epd_2in13_v4+)
+      # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
       # @return [Display]
       # @raise [ModelNotFoundError] if the model is not in the registry
-      def build(model)
+      def build(model, rotation: 0)
         name = model.to_s
         config = Native.model_config(name)
         raise_not_found!(name) unless config
@@ -36,7 +37,7 @@ module ChromaWave
         klass = CACHE_MUTEX.synchronize do
           display_classes[name] ||= build_class(name, config)
         end
-        klass.send(:new, model_name: name, config: config)
+        klass.send(:new, model_name: name, config: config, rotation: rotation)
       end
 
       # Returns all registered model names as symbols.
