@@ -5,6 +5,7 @@ require_relative 'layout/constraints'
 require_relative 'layout/box'
 require_relative 'layout/node'
 require_relative 'layout/container_node'
+require_relative 'layout/measurable_content'
 require_relative 'layout/text_content'
 require_relative 'layout/icon_content'
 require_relative 'layout/image_content'
@@ -88,6 +89,7 @@ module ChromaWave
       @width = width
       @height = height
       @root = root
+      freeze
     end
 
     # Computes layout and renders the tree to a new Canvas.
