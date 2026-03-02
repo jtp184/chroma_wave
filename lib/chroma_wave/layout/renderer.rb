@@ -145,8 +145,8 @@ module ChromaWave
         x_offset = align_offset(fitted.width, layer.width, node.align)
         y_offset = valign_offset(fitted.height, layer.height, node.valign)
 
-        fitted.draw_onto(canvas, x: layer_absolute_x(layer) + x_offset,
-                                 y: layer_absolute_y(layer) + y_offset)
+        fitted.draw_onto(canvas, x: layer.offset_x + x_offset,
+                                 y: layer.offset_y + y_offset)
       end
 
       # Executes a canvas block with the layer as the drawing context.
@@ -225,22 +225,6 @@ module ChromaWave
         when :bottom then slack
         else 0
         end
-      end
-
-      # Extracts absolute x position from a layer by summing offsets.
-      #
-      # @param layer [Layer] the layer
-      # @return [Integer] absolute x position
-      def layer_absolute_x(layer)
-        layer.send(:offset_x)
-      end
-
-      # Extracts absolute y position from a layer by summing offsets.
-      #
-      # @param layer [Layer] the layer
-      # @return [Integer] absolute y position
-      def layer_absolute_y(layer)
-        layer.send(:offset_y)
       end
     end
   end

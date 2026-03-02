@@ -14,7 +14,7 @@ module ChromaWave
   class Layer
     include Surface
 
-    attr_reader :width, :height
+    attr_reader :width, :height, :offset_x, :offset_y
 
     # Creates a new Layer scoped to a sub-region of the parent surface.
     #
@@ -97,7 +97,7 @@ module ChromaWave
 
     private
 
-    attr_reader :parent, :offset_x, :offset_y
+    attr_reader :parent
 
     # Alpha-composites a glyph bitmap via the parent's C accelerator when possible.
     #
