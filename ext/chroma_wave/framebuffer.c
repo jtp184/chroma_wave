@@ -526,6 +526,112 @@ fb_extract(VALUE self, VALUE rb_x, VALUE rb_y, VALUE rb_w, VALUE rb_h)
     return dst_obj;
 }
 
+/* ---- _fb_blit(source, x, y) ---- */
+
+/* Arguments for the GVL-released blit worker. */
+typedef struct {
+    const framebuffer_t *src;
+    framebuffer_t *dst;
+    int dst_x;
+    int dst_y;
+} blit_args_t;
+
+/* Pure-C blit loop — called without the GVL.
+ * Copies all pixels from src into dst at the given offset,
+ * clipping to dst bounds. Both framebuffers must share the
+ * same pixel format. */
+static void *
+fb_blit_worker(void *arg)
+{
+    blit_args_t *ba = (blit_args_t *)arg;
+    const framebuffer_t *src = ba->src;
+    framebuffer_t *dst = ba->dst;
+    int dst_x = ba->dst_x;
+    int dst_y = ba->dst_y;
+
+    /* Compute clipped source region */
+    int sx_start = (dst_x < 0) ? -dst_x : 0;
+    int sy_start = (dst_y < 0) ? -dst_y : 0;
+    int sx_end = src->width;
+    int sy_end = src->height;
+
+    if (dst_x + sx_end > dst->width)
+        sx_end = dst->width - dst_x;
+    if (dst_y + sy_end > dst->height)
+        sy_end = dst->height - dst_y;
+
+    int sx, sy;
+    for (sy = sy_start; sy < sy_end; sy++) {
+        for (sx = sx_start; sx < sx_end; sx++) {
+            uint8_t color = fb_get_pixel_raw(src, sx, sy);
+            fb_set_pixel_raw(dst, dst_x + sx, dst_y + sy, color);
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * call-seq:
+ *   _fb_blit(source, x, y) -> self
+ *
+ * Copies all pixels from +source+ into this framebuffer at offset
+ * (+x+, +y+), clipping to bounds. Both framebuffers must share the
+ * same pixel format.
+ *
+ * The pixel-copy loop runs without the GVL so other Ruby threads
+ * can proceed concurrently.
+ *
+ * This is a private accelerator called by the Ruby +blit+ method
+ * when the source is a Framebuffer with matching format.
+ *
+ * @param source [Framebuffer] the source framebuffer
+ * @param x [Integer] destination x offset
+ * @param y [Integer] destination y offset
+ * @return [self]
+ * @raise [ChromaWaveError] if either framebuffer is not initialized
+ * @raise [ArgumentError] if pixel formats do not match
+ */
+static VALUE
+fb_blit(VALUE self, VALUE rb_source, VALUE rb_x, VALUE rb_y)
+{
+    framebuffer_t *dst;
+    TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, dst);
+
+    if (!dst->buffer)
+        rb_raise(rb_eChromaWaveError, "destination framebuffer not initialized");
+
+    if (!rb_typeddata_is_kind_of(rb_source, &framebuffer_type))
+        rb_raise(rb_eTypeError, "source must be a Framebuffer");
+
+    framebuffer_t *src;
+    TypedData_Get_Struct(rb_source, framebuffer_t, &framebuffer_type, src);
+
+    if (!src->buffer)
+        rb_raise(rb_eChromaWaveError, "source framebuffer not initialized");
+
+    if (src->pixel_format != dst->pixel_format)
+        rb_raise(rb_eArgError, "pixel formats must match for blit");
+
+    int x = NUM2INT(rb_x);
+    int y = NUM2INT(rb_y);
+
+    /* Early exit if completely out of bounds */
+    if (x >= dst->width || y >= dst->height ||
+        x + src->width <= 0 || y + src->height <= 0)
+        return self;
+
+    blit_args_t ba = {
+        .src = src,
+        .dst = dst,
+        .dst_x = x,
+        .dst_y = y,
+    };
+    rb_thread_call_without_gvl(fb_blit_worker, &ba, RUBY_UBF_IO, NULL);
+
+    return self;
+}
+
 /* ---- bytes ---- */
 static VALUE
 fb_bytes(VALUE self)
@@ -643,6 +749,7 @@ Init_framebuffer(void)
     rb_define_method(rb_cFramebuffer, "clear",           fb_clear,           1);
     rb_define_method(rb_cFramebuffer, "rotate",          fb_rotate,          1);
     rb_define_method(rb_cFramebuffer, "extract",         fb_extract,         4);
+    rb_define_private_method(rb_cFramebuffer, "_fb_blit", fb_blit,           3);
     rb_define_method(rb_cFramebuffer, "bytes",           fb_bytes,           0);
     rb_define_method(rb_cFramebuffer, "raw_buffer",      fb_raw_buffer,      0);
     rb_define_method(rb_cFramebuffer, "==",              fb_eq,              1);
