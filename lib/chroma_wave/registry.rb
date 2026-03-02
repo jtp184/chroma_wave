@@ -27,9 +27,10 @@ module ChromaWave
       #
       # @param model [Symbol, String] model name (e.g. +:epd_2in13_v4+)
       # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
+      # @param managed_refresh [Boolean, Hash, nil] opt-in refresh scheduling
       # @return [Display]
       # @raise [ModelNotFoundError] if the model is not in the registry
-      def build(model, rotation: 0)
+      def build(model, rotation: 0, managed_refresh: nil)
         name = model.to_s
         config = Native.model_config(name)
         raise_not_found!(name) unless config
@@ -37,7 +38,8 @@ module ChromaWave
         klass = CACHE_MUTEX.synchronize do
           display_classes[name] ||= build_class(name, config)
         end
-        klass.send(:new, model_name: name, config: config, rotation: rotation)
+        klass.send(:new, model_name: name, config: config,
+                         rotation: rotation, managed_refresh: managed_refresh)
       end
 
       # Returns all registered model names as symbols.
