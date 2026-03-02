@@ -9,6 +9,8 @@ module ChromaWave
     # Used by both {Calculator} (cross-axis positioning) and
     # {Renderer} (content alignment within boxes).
     module Alignment
+      module_function
+
       # Computes the alignment offset for positioning content within a container.
       #
       # @param content_size [Integer] size of the content to align

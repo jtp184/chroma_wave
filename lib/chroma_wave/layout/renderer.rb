@@ -7,8 +7,6 @@ module ChromaWave
     # Walks the node tree and draws each node using a Layer at its absolute
     # position. Draws backgrounds, borders, and content in the correct order.
     class Renderer
-      include Alignment
-
       # @return [Canvas] the target canvas
       attr_reader :canvas
 
@@ -119,8 +117,8 @@ module ChromaWave
       # @param node [TextContent] the text node
       # @param layer [Layer] the drawing surface
       def render_text(node, layer)
-        x_offset = align_offset(node.metrics.width, layer.width, node.align)
-        y_offset = valign_offset(node.metrics.height, layer.height, node.valign)
+        x_offset = Alignment.align_offset(node.metrics.width, layer.width, node.align)
+        y_offset = Alignment.align_offset(node.metrics.height, layer.height, node.valign)
 
         layer.draw_text(
           node.text,
@@ -136,8 +134,8 @@ module ChromaWave
       # @param node [IconContent] the icon node
       # @param layer [Layer] the drawing surface
       def render_icon(node, layer)
-        x_offset = align_offset(node.metrics.width, layer.width, node.align)
-        y_offset = valign_offset(node.metrics.height, layer.height, node.valign)
+        x_offset = Alignment.align_offset(node.metrics.width, layer.width, node.align)
+        y_offset = Alignment.align_offset(node.metrics.height, layer.height, node.valign)
 
         node.font.draw(layer, node.name, x: x_offset, y: y_offset, color: node.color)
       end
@@ -164,8 +162,8 @@ module ChromaWave
       # @param node [ImageContent] the image node (for alignment)
       # @param layer [Layer] the drawing surface
       def draw_fitted_image(image, node, layer)
-        x_offset = align_offset(image.width, layer.width, node.align)
-        y_offset = valign_offset(image.height, layer.height, node.valign)
+        x_offset = Alignment.align_offset(image.width, layer.width, node.align)
+        y_offset = Alignment.align_offset(image.height, layer.height, node.valign)
 
         image.draw_onto(canvas, x: layer.offset_x + x_offset,
                                 y: layer.offset_y + y_offset)
@@ -217,18 +215,6 @@ module ChromaWave
         crop_x = [(scaled.width - box_w) / 2, 0].max
         crop_y = [(scaled.height - box_h) / 2, 0].max
         scaled.crop(x: crop_x, y: crop_y, width: box_w, height: box_h)
-      end
-
-      # Computes vertical alignment offset.
-      #
-      # Alias for {Alignment#align_offset} with vertical alignment names.
-      #
-      # @param content_h [Integer] content height
-      # @param box_h [Integer] box height
-      # @param alignment [Symbol, nil] :center, :bottom, or default (:top)
-      # @return [Integer]
-      def valign_offset(content_h, box_h, alignment)
-        align_offset(content_h, box_h, alignment)
       end
     end
   end
