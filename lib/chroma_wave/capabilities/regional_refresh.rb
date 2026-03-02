@@ -40,9 +40,9 @@ module ChromaWave
         validate_logical_framebuffer!(framebuffer)
         native_x, native_y, native_w, native_h = transform_region_to_native(x, y, width, height)
         aligned_x, aligned_w = align_x_to_byte_boundary(native_x, native_w)
-        native_fb = build_native_region_fb(framebuffer, aligned_x, native_y, aligned_w, native_h)
         ensure_initialized!
         synchronize_device do
+          native_fb = build_native_region_fb(framebuffer, aligned_x, native_y, aligned_w, native_h)
           device.send(:_epd_display_region, native_fb,
                       aligned_x, native_y, aligned_w, native_h)
         end
@@ -100,12 +100,8 @@ module ChromaWave
       # first use. Reused across {#build_native_region_fb} calls to avoid
       # allocating a full-screen buffer on every rotated region refresh.
       #
-      # NOTE: Not protected by a mutex — concurrent calls to {#display_region}
-      # could race on this buffer. In practice the device mutex serializes
-      # hardware access, and e-paper refresh cycles are measured in seconds,
-      # making concurrent region updates unrealistic. If concurrent region
-      # writes become a requirement, wrap {#build_native_region_fb} in the
-      # device lock or use a per-call buffer.
+      # Thread-safe: callers access this only from within
+      # {#synchronize_device}, so the device mutex serializes all mutations.
       #
       # @return [Framebuffer]
       def native_scratch_fb
