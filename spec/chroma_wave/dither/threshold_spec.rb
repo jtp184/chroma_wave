@@ -15,11 +15,12 @@ RSpec.describe ChromaWave::Dither::Threshold do
   it_behaves_like 'a dither strategy'
 
   describe '#call' do
-    it 'renders red to the nearest MONO palette color (black)' do
+    it 'renders red to the nearest MONO palette color (white)' do
       canvas = ChromaWave::Canvas.new(width: 1, height: 1, background: red)
       framebuffer = ChromaWave::Framebuffer.new(1, 1, mono_format)
       described_class.new(pixel_format: mono_format).call(canvas, framebuffer)
-      expect(framebuffer.get_pixel(0, 0)).to eq(:black)
+      # RED has L*=53.23 in CIE Lab; closer to WHITE (L*=100) than BLACK (L*=0)
+      expect(framebuffer.get_pixel(0, 0)).to eq(:white)
     end
 
     context 'with GRAY4 format' do

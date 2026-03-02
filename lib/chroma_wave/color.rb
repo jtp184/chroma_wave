@@ -136,7 +136,7 @@ module ChromaWave
   Color.const_set(:LAB_EPSILON, (6.0 / 29)**3)
 
   # CIE Lab transfer function scale factor: 1/3 * (29/6)^2.
-  Color.const_set(:LAB_KAPPA, (1.0 / 3) * (29.0 / 6)**2)
+  Color.const_set(:LAB_KAPPA, (1.0 / 3) * ((29.0 / 6)**2))
 
   class << Color
     # Unpacks a 4-byte RGBA string into a Color.
@@ -198,8 +198,8 @@ module ChromaWave
     # @param b [Integer] blue channel (0..255)
     # @return [Array(Float, Float, Float)] [L*, a*, b*]
     def compute_lab(r, g, b)
-      x, y, z = srgb_to_xyz(r, g, b)
-      xyz_to_lab(x, y, z)
+      tri_x, tri_y, tri_z = srgb_to_xyz(r, g, b)
+      xyz_to_lab(tri_x, tri_y, tri_z)
     end
 
     # Converts sRGB (0..255) to CIE XYZ using IEC 61966-2-1 matrix.
@@ -222,14 +222,14 @@ module ChromaWave
 
     # Converts CIE XYZ to CIE L*a*b* relative to D65 illuminant.
     #
-    # @param x [Float] X tristimulus value
-    # @param y [Float] Y tristimulus value
-    # @param z [Float] Z tristimulus value
+    # @param tri_x [Float] X tristimulus value
+    # @param tri_y [Float] Y tristimulus value
+    # @param tri_z [Float] Z tristimulus value
     # @return [Array(Float, Float, Float)] [L*, a*, b*]
-    def xyz_to_lab(x, y, z)
-      fx = lab_f(x / self::D65_XN)
-      fy = lab_f(y / self::D65_YN)
-      fz = lab_f(z / self::D65_ZN)
+    def xyz_to_lab(tri_x, tri_y, tri_z)
+      fx = lab_f(tri_x / self::D65_XN)
+      fy = lab_f(tri_y / self::D65_YN)
+      fz = lab_f(tri_z / self::D65_ZN)
 
       l = (116.0 * fy) - 16.0
       a = 500.0 * (fx - fy)
@@ -242,18 +242,18 @@ module ChromaWave
 
     # sRGB inverse companding (gamma decode).
     #
-    # @param c [Float] normalized sRGB channel (0.0..1.0)
+    # @param srgb [Float] normalized sRGB channel (0.0..1.0)
     # @return [Float] linear RGB value
-    def gamma_decode(c)
-      c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055)**2.4
+    def gamma_decode(srgb)
+      srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055)**2.4
     end
 
     # CIE Lab transfer function.
     #
-    # @param t [Float] normalized tristimulus ratio
+    # @param ratio [Float] normalized tristimulus ratio
     # @return [Float] compressed value
-    def lab_f(t)
-      t > self::LAB_EPSILON ? t**(1.0 / 3) : (self::LAB_KAPPA * t) + (4.0 / 29)
+    def lab_f(ratio)
+      ratio > self::LAB_EPSILON ? ratio**(1.0 / 3) : (self::LAB_KAPPA * ratio) + (4.0 / 29)
     end
   end
 
