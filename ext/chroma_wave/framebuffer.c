@@ -347,7 +347,7 @@ fb_rotate_worker(void *arg)
                 dx = sy;
                 dy = dst_h - 1 - sx;
                 break;
-            default: break;
+            default: break; /* degrees validated before GVL release; unreachable */
             }
 
             fb_set_pixel_raw(dst, dx, dy, color);
