@@ -179,7 +179,7 @@ module ChromaWave
       @initialized = false
       @current_mode = nil
 
-      if rotation == 90 || rotation == 270
+      if [90, 270].include?(rotation)
         @width = @native_height
         @height = @native_width
       else

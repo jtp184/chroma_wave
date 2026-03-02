@@ -821,7 +821,7 @@ RSpec.describe ChromaWave::Framebuffer do
 
     %i[mono gray4 color4 color7].each do |fmt|
       context "with #{fmt} format" do
-        include_examples 'pixel-level rotation', fmt
+        it_behaves_like 'pixel-level rotation', fmt
       end
     end
   end
