@@ -826,6 +826,111 @@ RSpec.describe ChromaWave::Framebuffer do
     end
   end
 
+  describe '#extract' do
+    context 'with invalid arguments' do
+      subject(:fb) { described_class.new(16, 8, :mono) }
+
+      it 'raises ArgumentError for negative x' do
+        expect { fb.extract(-1, 0, 4, 4) }.to raise_error(ArgumentError, /exceeds/)
+      end
+
+      it 'raises ArgumentError for negative y' do
+        expect { fb.extract(0, -1, 4, 4) }.to raise_error(ArgumentError, /exceeds/)
+      end
+
+      it 'raises ArgumentError for zero width' do
+        expect { fb.extract(0, 0, 0, 4) }.to raise_error(ArgumentError, /positive/)
+      end
+
+      it 'raises ArgumentError for zero height' do
+        expect { fb.extract(0, 0, 4, 0) }.to raise_error(ArgumentError, /positive/)
+      end
+
+      it 'raises ArgumentError for region exceeding width' do
+        expect { fb.extract(10, 0, 8, 4) }.to raise_error(ArgumentError, /exceeds/)
+      end
+
+      it 'raises ArgumentError for region exceeding height' do
+        expect { fb.extract(0, 6, 4, 4) }.to raise_error(ArgumentError, /exceeds/)
+      end
+    end
+
+    context 'with valid arguments' do
+      it 'returns a new framebuffer with the correct dimensions' do
+        fb = described_class.new(16, 8, :mono)
+        sub = fb.extract(0, 0, 8, 4)
+        expect(sub.width).to eq(8)
+        expect(sub.height).to eq(4)
+      end
+
+      it 'preserves the pixel format' do
+        fb = described_class.new(16, 8, :gray4)
+        sub = fb.extract(0, 0, 8, 4)
+        expect(sub.pixel_format).to equal(ChromaWave::PixelFormat::GRAY4)
+      end
+
+      it 'returns a PixelFormat object (not a symbol)' do
+        fb = described_class.new(16, 8, :mono)
+        sub = fb.extract(0, 0, 8, 4)
+        expect(sub.pixel_format).to be_a(ChromaWave::PixelFormat)
+      end
+
+      it 'extracts the full buffer when region matches dimensions' do
+        fb = described_class.new(8, 4, :mono)
+        fb.set_pixel(3, 2, :black)
+        sub = fb.extract(0, 0, 8, 4)
+        expect(sub).to eq(fb)
+      end
+
+      it 'extracts a single pixel' do
+        fb = described_class.new(8, 4, :mono)
+        fb.set_pixel(5, 2, :black)
+        sub = fb.extract(5, 2, 1, 1)
+        expect(sub.width).to eq(1)
+        expect(sub.height).to eq(1)
+        expect(sub.get_pixel(0, 0)).to eq(:black)
+      end
+
+      it 'returns a distinct object' do
+        fb = described_class.new(16, 8, :mono)
+        sub = fb.extract(0, 0, 8, 4)
+        expect(sub).not_to equal(fb)
+      end
+    end
+
+    shared_examples 'pixel-accurate extraction' do |fmt|
+      let(:pf) { ChromaWave::PixelFormat.from_name(fmt) }
+      # Use a non-default color that differs from the initial fill for all formats.
+      # MONO defaults to white (index 1), others default to index 0.
+      let(:marker_color) { fmt == :mono ? pf.palette.color_at(0) : pf.palette.color_at(1) }
+      let(:fb) do
+        described_class.new(8, 6, fmt).tap do |f|
+          f.set_pixel(2, 1, marker_color)
+          f.set_pixel(5, 3, marker_color)
+        end
+      end
+
+      it 'copies pixels at the correct offset' do
+        # Extract region (1, 0, 6, 4) — should contain (2,1) at sub (1,1)
+        sub = fb.extract(1, 0, 6, 4)
+        expect(sub.get_pixel(1, 1)).to eq(marker_color)
+      end
+
+      it 'does not include pixels outside the region' do
+        # Extract (0, 0, 4, 3) — marker at (5,3) is outside this region
+        # Pixel at (3, 2) in the sub should be the default, not the marker
+        sub = fb.extract(0, 0, 4, 3)
+        expect(sub.get_pixel(3, 2)).not_to eq(marker_color)
+      end
+    end
+
+    %i[mono gray4 color4 color7].each do |fmt|
+      context "with #{fmt} format" do
+        it_behaves_like 'pixel-accurate extraction', fmt
+      end
+    end
+  end
+
   describe 'GC stress test' do
     it 'handles creating and discarding many framebuffers' do
       expect do

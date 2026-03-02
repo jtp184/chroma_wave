@@ -140,7 +140,11 @@ module ChromaWave
       self
     end
 
-    # Returns a dup of the last framebuffer sent to the display.
+    # Returns a dup of the last framebuffer sent to the device.
+    #
+    # After {#show}, this is a full-screen native-orientation framebuffer.
+    # After {Capabilities::RegionalRefresh#display_region}, this is the
+    # extracted sub-region buffer (not the full screen).
     #
     # @return [Framebuffer, nil] nil if no show has occurred
     def last_framebuffer

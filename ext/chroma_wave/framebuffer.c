@@ -329,7 +329,7 @@ fb_rotate_worker(void *arg)
     uint16_t dst_h = ra->dst_h;
     int degrees = ra->degrees;
 
-    int sx, sy, dx, dy;
+    int sx, sy, dx = 0, dy = 0;
     for (sy = 0; sy < src->height; sy++) {
         for (sx = 0; sx < src->width; sx++) {
             uint8_t color = fb_get_pixel_raw(src, sx, sy);
@@ -356,6 +356,24 @@ fb_rotate_worker(void *arg)
     return NULL;
 }
 
+/*
+ * call-seq:
+ *   rotate(degrees) -> Framebuffer
+ *
+ * Returns a new Framebuffer whose pixels are rotated clockwise by
+ * +degrees+ (must be 0, 90, 180, or 270).
+ *
+ * A 0° rotation returns a +dup+. For 90° and 270° the destination
+ * dimensions are swapped (width ↔ height). The pixel format is
+ * preserved.
+ *
+ * The pixel-copy loop runs without the GVL so other Ruby threads
+ * can proceed concurrently.
+ *
+ * @param degrees [Integer] rotation angle (0, 90, 180, or 270)
+ * @return [Framebuffer] a new, rotated framebuffer
+ * @raise [ArgumentError] if +degrees+ is not a valid rotation
+ */
 static VALUE
 fb_rotate(VALUE self, VALUE rb_degrees)
 {
@@ -404,6 +422,105 @@ fb_rotate(VALUE self, VALUE rb_degrees)
         .degrees = degrees,
     };
     rb_thread_call_without_gvl(fb_rotate_worker, &ra, RUBY_UBF_IO, NULL);
+
+    return dst_obj;
+}
+
+/* ---- extract(x, y, width, height) ---- */
+
+/* Arguments for the GVL-released extraction worker. */
+typedef struct {
+    const framebuffer_t *src;
+    framebuffer_t *dst;
+    int src_x;
+    int src_y;
+} extract_args_t;
+
+/* Pure-C extraction loop — called without the GVL. */
+static void *
+fb_extract_worker(void *arg)
+{
+    extract_args_t *ea = (extract_args_t *)arg;
+    const framebuffer_t *src = ea->src;
+    framebuffer_t *dst = ea->dst;
+    int src_x = ea->src_x;
+    int src_y = ea->src_y;
+
+    int dx, dy;
+    for (dy = 0; dy < dst->height; dy++) {
+        for (dx = 0; dx < dst->width; dx++) {
+            uint8_t color = fb_get_pixel_raw(src, src_x + dx, src_y + dy);
+            fb_set_pixel_raw(dst, dx, dy, color);
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * call-seq:
+ *   extract(x, y, width, height) -> Framebuffer
+ *
+ * Returns a new Framebuffer containing the sub-region starting at
+ * (+x+, +y+) with the given +width+ and +height+. The pixel format
+ * is preserved.
+ *
+ * Raises ArgumentError if the region exceeds the framebuffer bounds
+ * or if dimensions are not positive.
+ *
+ * The pixel-copy loop runs without the GVL so other Ruby threads
+ * can proceed concurrently.
+ *
+ * @param x [Integer] left edge of the extraction region
+ * @param y [Integer] top edge of the extraction region
+ * @param width [Integer] region width in pixels
+ * @param height [Integer] region height in pixels
+ * @return [Framebuffer] a new framebuffer containing the sub-region
+ * @raise [ArgumentError] if the region is invalid or out of bounds
+ */
+static VALUE
+fb_extract(VALUE self, VALUE rb_x, VALUE rb_y, VALUE rb_w, VALUE rb_h)
+{
+    framebuffer_t *src;
+    TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, src);
+
+    if (!src->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
+    int x = NUM2INT(rb_x);
+    int y = NUM2INT(rb_y);
+    int w = NUM2INT(rb_w);
+    int h = NUM2INT(rb_h);
+
+    if (w <= 0 || h <= 0)
+        rb_raise(rb_eArgError,
+                 "extract dimensions must be positive (got %dx%d)", w, h);
+    if (x < 0 || y < 0 || x + w > src->width || y + h > src->height)
+        rb_raise(rb_eArgError,
+                 "extract region (%d,%d %dx%d) exceeds framebuffer "
+                 "bounds (%dx%d)",
+                 x, y, w, h, src->width, src->height);
+
+    /* Create new Framebuffer via rb_class_new_instance so
+     * PixelFormatBridge fires and @pixel_format_obj is set up. */
+    VALUE argv[3];
+    argv[0] = INT2NUM(w);
+    argv[1] = INT2NUM(h);
+    argv[2] = cw_pixel_format_to_sym(src->pixel_format);
+    VALUE dst_obj = rb_class_new_instance(3, argv, rb_obj_class(self));
+
+    framebuffer_t *dst;
+    TypedData_Get_Struct(dst_obj, framebuffer_t, &framebuffer_type, dst);
+
+    /* Run the pixel loop without the GVL so other Ruby threads can proceed. */
+    extract_args_t ea = {
+        .src = src,
+        .dst = dst,
+        .src_x = x,
+        .src_y = y,
+    };
+    rb_thread_call_without_gvl(fb_extract_worker, &ea, RUBY_UBF_IO, NULL);
 
     return dst_obj;
 }
@@ -524,6 +641,7 @@ Init_framebuffer(void)
     rb_define_method(rb_cFramebuffer, "get_pixel",       fb_get_pixel,       2);
     rb_define_method(rb_cFramebuffer, "clear",           fb_clear,           1);
     rb_define_method(rb_cFramebuffer, "rotate",          fb_rotate,          1);
+    rb_define_method(rb_cFramebuffer, "extract",         fb_extract,         4);
     rb_define_method(rb_cFramebuffer, "bytes",           fb_bytes,           0);
     rb_define_method(rb_cFramebuffer, "raw_buffer",      fb_raw_buffer,      0);
     rb_define_method(rb_cFramebuffer, "==",              fb_eq,              1);

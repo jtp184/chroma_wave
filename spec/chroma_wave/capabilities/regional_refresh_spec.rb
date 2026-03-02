@@ -267,6 +267,76 @@ RSpec.describe ChromaWave::Capabilities::RegionalRefresh do
     end
   end
 
+  describe '#transform_native_to_logical' do
+    let(:model) { :epd_2in13_v4 }
+
+    context 'with 0° rotation' do
+      let(:display) do
+        d = ChromaWave::MockDevice.new(model: model, rotation: 0)
+        d.singleton_class.include(described_class)
+        d
+      end
+
+      after { display.close }
+
+      it 'returns coordinates unchanged' do
+        result = display.send(:transform_native_to_logical, 8, 4, 16, 10)
+        expect(result).to eq([8, 4, 16, 10])
+      end
+    end
+
+    context 'with 90° rotation (250x122 logical)' do
+      let(:display) do
+        d = ChromaWave::MockDevice.new(model: model, rotation: 90)
+        d.singleton_class.include(described_class)
+        d
+      end
+
+      after { display.close }
+
+      it 'is the inverse of transform_region_to_native' do
+        logical = [20, 30, 16, 10]
+        native = display.send(:transform_region_to_native, *logical)
+        roundtrip = display.send(:transform_native_to_logical, *native)
+        expect(roundtrip).to eq(logical)
+      end
+    end
+
+    context 'with 180° rotation' do
+      let(:display) do
+        d = ChromaWave::MockDevice.new(model: model, rotation: 180)
+        d.singleton_class.include(described_class)
+        d
+      end
+
+      after { display.close }
+
+      it 'is the inverse of transform_region_to_native' do
+        logical = [8, 4, 16, 10]
+        native = display.send(:transform_region_to_native, *logical)
+        roundtrip = display.send(:transform_native_to_logical, *native)
+        expect(roundtrip).to eq(logical)
+      end
+    end
+
+    context 'with 270° rotation' do
+      let(:display) do
+        d = ChromaWave::MockDevice.new(model: model, rotation: 270)
+        d.singleton_class.include(described_class)
+        d
+      end
+
+      after { display.close }
+
+      it 'is the inverse of transform_region_to_native' do
+        logical = [10, 5, 20, 8]
+        native = display.send(:transform_region_to_native, *logical)
+        roundtrip = display.send(:transform_native_to_logical, *native)
+        expect(roundtrip).to eq(logical)
+      end
+    end
+  end
+
   describe 'capability inclusion' do
     it 'is not included on models without :regional' do
       non_regional = find_non_regional_model
