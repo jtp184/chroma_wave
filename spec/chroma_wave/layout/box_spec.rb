@@ -19,18 +19,9 @@ RSpec.describe ChromaWave::Layout::Box do
     end
   end
 
-  describe 'mutability' do
-    it 'allows setting x, y, width, height' do
-      box = described_class.new
-      box.x = 5
-      box.y = 10
-      box.width = 200
-      box.height = 100
-
-      expect(box.x).to eq(5)
-      expect(box.y).to eq(10)
-      expect(box.width).to eq(200)
-      expect(box.height).to eq(100)
+  describe 'immutability' do
+    it 'is frozen' do
+      expect(described_class.new).to be_frozen
     end
   end
 
@@ -53,21 +44,7 @@ RSpec.describe ChromaWave::Layout::Box do
     end
   end
 
-  describe '#eql?' do
-    it 'is aliased to ==' do
-      a = described_class.new(x: 1, y: 2, width: 3, height: 4)
-      b = described_class.new(x: 1, y: 2, width: 3, height: 4)
-      expect(a).to eql(b)
-    end
-  end
-
-  describe '#hash' do
-    it 'returns the same hash for equal boxes' do
-      a = described_class.new(x: 1, y: 2, width: 3, height: 4)
-      b = described_class.new(x: 1, y: 2, width: 3, height: 4)
-      expect(a.hash).to eq(b.hash)
-    end
-
+  describe '#eql? and #hash' do
     it 'works as a Hash key' do
       box = described_class.new(x: 1, y: 2, width: 3, height: 4)
       hash = { box => :found }

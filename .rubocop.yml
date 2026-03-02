@@ -33,6 +33,7 @@ Style/Documentation:
     - 'lib/chroma_wave/layer.rb'
     - 'lib/chroma_wave/layout/padding.rb'
     - 'lib/chroma_wave/layout/constraints.rb'
+    - 'lib/chroma_wave/layout/box.rb'
 
 # Domain-standard short names used across graphics/geometry code.
 # x0/y0/x1/y1 (line endpoints), xi/yi (midpoint iterators),
