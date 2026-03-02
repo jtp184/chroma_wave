@@ -32,19 +32,13 @@ module ChromaWave
       #
       # @param width [Integer] the width to clamp
       # @return [Integer] the clamped width
-      def clamp_width(width)
-        effective_max = max_width || [width, min_width].max
-        width.clamp(min_width, effective_max)
-      end
+      def clamp_width(width) = clamp_dimension(width, min_width, max_width)
 
       # Clamps a height value to the min/max constraints.
       #
       # @param height [Integer] the height to clamp
       # @return [Integer] the clamped height
-      def clamp_height(height)
-        effective_max = max_height || [height, min_height].max
-        height.clamp(min_height, effective_max)
-      end
+      def clamp_height(height) = clamp_dimension(height, min_height, max_height)
 
       # Returns true if no constraints are set (all defaults).
       #
@@ -54,6 +48,20 @@ module ChromaWave
       end
 
       private
+
+      # Clamps a value to the given min/max range.
+      #
+      # When max is nil (unconstrained), uses the larger of value and min
+      # as the effective upper bound so +clamp+ has a valid range.
+      #
+      # @param value [Integer] the value to clamp
+      # @param min [Integer] minimum bound
+      # @param max [Integer, nil] maximum bound, or nil for unconstrained
+      # @return [Integer] the clamped value
+      def clamp_dimension(value, min, max)
+        effective_max = max || [value, min].max
+        value.clamp(min, effective_max)
+      end
 
       # @raise [ArgumentError] if max is less than min for the given axis
       def validate_bounds!(min, max, axis)
