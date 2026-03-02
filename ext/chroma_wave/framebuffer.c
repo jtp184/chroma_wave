@@ -159,6 +159,73 @@ fb_pixel_format(VALUE self)
     return cw_pixel_format_to_sym(fb->pixel_format);
 }
 
+/* ---- Raw pixel helpers (no VALUE overhead, no bounds check) ---- */
+
+/* Reads a raw color index from the framebuffer at (x, y).
+ * Caller must ensure x/y are within bounds and buffer is initialized. */
+static inline uint8_t
+fb_get_pixel_raw(const framebuffer_t *fb, int x, int y)
+{
+    size_t addr;
+    uint8_t rdata;
+
+    switch (fb->pixel_format) {
+    case PIXEL_FORMAT_MONO:
+        addr = (size_t)(x / 8) + (size_t)y * fb->width_byte;
+        rdata = fb->buffer[addr];
+        return (rdata >> (7 - (x % 8))) & 0x01;
+
+    case PIXEL_FORMAT_GRAY4:
+        addr = (size_t)(x / 4) + (size_t)y * fb->width_byte;
+        rdata = fb->buffer[addr];
+        return (rdata >> (6 - (x % 4) * 2)) & 0x03;
+
+    case PIXEL_FORMAT_COLOR4:
+    case PIXEL_FORMAT_COLOR7:
+        addr = (size_t)(x / 2) + (size_t)y * fb->width_byte;
+        rdata = fb->buffer[addr];
+        return (rdata >> (4 - (x % 2) * 4)) & 0x0F;
+    }
+    return 0; /* unreachable */
+}
+
+/* Writes a raw color index into the framebuffer at (x, y).
+ * Caller must ensure x/y are within bounds and buffer is initialized. */
+static inline void
+fb_set_pixel_raw(framebuffer_t *fb, int x, int y, uint8_t color)
+{
+    size_t addr;
+    uint8_t rdata;
+
+    switch (fb->pixel_format) {
+    case PIXEL_FORMAT_MONO:
+        addr = (size_t)(x / 8) + (size_t)y * fb->width_byte;
+        rdata = fb->buffer[addr];
+        if (color == 0)
+            fb->buffer[addr] = rdata & ~(0x80 >> (x % 8));
+        else
+            fb->buffer[addr] = rdata | (0x80 >> (x % 8));
+        break;
+
+    case PIXEL_FORMAT_GRAY4:
+        addr = (size_t)(x / 4) + (size_t)y * fb->width_byte;
+        color = color & 0x03;
+        rdata = fb->buffer[addr];
+        rdata = rdata & ~(0xC0 >> ((x % 4) * 2));
+        fb->buffer[addr] = rdata | ((color << 6) >> ((x % 4) * 2));
+        break;
+
+    case PIXEL_FORMAT_COLOR4:
+    case PIXEL_FORMAT_COLOR7:
+        addr = (size_t)(x / 2) + (size_t)y * fb->width_byte;
+        color = color & 0x0F;
+        rdata = fb->buffer[addr];
+        rdata = rdata & ~(0xF0 >> ((x % 2) * 4));
+        fb->buffer[addr] = rdata | ((color << 4) >> ((x % 2) * 4));
+        break;
+    }
+}
+
 /* ---- set_pixel(x, y, color) ---- */
 static VALUE
 fb_set_pixel(VALUE self, VALUE rb_x, VALUE rb_y, VALUE rb_color)
@@ -178,37 +245,7 @@ fb_set_pixel(VALUE self, VALUE rb_x, VALUE rb_y, VALUE rb_color)
         return self;
 
     uint8_t color = (uint8_t)(NUM2INT(rb_color) & 0xFF);
-    size_t addr;
-    uint8_t rdata;
-
-    switch (fb->pixel_format) {
-    case PIXEL_FORMAT_MONO:
-        addr = (size_t)(x / 8) + (size_t)y * fb->width_byte;
-        rdata = fb->buffer[addr];
-        if (color == 0) /* BLACK: clear bit */
-            fb->buffer[addr] = rdata & ~(0x80 >> (x % 8));
-        else /* WHITE: set bit */
-            fb->buffer[addr] = rdata | (0x80 >> (x % 8));
-        break;
-
-    case PIXEL_FORMAT_GRAY4:
-        addr = (size_t)(x / 4) + (size_t)y * fb->width_byte;
-        color = color & 0x03; /* 2-bit color */
-        rdata = fb->buffer[addr];
-        rdata = rdata & ~(0xC0 >> ((x % 4) * 2));
-        fb->buffer[addr] = rdata | ((color << 6) >> ((x % 4) * 2));
-        break;
-
-    case PIXEL_FORMAT_COLOR4:
-    case PIXEL_FORMAT_COLOR7:
-        addr = (size_t)(x / 2) + (size_t)y * fb->width_byte;
-        color = color & 0x0F; /* 4-bit color */
-        rdata = fb->buffer[addr];
-        rdata = rdata & ~(0xF0 >> ((x % 2) * 4));
-        fb->buffer[addr] = rdata | ((color << 4) >> ((x % 2) * 4));
-        break;
-    }
-
+    fb_set_pixel_raw(fb, x, y, color);
     return self;
 }
 
@@ -230,31 +267,7 @@ fb_get_pixel(VALUE self, VALUE rb_x, VALUE rb_y)
     if (x < 0 || x >= fb->width || y < 0 || y >= fb->height)
         return Qnil;
 
-    size_t addr;
-    uint8_t rdata, color;
-
-    switch (fb->pixel_format) {
-    case PIXEL_FORMAT_MONO:
-        addr = (size_t)(x / 8) + (size_t)y * fb->width_byte;
-        rdata = fb->buffer[addr];
-        color = (rdata >> (7 - (x % 8))) & 0x01;
-        return INT2NUM(color);
-
-    case PIXEL_FORMAT_GRAY4:
-        addr = (size_t)(x / 4) + (size_t)y * fb->width_byte;
-        rdata = fb->buffer[addr];
-        color = (rdata >> (6 - (x % 4) * 2)) & 0x03;
-        return INT2NUM(color);
-
-    case PIXEL_FORMAT_COLOR4:
-    case PIXEL_FORMAT_COLOR7:
-        addr = (size_t)(x / 2) + (size_t)y * fb->width_byte;
-        rdata = fb->buffer[addr];
-        color = (rdata >> (4 - (x % 2) * 4)) & 0x0F;
-        return INT2NUM(color);
-    }
-
-    return Qnil; /* unreachable */
+    return INT2NUM(fb_get_pixel_raw(fb, x, y));
 }
 
 /* ---- clear(color) ---- */
@@ -291,6 +304,78 @@ fb_clear(VALUE self, VALUE rb_color)
 
     memset(fb->buffer, fill, fb->buffer_size);
     return self;
+}
+
+/* ---- rotate(degrees) ---- */
+static VALUE
+fb_rotate(VALUE self, VALUE rb_degrees)
+{
+    framebuffer_t *src;
+    TypedData_Get_Struct(self, framebuffer_t, &framebuffer_type, src);
+
+    if (!src->buffer) {
+        rb_raise(rb_eChromaWaveError, "framebuffer not initialized");
+    }
+
+    int degrees = NUM2INT(rb_degrees);
+    if (degrees != 0 && degrees != 90 && degrees != 180 && degrees != 270)
+        rb_raise(rb_eArgError, "rotation must be 0, 90, 180, or 270 (got %d)", degrees);
+
+    /* 0°: return a dup */
+    if (degrees == 0)
+        return rb_obj_dup(self);
+
+    /* Compute destination dimensions */
+    uint16_t dst_w, dst_h;
+    if (degrees == 90 || degrees == 270) {
+        dst_w = src->height;
+        dst_h = src->width;
+    } else { /* 180 */
+        dst_w = src->width;
+        dst_h = src->height;
+    }
+
+    /* Create new Framebuffer via rb_class_new_instance so
+     * PixelFormatBridge fires and @pixel_format_obj is set up. */
+    VALUE argv[3];
+    argv[0] = INT2NUM(dst_w);
+    argv[1] = INT2NUM(dst_h);
+    argv[2] = cw_pixel_format_to_sym(src->pixel_format);
+    VALUE dst_obj = rb_class_new_instance(3, argv, rb_obj_class(self));
+
+    framebuffer_t *dst;
+    TypedData_Get_Struct(dst_obj, framebuffer_t, &framebuffer_type, dst);
+
+    /* Iterate source pixels and write to rotated positions */
+    int sx, sy, dx, dy;
+    for (sy = 0; sy < src->height; sy++) {
+        for (sx = 0; sx < src->width; sx++) {
+            uint8_t color = fb_get_pixel_raw(src, sx, sy);
+
+            switch (degrees) {
+            case 90:
+                dx = dst_w - 1 - sy;
+                dy = sx;
+                break;
+            case 180:
+                dx = dst_w - 1 - sx;
+                dy = dst_h - 1 - sy;
+                break;
+            case 270:
+                dx = sy;
+                dy = dst_h - 1 - sx;
+                break;
+            default:
+                dx = sx;
+                dy = sy;
+                break;
+            }
+
+            fb_set_pixel_raw(dst, dx, dy, color);
+        }
+    }
+
+    return dst_obj;
 }
 
 /* ---- bytes ---- */
@@ -408,6 +493,7 @@ Init_framebuffer(void)
     rb_define_method(rb_cFramebuffer, "set_pixel",       fb_set_pixel,       3);
     rb_define_method(rb_cFramebuffer, "get_pixel",       fb_get_pixel,       2);
     rb_define_method(rb_cFramebuffer, "clear",           fb_clear,           1);
+    rb_define_method(rb_cFramebuffer, "rotate",          fb_rotate,          1);
     rb_define_method(rb_cFramebuffer, "bytes",           fb_bytes,           0);
     rb_define_method(rb_cFramebuffer, "raw_buffer",      fb_raw_buffer,      0);
     rb_define_method(rb_cFramebuffer, "==",              fb_eq,              1);
