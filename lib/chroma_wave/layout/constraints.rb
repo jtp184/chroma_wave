@@ -50,9 +50,9 @@ module ChromaWave
       def unconstrained?
         min_width.zero? && min_height.zero? && max_width.nil? && max_height.nil?
       end
-    end
 
-    # Default unconstrained instance.
-    Constraints.const_set(:NONE, Constraints.new)
+      # Default unconstrained instance.
+      const_set(:NONE, new.freeze)
+    end
   end
 end
