@@ -257,54 +257,27 @@ end  # auto-closes, releases GPIO/SPI
 
 ### Layout DSL
 
-Describe UI layouts with Ruby blocks instead of manual coordinate math. The Layout DSL builds a node tree, computes positions via a flexbox-lite algorithm, and renders to Canvas:
+Describe UI layouts with Ruby blocks instead of manual coordinate math. Rows and columns distribute space with flex proportions, padding, and gaps — like a lightweight flexbox:
 
 ```ruby
 font  = ChromaWave::Font.default(size: 14)
-icons = ChromaWave::IconFont.lucide(size: 20)
 black = ChromaWave::Color::BLACK
-gray  = ChromaWave::Color::LIGHT_GRAY
 
 layout = ChromaWave::Layout.build(width: display.width, height: display.height) do
   column(padding: 8, gap: 6) do
-    # Header row — icon left, title center, status right
-    row(flex: 1, gap: 8, border: black, border_width: 1, padding: 4) do
-      icon :thermometer, font: icons, color: black
-      text "Weather Station", font: font, color: black
-      spacer
-      text "Online", font: font, color: black, align: :right
+    row(flex: 1, gap: 8) do
+      text "Hello, e-paper!", font: font, color: black
+      spacer                          # pushes "OK" to the right
+      text "OK", font: font, color: black
     end
 
-    # Body — takes 3x the space of header/footer
-    row(flex: 3, background: gray, padding: 10) do
-      column(flex: 1, gap: 4) do
-        text "Temperature: 72°F", font: font, color: black
-        text "Humidity: 45%",     font: font, color: black
-        text "Wind: 8 mph NW",   font: font, color: black
-      end
-    end
-
-    # Footer
-    row(flex: 1, padding: 4) do
-      text "Updated 5 min ago", font: font, color: black, align: :center
+    row(flex: 2, background: Color::LIGHT_GRAY, padding: 10) do
+      text "This area gets twice the vertical space.", font: font, color: black
     end
   end
 end
 
 display.show(layout)
-```
-
-Containers (`row`, `column`) support `flex`, `padding`, `gap`, `background`, `border`, and `border_width`. Content nodes (`text`, `icon`, `image`, `spacer`, `canvas_block`) support `flex`, `width`, `height`, `min_width`, `max_width`, `align`, and `valign`. Spacers default to `flex: 1` — they push siblings apart.
-
-For custom drawing within a layout cell, use `canvas_block`:
-
-```ruby
-row(flex: 2) do
-  canvas_block do |layer|
-    layer.draw_circle(50, 50, 30, pen: Pen.fill(Color::BLACK))
-    layer.draw_text("Custom!", x: 30, y: 80, font: font, color: Color::BLACK)
-  end
-end
 ```
 
 ---
