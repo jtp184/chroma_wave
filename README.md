@@ -271,7 +271,7 @@ layout = ChromaWave::Layout.build(width: display.width, height: display.height) 
       text "OK", font: font, color: black
     end
 
-    row(flex: 2, background: Color::LIGHT_GRAY, padding: 10) do
+    row(flex: 2, background: ChromaWave::Color::LIGHT_GRAY, padding: 10) do
       text "This area gets twice the vertical space.", font: font, color: black
     end
   end
