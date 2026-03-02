@@ -120,6 +120,11 @@ RSpec.describe ChromaWave::Layout::DSL do
         expect(node.border_width).to eq(2)
       end
 
+      it 'parses 2-element padding shorthand' do
+        node = described_class.evaluate { row(padding: [5, 10]) {} }.first
+        expect(node.padding).to eq(ChromaWave::Layout::Padding.new(top: 5, right: 10, bottom: 5, left: 10))
+      end
+
       it 'captures child_align and child_valign' do
         node = described_class.evaluate do
           row(child_align: :center, child_valign: :bottom) {}

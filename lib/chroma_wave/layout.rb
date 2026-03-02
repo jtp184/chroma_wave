@@ -82,6 +82,9 @@ module ChromaWave
     # @param height [Integer] layout height
     # @param root [ContainerNode] root node
     def initialize(width:, height:, root:)
+      raise ArgumentError, "width must be positive, got #{width}" unless width.positive?
+      raise ArgumentError, "height must be positive, got #{height}" unless height.positive?
+
       @width = width
       @height = height
       @root = root

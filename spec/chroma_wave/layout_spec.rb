@@ -23,6 +23,20 @@ RSpec.describe ChromaWave::Layout do
       expect(layout.root).to be_vertical
       expect(layout.root.children.length).to eq(1)
     end
+
+    it 'applies a custom background color to the root container' do
+      layout = described_class.build(width: 50, height: 50, background: gray) {}
+      expect(layout.root.background).to eq(gray)
+    end
+
+    it 'raises ArgumentError for zero width' do
+      expect { described_class.build(width: 0, height: 100) {} }.to raise_error(ArgumentError, /width must be positive/)
+    end
+
+    it 'raises ArgumentError for negative height' do
+      expect { described_class.build(width: 100, height: -1) {} }
+        .to raise_error(ArgumentError, /height must be positive/)
+    end
   end
 
   describe '#render' do

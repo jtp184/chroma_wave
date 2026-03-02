@@ -89,9 +89,10 @@ module ChromaWave
         # Bottom
         layer.draw_rect(0, h - bw, w, bw, pen: pen)
         # Left
-        layer.draw_rect(0, bw, bw, h - (2 * bw), pen: pen)
+        side_h = [h - (2 * bw), 0].max
+        layer.draw_rect(0, bw, bw, side_h, pen: pen)
         # Right
-        layer.draw_rect(w - bw, bw, bw, h - (2 * bw), pen: pen)
+        layer.draw_rect(w - bw, bw, bw, side_h, pen: pen)
       end
 
       # Dispatches rendering for a leaf content node.

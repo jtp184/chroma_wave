@@ -221,12 +221,15 @@ module ChromaWave
         end
       end
 
-      # Iteratively distributes flex space with constraint re-distribution.
+      # Distributes flex space in two phases: constraint resolution, then allocation.
       #
-      # Each round allocates proportional shares to unfrozen flex children.
-      # If any child is clamped by constraints, it is frozen at its clamped
-      # value and the remaining budget/pool are adjusted for the next round.
-      # Repeats until no children are frozen in a round (max N rounds).
+      # Phase 1 ({#freeze_constrained}): iteratively finds flex children whose
+      # proportional share would be clamped by min/max constraints, freezes them
+      # at their clamped value, and adjusts the remaining budget. Repeats until
+      # no new children are clamped (max N rounds).
+      #
+      # Phase 2 ({#allocate_unfrozen_flex}): distributes the remaining budget
+      # proportionally among unfrozen flex children with rounding correction.
       #
       # @param children [Array<Node>] child nodes
       # @param sizes [Array<Integer>] size array (mutated in place)
@@ -237,6 +240,25 @@ module ChromaWave
       def distribute_flex(children, sizes, frozen, budget, flex_pool, axis)
         return if flex_pool.zero?
 
+        budget, flex_pool = freeze_constrained(children, sizes, frozen, budget, flex_pool, axis)
+        allocate_unfrozen_flex(children, sizes, frozen, budget, flex_pool)
+      end
+
+      # Iteratively freezes flex children that hit min/max constraints.
+      #
+      # Each round computes proportional shares for unfrozen children.
+      # Any child whose share is clamped by constraints is frozen at
+      # its clamped value and removed from the pool. Repeats until a
+      # round produces no newly frozen children.
+      #
+      # @param children [Array<Node>] child nodes
+      # @param sizes [Array<Integer>] size array (mutated in place)
+      # @param frozen [Array<Boolean>] frozen state (mutated in place)
+      # @param budget [Integer] remaining distributable space
+      # @param flex_pool [Float] total flex of unfrozen children
+      # @param axis [Symbol] :width or :height
+      # @return [Array(Integer, Float)] updated [budget, flex_pool]
+      def freeze_constrained(children, sizes, frozen, budget, flex_pool, axis)
         children.length.times do
           any_frozen = false
 
@@ -245,8 +267,7 @@ module ChromaWave
 
             share = (budget * child.flex / flex_pool).round
             clamped = clamp_axis(child, share, axis)
-
-            next unless clamped != share
+            next if clamped == share
 
             sizes[i] = clamped
             frozen[i] = true
@@ -258,8 +279,7 @@ module ChromaWave
           break unless any_frozen
         end
 
-        # Final allocation for remaining unfrozen flex children
-        allocate_unfrozen_flex(children, sizes, frozen, budget, flex_pool)
+        [budget, flex_pool]
       end
 
       # Allocates budget to remaining unfrozen flex children.

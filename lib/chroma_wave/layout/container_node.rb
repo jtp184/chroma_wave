@@ -62,7 +62,7 @@ module ChromaWave
         validate_align!(child_align, label: 'child_align')
         validate_valign!(child_valign, label: 'child_valign')
         @direction = direction
-        @children = children
+        @children = children.dup.freeze
         @padding = Padding.parse(padding)
         @gap = gap
         @background = background
