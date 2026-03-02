@@ -72,6 +72,7 @@ module ChromaWave
       @entries = entries
       @index = entries.each_with_index.to_h.freeze
       @rgba_by_entry = entries.map { |name| Color.from_name(name) }.freeze
+      @lab_by_entry = @rgba_by_entry.map(&:to_lab).freeze
       @nearest_cache = LruCache.new
     end
 
@@ -130,11 +131,12 @@ module ChromaWave
 
     # Finds the nearest palette color to an arbitrary RGBA color.
     #
-    # Uses redmean perceptual distance for better color matching.
-    # Results are memoized by the packed 24-bit integer key for
-    # zero-allocation cache hits. The cache is LRU-bounded to
-    # {LruCache::DEFAULT_CAPACITY} entries to prevent unbounded growth
-    # when mapping large images through long-lived palette constants.
+    # Uses CIE76 Delta E distance in L*a*b* space for perceptually
+    # accurate color matching. Results are memoized by the packed
+    # 24-bit integer key for zero-allocation cache hits. The cache
+    # is LRU-bounded to {LruCache::DEFAULT_CAPACITY} entries to
+    # prevent unbounded growth when mapping large images through
+    # long-lived palette constants.
     #
     # @param rgba [Color] the color to match
     # @return [Symbol] the nearest palette entry name
@@ -170,7 +172,7 @@ module ChromaWave
 
     private
 
-    attr_reader :index, :rgba_by_entry, :nearest_cache
+    attr_reader :index, :rgba_by_entry, :lab_by_entry, :nearest_cache
 
     # Validates that entries are non-empty, unique, and registered color names.
     #
@@ -193,7 +195,7 @@ module ChromaWave
 
     # Packs an RGB color into a 24-bit integer cache key.
     #
-    # Alpha is excluded because the redmean distance calculation
+    # Alpha is excluded because the CIE Lab distance calculation
     # operates on RGB only — colors should be composited to opaque
     # before palette matching.
     #
@@ -203,21 +205,22 @@ module ChromaWave
       (rgba.r << 16) | (rgba.g << 8) | rgba.b
     end
 
-    # Computes the nearest palette entry using redmean perceptual distance.
+    # Computes the nearest palette entry using CIE76 Delta E distance.
     #
-    # Redmean formula weights R/G/B channels differently based on the
-    # average red value, providing better perceptual accuracy than
-    # simple Euclidean distance, particularly for dark colors.
+    # Converts the input pixel to L*a*b* via {Color.compute_lab} and
+    # compares against pre-computed {#lab_by_entry} values. Uses squared
+    # Delta E to avoid an unnecessary +sqrt+ (valid since we only need
+    # ordering, not absolute magnitude).
     #
-    # @param rgba [Color] the color to match
+    # @param rgba [#r, #g, #b] the color to match (Color or duck-typed RGB)
     # @return [Symbol] nearest palette entry name
     def compute_nearest(rgba)
+      pixel_lab = Color.compute_lab(rgba.r, rgba.g, rgba.b)
       min_entry = nil
       min_dist = Float::INFINITY
 
       entries.each_with_index do |name, i|
-        candidate = rgba_by_entry[i]
-        dist = redmean_distance(rgba, candidate)
+        dist = delta_e_squared(pixel_lab, lab_by_entry[i])
         if dist < min_dist
           min_dist = dist
           min_entry = name
@@ -227,20 +230,17 @@ module ChromaWave
       min_entry
     end
 
-    # Calculates the redmean perceptual color distance.
+    # Calculates the squared CIE76 Delta E between two L*a*b* triples.
     #
-    # @param c1 [Color] first color
-    # @param c2 [Color] second color
-    # @return [Float] perceptual distance (lower = more similar)
-    def redmean_distance(c1, c2) # rubocop:disable Metrics/AbcSize
-      r_mean = (c1.r + c2.r) / 2.0
-      dr = c1.r - c2.r
-      dg = c1.g - c2.g
-      db = c1.b - c2.b
+    # @param lab1 [Array(Float, Float, Float)] [L*, a*, b*]
+    # @param lab2 [Array(Float, Float, Float)] [L*, a*, b*]
+    # @return [Float] squared perceptual distance (lower = more similar)
+    def delta_e_squared(lab1, lab2)
+      dl = lab1[0] - lab2[0]
+      da = lab1[1] - lab2[1]
+      db = lab1[2] - lab2[2]
 
-      ((2 + (r_mean / 256.0)) * dr * dr) +
-        (4 * dg * dg) +
-        ((2 + ((255 - r_mean) / 256.0)) * db * db)
+      (dl * dl) + (da * da) + (db * db)
     end
   end
 end
