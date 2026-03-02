@@ -133,7 +133,7 @@ RSpec.describe ChromaWave::Display do
 
     it 'raises FormatMismatchError for wrong pixel format' do
       described_class.open(model: model) do |display|
-        wrong_fb = ChromaWave::Framebuffer.new(display.width, display.height, :color4)
+        wrong_fb = ChromaWave::Framebuffer.new(display.native_width, display.native_height, :color4)
         expect { display.show(wrong_fb) }
           .to raise_error(ChromaWave::FormatMismatchError, /expected mono/)
       end

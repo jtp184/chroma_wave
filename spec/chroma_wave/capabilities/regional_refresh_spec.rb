@@ -117,6 +117,156 @@ RSpec.describe ChromaWave::Capabilities::RegionalRefresh do
     end
   end
 
+  describe 'rotation support' do
+    let(:model) { find_regional_model }
+    let(:config) { ChromaWave::Native.model_config(model) }
+    let(:nw) { config[:width] }
+    let(:nh) { config[:height] }
+
+    before { skip 'no regional model available' unless model }
+
+    context 'with 0° rotation' do
+      let(:display) { ChromaWave::MockDevice.new(model: model, rotation: 0) }
+      let(:fb) { ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format) }
+
+      after { display.close }
+
+      it 'passes region coordinates unchanged' do
+        expect(display.display_region(fb, x: 8, y: 4, width: 16, height: 10)).to eq(display)
+      end
+    end
+
+    context 'with 90° rotation' do
+      let(:display) { ChromaWave::MockDevice.new(model: model, rotation: 90) }
+      let(:fb) { ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format) }
+
+      after { display.close }
+
+      it 'accepts a full-screen logical region' do
+        expect(display.display_region(fb, x: 0, y: 0, width: display.width, height: display.height))
+          .to eq(display)
+      end
+
+      it 'accepts a small sub-region' do
+        expect(display.display_region(fb, x: 0, y: 0, width: 8, height: 8)).to eq(display)
+      end
+    end
+
+    context 'with 180° rotation' do
+      let(:display) { ChromaWave::MockDevice.new(model: model, rotation: 180) }
+      let(:fb) { ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format) }
+
+      after { display.close }
+
+      it 'accepts a full-screen logical region' do
+        expect(display.display_region(fb, x: 0, y: 0, width: display.width, height: display.height))
+          .to eq(display)
+      end
+    end
+
+    context 'with 270° rotation' do
+      let(:display) { ChromaWave::MockDevice.new(model: model, rotation: 270) }
+      let(:fb) { ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format) }
+
+      after { display.close }
+
+      it 'accepts a full-screen logical region' do
+        expect(display.display_region(fb, x: 0, y: 0, width: display.width, height: display.height))
+          .to eq(display)
+      end
+    end
+  end
+
+  describe '#transform_region_to_native' do
+    # Use a manually extended display so we can test the private method directly
+    # with known dimensions (native: 122x250).
+    let(:model) { :epd_2in13_v4 }
+
+    # Regions are logical (x, y, w, h) -> expected native (x, y, w, h).
+    # Native display for epd_2in13_v4: 122x250.
+
+    context 'with 0° rotation (122x250 logical)' do
+      let(:display) do
+        d = ChromaWave::MockDevice.new(model: model, rotation: 0)
+        d.singleton_class.include(described_class)
+        d
+      end
+
+      after { display.close }
+
+      it 'returns coordinates unchanged' do
+        result = display.send(:transform_region_to_native, 8, 4, 16, 10)
+        expect(result).to eq([8, 4, 16, 10])
+      end
+    end
+
+    context 'with 90° rotation (250x122 logical)' do
+      let(:display) do
+        d = ChromaWave::MockDevice.new(model: model, rotation: 90)
+        d.singleton_class.include(described_class)
+        d
+      end
+
+      after { display.close }
+
+      it 'transforms a top-left region' do
+        # Logical (0, 0, 16, 10) on 250x122 -> native on 122x250
+        # native_x = nw - y - h = 122 - 0 - 10 = 112
+        # native_y = x = 0
+        # native_w = h = 10, native_h = w = 16
+        result = display.send(:transform_region_to_native, 0, 0, 16, 10)
+        expect(result).to eq([112, 0, 10, 16])
+      end
+
+      it 'transforms an interior region' do
+        # Logical (20, 30, 16, 10) on 250x122
+        # native_x = 122 - 30 - 10 = 82
+        # native_y = 20
+        # native_w = 10, native_h = 16
+        result = display.send(:transform_region_to_native, 20, 30, 16, 10)
+        expect(result).to eq([82, 20, 10, 16])
+      end
+    end
+
+    context 'with 180° rotation (122x250 logical)' do
+      let(:display) do
+        d = ChromaWave::MockDevice.new(model: model, rotation: 180)
+        d.singleton_class.include(described_class)
+        d
+      end
+
+      after { display.close }
+
+      it 'mirrors both axes' do
+        # Logical (8, 4, 16, 10) on 122x250
+        # native_x = 122 - 8 - 16 = 98
+        # native_y = 250 - 4 - 10 = 236
+        # native_w = 16, native_h = 10
+        result = display.send(:transform_region_to_native, 8, 4, 16, 10)
+        expect(result).to eq([98, 236, 16, 10])
+      end
+    end
+
+    context 'with 270° rotation (250x122 logical)' do
+      let(:display) do
+        d = ChromaWave::MockDevice.new(model: model, rotation: 270)
+        d.singleton_class.include(described_class)
+        d
+      end
+
+      after { display.close }
+
+      it 'transforms a top-left region' do
+        # Logical (0, 0, 16, 10) on 250x122
+        # native_x = y = 0
+        # native_y = 250 - 0 - 16 = 234
+        # native_w = 10, native_h = 16
+        result = display.send(:transform_region_to_native, 0, 0, 16, 10)
+        expect(result).to eq([0, 234, 10, 16])
+      end
+    end
+  end
+
   describe 'capability inclusion' do
     it 'is not included on models without :regional' do
       non_regional = find_non_regional_model
