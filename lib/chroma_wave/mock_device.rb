@@ -25,10 +25,11 @@ module ChromaWave
       # Factory — builds a MockDevice subclass with the correct capabilities.
       #
       # @param model [Symbol, String] model name (e.g. +:epd_2in13_v4+)
+      # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
       # @param busy_duration [Numeric] simulated refresh delay in seconds
       # @return [MockDevice]
       # @raise [ModelNotFoundError] if the model is not in the registry
-      def new(model: nil, busy_duration: 0, **kwargs)
+      def new(model: nil, rotation: 0, busy_duration: 0, **kwargs)
         raise ArgumentError, 'missing keyword: :model' unless model
         raise ArgumentError, "unknown keyword(s): #{kwargs.keys.join(', ')}" unless kwargs.empty?
 
@@ -38,18 +39,20 @@ module ChromaWave
 
         klass = mock_classes[name] ||= build_mock_class(config)
         instance = klass.allocate
-        instance.send(:initialize, model_name: name, config: config, busy_duration: busy_duration)
+        instance.send(:initialize, model_name: name, config: config,
+                                   rotation: rotation, busy_duration: busy_duration)
         instance
       end
 
       # Block form — opens a mock device, yields it, ensures it is closed.
       #
       # @param model [Symbol, String] model name
+      # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
       # @param busy_duration [Numeric] simulated refresh delay in seconds
       # @yield [mock] the opened MockDevice
       # @return [MockDevice, Object] the mock (no block) or the block's return value
-      def open(model:, busy_duration: 0)
-        mock = new(model: model, busy_duration: busy_duration)
+      def open(model:, rotation: 0, busy_duration: 0)
+        mock = new(model: model, rotation: rotation, busy_duration: busy_duration)
         return mock unless block_given?
 
         begin
@@ -170,11 +173,14 @@ module ChromaWave
     #
     # @param model_name [Symbol, String] the model identifier
     # @param config [Hash] the model configuration from Native
+    # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
     # @param busy_duration [Numeric] simulated refresh delay in seconds
-    def initialize(model_name:, config:, busy_duration: 0) # rubocop:disable Lint/MissingSuper -- intentionally avoids Display#initialize which creates a real C Device
+    def initialize(model_name:, config:, rotation: 0, busy_duration: 0) # rubocop:disable Lint/MissingSuper -- intentionally avoids Display#initialize which creates a real C Device
+      validate_rotation!(rotation)
       @model = model_name.to_sym
-      @width = config[:width]
-      @height = config[:height]
+      @rotation = rotation
+      @native_width = config[:width]
+      @native_height = config[:height]
       @pixel_format = PixelFormat.from_name(config[:pixel_format])
       @busy_duration = busy_duration
       @initialized = false
@@ -183,6 +189,14 @@ module ChromaWave
       @operations_log = []
       @last_framebuffer = nil
       @device = DeviceStub.new(self)
+
+      if rotation == 90 || rotation == 270
+        @width = @native_height
+        @height = @native_width
+      else
+        @width = @native_width
+        @height = @native_height
+      end
     end
 
     private
