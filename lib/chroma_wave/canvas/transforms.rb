@@ -167,10 +167,10 @@ module ChromaWave
       # @return [Array(Integer, Integer)]
       # @raise [ArgumentError] on invalid or conflicting arguments
       def resolve_scale_dimensions(factor, target_w, target_h)
-        new_w, new_h = if factor
-                         resolve_scale_factor(factor, target_w, target_h)
-                       else
+        new_w, new_h = if factor.nil?
                          resolve_scale_keywords(target_w, target_h)
+                       else
+                         resolve_scale_factor(factor, target_w, target_h)
                        end
 
         max = Surface::MAX_DIMENSION
@@ -196,28 +196,47 @@ module ChromaWave
 
       # Nearest-neighbor resampling into a +new_w+ x +new_h+ canvas.
       #
-      # Pre-computes the source-x lookup table to avoid per-pixel division,
-      # and builds each output row as a single string before appending.
+      # Pre-computes the source-x lookup table to avoid per-pixel division.
+      # Writes directly into a pre-allocated buffer via +setbyte+/+getbyte+
+      # to avoid per-pixel String allocations.
       #
       # @param new_w [Integer] output width
       # @param new_h [Integer] output height
       # @return [Canvas]
       def scale_nearest(new_w, new_h)
         src = raw_buffer
-        src_w = width
-        out = String.new(capacity: new_w * new_h * BYTES_PER_PIXEL, encoding: Encoding::BINARY)
+        out = ("\0" * (new_w * new_h * BYTES_PER_PIXEL)).b
+        x_map = Array.new(new_w) { |dx| (dx * width / new_w) * BYTES_PER_PIXEL }
 
-        # Pre-compute source x byte-offset for each destination column
-        x_map = Array.new(new_w) { |dx| (dx * src_w / new_w) * BYTES_PER_PIXEL }
+        copy_scaled_pixels(src, out, new_w, new_h, x_map)
+        build_canvas(new_w, new_h, out)
+      end
+
+      # Copies source pixels into +out+ using nearest-neighbor sampling.
+      #
+      # @param src   [String] source RGBA buffer
+      # @param out   [String] pre-allocated destination buffer (mutated in place)
+      # @param new_w [Integer] output width
+      # @param new_h [Integer] output height
+      # @param x_map [Array<Integer>] pre-computed source x byte-offsets
+      # @return [void]
+      def copy_scaled_pixels(src, out, new_w, new_h, x_map)
+        src_row_bytes = width * BYTES_PER_PIXEL
+        dest_row_bytes = new_w * BYTES_PER_PIXEL
 
         new_h.times do |dy|
-          src_row = (dy * height / new_h) * src_w * BYTES_PER_PIXEL
-          row = String.new(capacity: new_w * BYTES_PER_PIXEL, encoding: Encoding::BINARY)
-          x_map.each { |src_x| row << src.byteslice(src_row + src_x, BYTES_PER_PIXEL) }
-          out << row
-        end
+          src_row = (dy * height / new_h) * src_row_bytes
+          dest_row = dy * dest_row_bytes
 
-        build_canvas(new_w, new_h, out)
+          x_map.each_with_index do |src_x, dx|
+            src_pixel = src_row + src_x
+            dest_pixel = dest_row + (dx * BYTES_PER_PIXEL)
+
+            BYTES_PER_PIXEL.times do |b|
+              out.setbyte(dest_pixel + b, src.getbyte(src_pixel + b))
+            end
+          end
+        end
       end
 
       # Clips the crop rectangle to canvas bounds and copies rows.

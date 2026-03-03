@@ -376,6 +376,11 @@ RSpec.describe ChromaWave::Canvas::Transforms do
         expect { c.scale('big') }.to raise_error(ArgumentError, /factor/)
       end
 
+      it 'raises for false factor instead of falling through to keyword path' do
+        c = canvas(2, 2)
+        expect { c.scale(false) }.to raise_error(ArgumentError, /factor/)
+      end
+
       it 'raises for non-Numeric width: keyword' do
         c = canvas(2, 2)
         expect { c.scale(width: '100') }.to raise_error(ArgumentError, /width/)
