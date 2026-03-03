@@ -9,9 +9,11 @@
  * other headers. It defines the vendor's include guard (__DEBUG_H) to
  * prevent the original Debug.h from taking effect.
  *
- * rb_warn() respects Ruby's -W warning level:
- *   -W0 silences these messages
- *   -W1 (default) shows them
+ * Unlike the original Debug.h (which is a no-op unless -DDEBUG is
+ * set at compile time), this replacement always emits through
+ * rb_warn(). Ruby's warning level controls visibility at runtime:
+ *   -W0 / $VERBOSE=nil  silences these messages
+ *   -W1 / $VERBOSE=false (default) shows them
  *   Warning.warn can intercept them programmatically
  *
  * Vendor format strings use \r\n line endings for raw printf output.
@@ -33,7 +35,7 @@
  * Uses vsnprintf for formatting (standard C printf semantics) then
  * passes the result to rb_warn via %s — avoiding any rb_sprintf
  * format quirks (e.g. PRIsVALUE hijacking %i). */
-static void
+static inline void
 cw_vendor_debug(const char *fmt, ...)
 {
     char buf[256];
