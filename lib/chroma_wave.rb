@@ -34,6 +34,8 @@ require_relative 'chroma_wave/capabilities/fast_refresh'     # Fast-refresh disp
 require_relative 'chroma_wave/capabilities/grayscale_mode'   # Grayscale display mode
 require_relative 'chroma_wave/capabilities/dual_buffer'      # Dual-buffer tri-color support
 require_relative 'chroma_wave/capabilities/regional_refresh' # Regional sub-area refresh
+require_relative 'chroma_wave/refresh_scheduler'             # Refresh counter/timer
+require_relative 'chroma_wave/capabilities/managed_refresh'  # Opt-in refresh management
 require_relative 'chroma_wave/display'      # High-level Display with lazy init + capabilities
 require_relative 'chroma_wave/registry'     # Auto-builds Display subclasses from C config
 require_relative 'chroma_wave/mock_device'  # Test-friendly Display with operation logging

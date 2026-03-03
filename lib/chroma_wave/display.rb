@@ -29,18 +29,21 @@ module ChromaWave
     #
     # @param model [Symbol, String] model name (e.g. +:epd_2in13_v4+)
     # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
+    # @param managed_refresh [Boolean, Hash, nil] opt-in refresh scheduling.
+    #   Pass +true+ for defaults, or a Hash with +:partial_limit+, +:min_interval+,
+    #   and/or +:auto_full_refresh+ keys. +nil+ (default) disables scheduling.
     # @return [Display] a subclass instance with appropriate capabilities
     # @raise [ModelNotFoundError] if the model is not in the registry
-    def self.new(model: nil, rotation: 0, **kwargs)
+    def self.new(model: nil, rotation: 0, managed_refresh: nil, **kwargs)
       if self == Display
         raise ArgumentError, 'missing keyword: :model' unless model
         raise ArgumentError, "unknown keyword(s): #{kwargs.keys.join(', ')}" unless kwargs.empty?
 
-        return Registry.build(model, rotation: rotation)
+        return Registry.build(model, rotation: rotation, managed_refresh: managed_refresh)
       end
 
       instance = allocate
-      instance.send(:initialize, rotation: rotation, **kwargs)
+      instance.send(:initialize, rotation: rotation, managed_refresh: managed_refresh, **kwargs)
       instance
     end
 
@@ -50,10 +53,11 @@ module ChromaWave
     #
     # @param model [Symbol, String] model name
     # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
+    # @param managed_refresh [Boolean, Hash, nil] opt-in refresh scheduling
     # @yield [display] the opened display
     # @return [Display, Object] the display (no block) or the block's return value
-    def self.open(model:, rotation: 0)
-      display = new(model: model, rotation: rotation)
+    def self.open(model:, rotation: 0, managed_refresh: nil)
+      display = new(model: model, rotation: rotation, managed_refresh: managed_refresh)
       return display unless block_given?
 
       begin
@@ -176,7 +180,8 @@ module ChromaWave
     # @param model_name [Symbol, String] the model identifier
     # @param config [Hash] the model configuration from {Native.model_config}
     # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
-    def initialize(model_name:, config:, rotation: 0)
+    # @param managed_refresh [Boolean, Hash, nil] opt-in refresh scheduling
+    def initialize(model_name:, config:, rotation: 0, managed_refresh: nil)
       validate_rotation!(rotation)
       @model = model_name.to_sym
       @rotation = rotation
@@ -188,11 +193,26 @@ module ChromaWave
       @current_mode = nil
 
       apply_logical_dimensions!
+      setup_managed_refresh!(managed_refresh) if managed_refresh
     end
 
     private
 
     attr_reader :device, :current_mode
+
+    # Forces a full-mode initialization and display cycle on the device.
+    #
+    # Used by {Capabilities::ManagedRefresh} for automatic maintenance refreshes.
+    # Must be called while holding the device lock.
+    #
+    # @param framebuffer [Framebuffer] the content to display
+    # @return [void]
+    def force_full_refresh!(framebuffer)
+      device.send(:_epd_init, Native::MODE_FULL)
+      device.send(:_epd_display, framebuffer)
+      @current_mode = :full
+      @initialized = true
+    end
 
     # Lazily initializes the EPD on first use with full refresh mode.
     #
@@ -242,6 +262,31 @@ module ChromaWave
         @width = @native_width
         @height = @native_height
       end
+    end
+
+    # Configures managed refresh scheduling for this instance.
+    #
+    # Creates a {RefreshScheduler} and extends this instance with
+    # {Capabilities::ManagedRefresh} to wrap display methods with
+    # automatic refresh tracking.
+    #
+    # @param options [Boolean, Hash] +true+ for defaults, or a Hash of
+    #   scheduler options (see {RefreshScheduler#initialize})
+    # @return [void]
+    def setup_managed_refresh!(options)
+      if pixel_format == PixelFormat::COLOR4
+        raise ArgumentError,
+              'managed_refresh is not supported on tri-color (COLOR4) displays'
+      end
+
+      unless options == true || options.is_a?(Hash)
+        raise ArgumentError,
+              "managed_refresh must be true or a Hash, got #{options.inspect} (#{options.class})"
+      end
+
+      opts = options == true ? {} : options
+      @refresh_scheduler = RefreshScheduler.new(**opts)
+      extend Capabilities::ManagedRefresh
     end
 
     # Validates that a framebuffer's pixel format and dimensions match this display.

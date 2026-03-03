@@ -1,11 +1,13 @@
 # frozen_string_literal: true
 
+require 'monitor'
+
 module ChromaWave
   # Wraps a Waveshare E-Paper display with HAL lifecycle management.
   #
   # The C layer provides alloc/initialize (model lookup, DEV_Module_Init),
   # close, open?, model_name, and private _epd_* bridge methods.
-  # This Ruby reopening adds a Mutex for thread safety and a block-form
+  # This Ruby reopening adds a Monitor for thread safety and a block-form
   # +.open+ for automatic cleanup.
   class Device
     # Adds Ruby-level lifecycle management on top of the C-defined Device class.
@@ -13,18 +15,22 @@ module ChromaWave
     # Prepended onto the C-defined +Device+ so +super+ dispatches to the
     # C +initialize+ method.
     module Lifecycle
-      # Initializes the device for the given model, setting up a mutex for
-      # thread-safe access.
+      # Initializes the device for the given model, setting up a reentrant
+      # monitor for thread-safe access.
+      #
+      # Uses Monitor instead of Mutex to support reentrant locking, which
+      # is required by {Capabilities::ManagedRefresh} when auto-full-refresh
+      # wraps an already-synchronized display call.
       #
       # @param model_name [String] the EPD model identifier (e.g. "epd_2in13_v4")
       # @raise [ChromaWave::ModelNotFoundError] if the model is not in the registry
       # @raise [ChromaWave::InitError] if HAL initialization fails
       def initialize(model_name)
-        @mutex = Mutex.new
+        @mutex = Monitor.new
         super # -> C device_initialize(model_name)
       end
 
-      # Synchronizes access to the device using the internal mutex.
+      # Synchronizes access to the device using the internal monitor.
       #
       # @yield the block to execute while holding the lock
       # @return the block's return value

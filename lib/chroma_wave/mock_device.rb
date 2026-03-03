@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'did_you_mean'
+require 'monitor'
 
 module ChromaWave
   # Test-friendly Display replacement that logs operations without touching hardware.
@@ -27,9 +28,10 @@ module ChromaWave
       # @param model [Symbol, String] model name (e.g. +:epd_2in13_v4+)
       # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
       # @param busy_duration [Numeric] simulated refresh delay in seconds
+      # @param managed_refresh [Boolean, Hash, nil] opt-in refresh scheduling
       # @return [MockDevice]
       # @raise [ModelNotFoundError] if the model is not in the registry
-      def new(model: nil, rotation: 0, busy_duration: 0, **kwargs)
+      def new(model: nil, rotation: 0, busy_duration: 0, managed_refresh: nil, **kwargs)
         raise ArgumentError, 'missing keyword: :model' unless model
         raise ArgumentError, "unknown keyword(s): #{kwargs.keys.join(', ')}" unless kwargs.empty?
 
@@ -40,7 +42,8 @@ module ChromaWave
         klass = mock_classes[name] ||= build_mock_class(config)
         instance = klass.allocate
         instance.send(:initialize, model_name: name, config: config,
-                                   rotation: rotation, busy_duration: busy_duration)
+                                   rotation: rotation, busy_duration: busy_duration,
+                                   managed_refresh: managed_refresh)
         instance
       end
 
@@ -49,10 +52,12 @@ module ChromaWave
       # @param model [Symbol, String] model name
       # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
       # @param busy_duration [Numeric] simulated refresh delay in seconds
+      # @param managed_refresh [Boolean, Hash, nil] opt-in refresh scheduling
       # @yield [mock] the opened MockDevice
       # @return [MockDevice, Object] the mock (no block) or the block's return value
-      def open(model:, rotation: 0, busy_duration: 0)
-        mock = new(model: model, rotation: rotation, busy_duration: busy_duration)
+      def open(model:, rotation: 0, busy_duration: 0, managed_refresh: nil)
+        mock = new(model: model, rotation: rotation, busy_duration: busy_duration,
+                   managed_refresh: managed_refresh)
         return mock unless block_given?
 
         begin
@@ -192,7 +197,8 @@ module ChromaWave
     # @param config [Hash] the model configuration from Native
     # @param rotation [Integer] display rotation in degrees (0, 90, 180, 270)
     # @param busy_duration [Numeric] simulated refresh delay in seconds
-    def initialize(model_name:, config:, rotation: 0, busy_duration: 0) # rubocop:disable Lint/MissingSuper -- intentionally avoids Display#initialize which creates a real C Device
+    # @param managed_refresh [Boolean, Hash, nil] opt-in refresh scheduling
+    def initialize(model_name:, config:, rotation: 0, busy_duration: 0, managed_refresh: nil) # rubocop:disable Lint/MissingSuper -- intentionally avoids Display#initialize which creates a real C Device
       validate_rotation!(rotation)
       @model = model_name.to_sym
       @rotation = rotation
@@ -208,6 +214,7 @@ module ChromaWave
       @last_red_plane = nil
       @device = DeviceStub.new(self)
       apply_logical_dimensions!
+      setup_managed_refresh!(managed_refresh) if managed_refresh
     end
 
     private
@@ -352,7 +359,7 @@ module ChromaWave
       # @param mock_device [MockDevice] the owning mock device
       def initialize(mock_device)
         @mock_device = mock_device
-        @mutex = Mutex.new
+        @mutex = Monitor.new
         @open = true
       end
 
