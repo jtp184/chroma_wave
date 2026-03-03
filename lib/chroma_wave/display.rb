@@ -111,14 +111,17 @@ module ChromaWave
     # +self+ immediately (no-op). Otherwise renders the full canvas (for dither
     # correctness) and pushes the dirty sub-region to hardware.
     #
-    # On {Capabilities::RegionalRefresh}-capable displays, uses +display_region+
-    # to update only the changed rectangle. On other displays, falls back to a
-    # full screen refresh.
+    # On {Capabilities::RegionalRefresh}-capable displays, always uses
+    # +display_region+ to update only the changed rectangle — +mode+ is
+    # ignored. On non-regional displays, falls back to a full-screen refresh
+    # by default, or to {Capabilities::PartialRefresh#display_partial} when
+    # +mode: :partial+ is specified.
     #
     # Always calls +canvas.clean!+ after a successful display operation.
     #
     # @param canvas [Canvas] the canvas to display
-    # @param mode [Symbol, nil] display mode (+nil+ for default, +:partial+ for partial refresh)
+    # @param mode [Symbol, nil] display mode (+nil+ for default, +:partial+
+    #   for partial refresh). Only affects the non-regional fallback path.
     # @return [self]
     # @raise [TypeError] if +canvas+ is not a Canvas
     # @raise [ArgumentError] if +mode+ is not recognized or display lacks the requested capability
@@ -332,13 +335,18 @@ module ChromaWave
 
     # Validates the display mode, raising for unknown or unsupported modes.
     #
+    # +:partial+ is accepted with {Capabilities::PartialRefresh} or
+    # {Capabilities::RegionalRefresh} (where +mode+ is ignored).
+    #
     # @param mode [Symbol, nil] the requested mode
     # @raise [ArgumentError] if mode is unrecognized or display lacks the capability
     def validate_display_mode!(mode)
       case mode
       when nil then nil
       when :partial
-        raise ArgumentError, 'display does not support partial mode' unless is_a?(Capabilities::PartialRefresh)
+        return if is_a?(Capabilities::PartialRefresh) || is_a?(Capabilities::RegionalRefresh)
+
+        raise ArgumentError, 'display does not support partial mode'
       else
         raise ArgumentError, "unknown mode: #{mode.inspect}"
       end

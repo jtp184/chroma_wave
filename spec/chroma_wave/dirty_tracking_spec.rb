@@ -414,6 +414,25 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
         end
       end
 
+      context 'with a RegionalRefresh-capable display' do
+        let(:display) { ChromaWave::MockDevice.new(model: regional_model) }
+
+        after { display.close }
+
+        it 'accepts mode: :partial without raising' do
+          canvas = ChromaWave::Canvas.new(width: display.width, height: display.height)
+          canvas.set_pixel(10, 10, black)
+          expect { display.show_dirty(canvas, mode: :partial) }.not_to raise_error
+        end
+
+        it 'still uses display_region (mode is ignored on regional path)' do
+          canvas = ChromaWave::Canvas.new(width: display.width, height: display.height)
+          canvas.set_pixel(10, 10, black)
+          display.show_dirty(canvas, mode: :partial)
+          expect(display.operations(:show_region)).not_to be_empty
+        end
+      end
+
       context 'with an unknown mode' do
         let(:display) { ChromaWave::MockDevice.new(model: non_regional_model) }
 
