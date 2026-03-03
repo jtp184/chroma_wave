@@ -48,6 +48,16 @@ VALUE rb_eDependencyError;
 VALUE rb_eFormatMismatchError;
 VALUE rb_eModelNotFoundError;
 
+/* Test helper: emit a vendor-prefixed warning for spec validation.
+ * Mirrors the format used by vendor_debug.h so specs can verify
+ * Warning.warn interception regardless of build backend. */
+static VALUE
+native_vendor_debug_test(VALUE self, VALUE msg)
+{
+    rb_warn("ChromaWave [vendor]: %s", StringValueCStr(msg));
+    return Qnil;
+}
+
 RUBY_FUNC_EXPORTED void
 Init_chroma_wave(void)
 {
@@ -78,6 +88,11 @@ Init_chroma_wave(void)
     rb_define_const(rb_mChromaWaveNative, "MODE_FAST",      INT2NUM(1));
     rb_define_const(rb_mChromaWaveNative, "MODE_PARTIAL",   INT2NUM(2));
     rb_define_const(rb_mChromaWaveNative, "MODE_GRAYSCALE", INT2NUM(3));
+
+    /* Test helper for vendor debug redirect specs */
+    rb_define_singleton_method(rb_mChromaWaveNative,
+                               "_vendor_debug_test",
+                               native_vendor_debug_test, 1);
 
     /* Initialize sub-modules */
     Init_framebuffer();
