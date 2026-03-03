@@ -33,10 +33,7 @@ module ChromaWave
         # @return [Canvas]
         # @raise [ArgumentError] if dimensions or buffer size are invalid
         def from_buffer(width, height, buf)
-          raise ArgumentError, 'width must be a positive Integer' unless width.is_a?(Integer) && width.positive?
-          raise ArgumentError, 'height must be a positive Integer' unless height.is_a?(Integer) && height.positive?
-          raise ArgumentError, "width must be <= #{Surface::MAX_DIMENSION}" if width > Surface::MAX_DIMENSION
-          raise ArgumentError, "height must be <= #{Surface::MAX_DIMENSION}" if height > Surface::MAX_DIMENSION
+          Surface.validate_dimensions!(width, height)
 
           expected = width * height * BYTES_PER_PIXEL
           raise ArgumentError, "buffer size #{buf.bytesize} != #{expected}" unless buf.bytesize == expected
@@ -44,7 +41,7 @@ module ChromaWave
           allocate.tap do |canvas|
             canvas.instance_variable_set(:@width, width)
             canvas.instance_variable_set(:@height, height)
-            canvas.instance_variable_set(:@buffer, buf.b)
+            canvas.instance_variable_set(:@buffer, buf.encoding == Encoding::BINARY ? buf : buf.b)
           end
         end
       end
@@ -102,7 +99,7 @@ module ChromaWave
         raise ArgumentError, 'crop width must be positive' unless width.is_a?(Integer) && width.positive?
         raise ArgumentError, 'crop height must be positive' unless height.is_a?(Integer) && height.positive?
 
-        crop_clipped(x, y, width, height)
+        crop_clipped(x.round, y.round, width, height)
       end
 
       private
@@ -117,9 +114,7 @@ module ChromaWave
 
         height.times do |row_y|
           row_start = row_y * row_bytes
-          (width - 1).downto(0) do |col_x|
-            out << src.byteslice(row_start + (col_x * BYTES_PER_PIXEL), BYTES_PER_PIXEL)
-          end
+          out << src.byteslice(row_start, row_bytes).unpack('V*').reverse.pack('V*')
         end
 
         Canvas.send(:from_buffer, width, height, out)
@@ -177,11 +172,17 @@ module ChromaWave
       # @return [Array(Integer, Integer)]
       # @raise [ArgumentError] on invalid or conflicting arguments
       def resolve_scale_dimensions(factor, target_w, target_h)
-        if factor
-          resolve_scale_factor(factor, target_w, target_h)
-        else
-          resolve_scale_keywords(target_w, target_h)
-        end
+        new_w, new_h = if factor
+                         resolve_scale_factor(factor, target_w, target_h)
+                       else
+                         resolve_scale_keywords(target_w, target_h)
+                       end
+
+        max = Surface::MAX_DIMENSION
+        raise ArgumentError, "scaled width #{new_w} exceeds maximum dimension #{max}" if new_w > max
+        raise ArgumentError, "scaled height #{new_h} exceeds maximum dimension #{max}" if new_h > max
+
+        [new_w, new_h]
       end
 
       # Validates a single target dimension for scale.

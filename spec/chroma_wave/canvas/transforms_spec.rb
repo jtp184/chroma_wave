@@ -341,6 +341,31 @@ RSpec.describe ChromaWave::Canvas::Transforms do
         c = canvas(2, 2)
         expect { c.scale(height: -5) }.to raise_error(ArgumentError)
       end
+
+      it 'raises when factor produces width exceeding MAX_DIMENSION' do
+        c = canvas(4096, 1)
+        expect { c.scale(2.0) }.to raise_error(ArgumentError, /scaled width.*exceeds maximum/)
+      end
+
+      it 'raises when factor produces height exceeding MAX_DIMENSION' do
+        c = canvas(1, 4096)
+        expect { c.scale(2.0) }.to raise_error(ArgumentError, /scaled height.*exceeds maximum/)
+      end
+
+      it 'raises when width: keyword exceeds MAX_DIMENSION' do
+        c = canvas(10, 10)
+        expect { c.scale(width: 5000) }.to raise_error(ArgumentError, /scaled width.*exceeds maximum/)
+      end
+
+      it 'raises for Float width: keyword' do
+        c = canvas(10, 10)
+        expect { c.scale(width: 5.5) }.to raise_error(ArgumentError)
+      end
+
+      it 'raises for Float height: keyword' do
+        c = canvas(10, 10)
+        expect { c.scale(height: 3.7) }.to raise_error(ArgumentError)
+      end
     end
   end
 
@@ -469,6 +494,49 @@ RSpec.describe ChromaWave::Canvas::Transforms do
       end
     end
 
+    describe 'float x/y coercion' do
+      it 'rounds x: 2.6 to 3' do
+        c = canvas(10, 10)
+        c.set_pixel(3, 0, red)
+
+        result = c.crop(x: 2.6, y: 0, width: 2, height: 1)
+
+        expect(result.get_pixel(0, 0)).to eq(red)
+      end
+
+      it 'rounds y: 2.7 to 3' do
+        c = canvas(10, 10)
+        c.set_pixel(0, 3, red)
+
+        result = c.crop(x: 0, y: 2.7, width: 1, height: 2)
+
+        expect(result.get_pixel(0, 0)).to eq(red)
+      end
+
+      it 'rounds x: 2.3 to 2' do
+        c = canvas(10, 10)
+        c.set_pixel(2, 0, red)
+
+        result = c.crop(x: 2.3, y: 0, width: 2, height: 1)
+
+        expect(result.get_pixel(0, 0)).to eq(red)
+      end
+    end
+
+    describe 'exact boundary' do
+      it 'raises when x equals canvas width' do
+        c = canvas(5, 5)
+        expect { c.crop(x: 5, y: 0, width: 1, height: 1) }
+          .to raise_error(ArgumentError, /outside/)
+      end
+
+      it 'raises when y equals canvas height' do
+        c = canvas(5, 5)
+        expect { c.crop(x: 0, y: 5, width: 1, height: 1) }
+          .to raise_error(ArgumentError, /outside/)
+      end
+    end
+
     describe 'validation' do
       it 'raises for zero width' do
         c = canvas(5, 5)
@@ -556,6 +624,37 @@ RSpec.describe ChromaWave::Canvas::Transforms do
       expect(hv.get_pixel(2, 2)).to eq(red)
       expect(vh.get_pixel(2, 2)).to eq(red)
       expect(hv).to eq(vh)
+    end
+  end
+
+  # ── from_buffer (via transforms) ──────────────────────────────────────
+
+  describe 'from_buffer internals' do
+    let(:bpp) { ChromaWave::Canvas::BYTES_PER_PIXEL }
+
+    it 'rejects a buffer with wrong byte size' do
+      bad_buf = "\x00" * 10
+      expect { ChromaWave::Canvas.send(:from_buffer, 3, 3, bad_buf) }
+        .to raise_error(ArgumentError, /buffer size/)
+    end
+
+    it 'rejects zero width' do
+      expect { ChromaWave::Canvas.send(:from_buffer, 0, 1, ''.b) }
+        .to raise_error(ArgumentError, /width/)
+    end
+
+    it 'rejects zero height' do
+      expect { ChromaWave::Canvas.send(:from_buffer, 1, 0, ''.b) }
+        .to raise_error(ArgumentError, /height/)
+    end
+
+    it 'accepts a correctly-sized buffer and produces a valid canvas' do
+      buf = ("\xFF\x00\x00\xFF" * 6).b
+      result = ChromaWave::Canvas.send(:from_buffer, 3, 2, buf)
+
+      expect(result.width).to eq(3)
+      expect(result.height).to eq(2)
+      expect(result.get_pixel(0, 0)).to eq(red)
     end
   end
 end
