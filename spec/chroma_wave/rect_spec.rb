@@ -73,43 +73,12 @@ RSpec.describe ChromaWave::Rect do
       end
     end
 
-    context 'with positional arguments' do
-      it 'accepts four positional args' do
-        a = described_class.new(x: 0, y: 0, width: 10, height: 10)
-        result = a.union(5, 5, 10, 10)
-        expect(result).to eq(described_class.new(x: 0, y: 0, width: 15, height: 15))
-      end
-
-      it 'accepts zero-valued y without raising' do
-        a = described_class.new(x: 0, y: 0, width: 10, height: 10)
-        result = a.union(5, 0, 10, 10)
-        expect(result).to eq(described_class.new(x: 0, y: 0, width: 15, height: 10))
-      end
-    end
-
     context 'with negative coordinates' do
       it 'handles negative x and y correctly' do
         a = described_class.new(x: -5, y: -3, width: 10, height: 8)
         b = described_class.new(x: 2, y: 1, width: 6, height: 4)
         result = a.union(b)
         expect(result).to eq(described_class.new(x: -5, y: -3, width: 13, height: 8))
-      end
-    end
-
-    context 'with missing positional arguments' do
-      it 'raises ArgumentError when y is missing' do
-        a = described_class.new(x: 0, y: 0, width: 10, height: 10)
-        expect { a.union(5) }.to raise_error(ArgumentError, /four positional arguments/)
-      end
-
-      it 'raises ArgumentError when width and height are missing' do
-        a = described_class.new(x: 0, y: 0, width: 10, height: 10)
-        expect { a.union(5, 5) }.to raise_error(ArgumentError, /four positional arguments/)
-      end
-
-      it 'raises ArgumentError when height is missing' do
-        a = described_class.new(x: 0, y: 0, width: 10, height: 10)
-        expect { a.union(5, 5, 10) }.to raise_error(ArgumentError, /four positional arguments/)
       end
     end
   end

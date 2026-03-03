@@ -23,34 +23,16 @@ module ChromaWave
 
     # Returns the smallest rectangle that encloses both this rect and +other+.
     #
-    # Accepts either a {Rect} or four positional arguments (x, y, width, height).
-    #
-    # @overload union(rect)
-    #   @param rect [Rect] the other rectangle
-    # @overload union(other_x, other_y, other_width, other_height)
-    #   @param other_x [Integer] left edge
-    #   @param other_y [Integer] top edge
-    #   @param other_width [Integer] width
-    #   @param other_height [Integer] height
+    # @param other [Rect] the other rectangle
     # @return [Rect] the bounding union
-    def union(other_or_x, other_y = nil, other_w = nil, other_h = nil)
-      if other_or_x.is_a?(Rect)
-        other_x, other_y, other_w, other_h = other_or_x.deconstruct
-      else
-        if [other_y, other_w, other_h].any?(&:nil?)
-          raise ArgumentError,
-                'union requires a Rect or four positional arguments (x, y, width, height)'
-        end
-        other_x = other_or_x
-      end
-
-      new_x = [x, other_x].min
-      new_y = [y, other_y].min
+    def union(other)
+      new_x = [x, other.x].min
+      new_y = [y, other.y].min
       Rect.new(
         x: new_x,
         y: new_y,
-        width: [x + width, other_x + other_w].max - new_x,
-        height: [y + height, other_y + other_h].max - new_y
+        width: [x + width, other.x + other.width].max - new_x,
+        height: [y + height, other.y + other.height].max - new_y
       )
     end
   end
