@@ -197,6 +197,11 @@ module ChromaWave
     # Performs the full sRGB → linear RGB → XYZ → L*a*b* pipeline using
     # scalar locals throughout. Only one Array is allocated (the return value).
     #
+    # Inputs are assumed to be pre-validated Integers in 0..255. No runtime
+    # type or range checking is performed — this is a low-level building block
+    # called from the per-pixel hot path in {Palette#nearest_color}. Use
+    # {Color#to_lab} for the safe, cached entry point.
+    #
     # @param r [Integer] red channel (0..255)
     # @param g [Integer] green channel (0..255)
     # @param b [Integer] blue channel (0..255)
