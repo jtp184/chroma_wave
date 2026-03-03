@@ -42,7 +42,7 @@ canvas.draw_barcode("ABC-123",
   height: 60,                # bar height in pixels
   module_width: 2,           # narrowest bar width (default: 2)
   color: Color::BLACK,
-  include_text: true,        # render human-readable text below (default: true)
+  include_text: true,        # render human-readable text below (default: false)
   text_font: Font.default(size: 12)
 )
 ```
@@ -78,9 +78,9 @@ unavailable at runtime and `include_text: true` is passed, it should raise
 ### Gem Dependencies
 
 ```ruby
-# In gemspec — optional runtime dependencies
-spec.add_dependency "rqrcode", "~> 2.0"  # QR generation
-spec.add_dependency "barby", "~> 0.6"    # 1D barcode generation
+# In Gemfile — optional development/runtime dependencies (lazy-loaded)
+gem "rqrcode", "~> 3.0", require: false  # QR generation
+gem "barby",   "~> 0.7", require: false  # 1D barcode generation
 ```
 
 Both gems are **lazy-loaded** — `require 'rqrcode'` / `require 'barby'` happens on first use.

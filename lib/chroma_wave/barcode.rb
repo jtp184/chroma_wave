@@ -119,6 +119,6 @@ module ChromaWave
             'Install it with: gem install barby'
     end
 
-    private_class_method :build_barcode, :require_barby!
+    private_class_method :build_barcode
   end
 end
