@@ -348,3 +348,5 @@ module ChromaWave
     end
   end
 end
+
+require_relative 'canvas/transforms'
