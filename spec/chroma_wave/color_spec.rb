@@ -298,6 +298,27 @@ RSpec.describe ChromaWave::Color do
     end
   end
 
+  describe '.compute_lab' do
+    it 'converts sRGB channels to CIE L*a*b* values' do
+      l, a, b = described_class.compute_lab(255, 0, 0)
+      expect(l).to be_within(0.5).of(53.23)
+      expect(a).to be_within(0.5).of(80.11)
+      expect(b).to be_within(0.5).of(67.22)
+    end
+
+    it 'returns [0, 0, 0] for black' do
+      l, a, b = described_class.compute_lab(0, 0, 0)
+      expect(l).to be_within(0.01).of(0.0)
+      expect(a).to be_within(0.01).of(0.0)
+      expect(b).to be_within(0.01).of(0.0)
+    end
+
+    it 'returns L*=100 for white' do
+      l, _a, _b = described_class.compute_lab(255, 255, 255)
+      expect(l).to be_within(0.01).of(100.0)
+    end
+  end
+
   describe '#to_lab' do
     it 'returns a three-element Array' do
       lab = described_class::RED.to_lab
