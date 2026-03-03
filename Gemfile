@@ -24,5 +24,6 @@ gem 'rdoc', '~> 7.2'
 # Optional: image loading support (requires libvips system library)
 gem 'ruby-vips', '~> 2.2', require: false
 
-gem 'barby',   '~> 0.7'
-gem 'rqrcode', '~> 3.0'
+# Optional: QR code and barcode rendering
+gem 'barby',   '~> 0.7', require: false
+gem 'rqrcode', '~> 3.0', require: false

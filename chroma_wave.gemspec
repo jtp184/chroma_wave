@@ -35,9 +35,6 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
   spec.extensions = ['ext/chroma_wave/extconf.rb']
 
-  spec.add_dependency 'barby',   '~> 0.7'
-  spec.add_dependency 'rqrcode', '~> 3.0'
-
   # For more information and examples about making a new gem, check out our
   # guide at: https://bundler.io/guides/creating_gem.html
 end
