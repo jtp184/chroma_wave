@@ -4,6 +4,7 @@ require_relative 'dither/strategy'
 require_relative 'dither/threshold'
 require_relative 'dither/floyd_steinberg'
 require_relative 'dither/ordered'
+require_relative 'dither/atkinson'
 
 module ChromaWave
   # Dithering strategies for converting RGBA canvases to palette-indexed framebuffers.
@@ -17,10 +18,10 @@ module ChromaWave
   #   strategy.call(canvas, framebuffer)
   #
   # @example List available strategies
-  #   Dither.strategies  #=> [:floyd_steinberg, :ordered, :threshold]
+  #   Dither.strategies  #=> [:atkinson, :floyd_steinberg, :ordered, :threshold]
   module Dither
     # Maps strategy names to their implementing classes.
-    REGISTRY = [Threshold, FloydSteinberg, Ordered].each_with_object({}) do |klass, map|
+    REGISTRY = [Threshold, FloydSteinberg, Ordered, Atkinson].each_with_object({}) do |klass, map|
       map[klass.strategy_name] = klass
     end.freeze
 

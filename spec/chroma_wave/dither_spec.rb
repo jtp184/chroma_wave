@@ -5,7 +5,7 @@ RSpec.describe ChromaWave::Dither do
 
   describe '.strategies' do
     it 'returns all registered strategy names' do
-      expect(described_class.strategies).to contain_exactly(:floyd_steinberg, :ordered, :threshold)
+      expect(described_class.strategies).to contain_exactly(:atkinson, :floyd_steinberg, :ordered, :threshold)
     end
 
     it 'returns a sorted array' do
@@ -27,6 +27,11 @@ RSpec.describe ChromaWave::Dither do
     it 'returns an Ordered instance for :ordered' do
       strategy = described_class.resolve(:ordered, pixel_format: mono_format)
       expect(strategy).to be_a(ChromaWave::Dither::Ordered)
+    end
+
+    it 'returns an Atkinson instance for :atkinson' do
+      strategy = described_class.resolve(:atkinson, pixel_format: mono_format)
+      expect(strategy).to be_a(ChromaWave::Dither::Atkinson)
     end
 
     it 'passes pixel_format to the strategy' do

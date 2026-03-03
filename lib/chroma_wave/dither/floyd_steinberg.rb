@@ -94,7 +94,6 @@ module ChromaWave
         add_error(next_row, x, width, err_r, err_g, err_b, FS_BELOW)
         add_error(next_row, x + 1, width, err_r, err_g, err_b, FS_BELOW_RIGHT)
       end
-
     end
   end
 end
