@@ -69,4 +69,21 @@ module PixelHelpers
     end
     canvas.width
   end
+
+  # Returns the bounding box width and height of all non-white pixels.
+  #
+  # @param canvas [ChromaWave::Canvas] the canvas to inspect
+  # @return [Array(Integer, Integer)] [width, height] of the non-white region
+  def non_white_extent(canvas)
+    max_x = max_y = 0
+    canvas.width.times do |x|
+      canvas.height.times do |y|
+        if canvas.get_pixel(x, y) != ChromaWave::Color::WHITE
+          max_x = x if x > max_x
+          max_y = y if y > max_y
+        end
+      end
+    end
+    [max_x + 1, max_y + 1]
+  end
 end
