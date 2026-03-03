@@ -43,6 +43,5 @@ module ChromaWave
         height: [y + height, other_y + other_h].max - new_y
       )
     end
-
   end
 end
