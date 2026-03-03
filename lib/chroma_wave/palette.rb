@@ -91,7 +91,8 @@ module ChromaWave
     # prevent unbounded growth when mapping large images through
     # long-lived palette constants.
     #
-    # @param rgba [Color] the color to match
+    # @param rgba [#r, #g, #b] an RGB-like object responding to +#r+, +#g+, and +#b+;
+    #   any alpha channel or extra components are ignored
     # @return [Symbol] the nearest palette entry name
     def nearest_color(rgba)
       key = pack_key(rgba)

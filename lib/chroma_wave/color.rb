@@ -219,9 +219,9 @@ module ChromaWave
 
       l = (116.0 * fy) - 16.0
       a = 500.0 * (fx - fy)
-      b = 200.0 * (fy - fz)
+      b_star = 200.0 * (fy - fz)
 
-      [l, a, b]
+      [l, a, b_star]
     end
 
     private
