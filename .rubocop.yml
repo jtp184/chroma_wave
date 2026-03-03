@@ -96,10 +96,11 @@ Metrics/ModuleLength:
   Max: 500
 
 # Canvas wraps a single String buffer with RGBA operations, plus
-# optimized fill_rect, equality, inspect, and C-accelerated render_glyph.
+# optimized fill_rect, equality, inspect, C-accelerated render_glyph,
+# and dirty region tracking. Display adds show_dirty and mode helpers.
 # MockDevice embeds a ~120-line DeviceStub inner class that inflates the count.
 Metrics/ClassLength:
-  Max: 150
+  Max: 220
   Exclude:
     - 'lib/chroma_wave/mock_device.rb'
 

@@ -35,6 +35,49 @@ module ChromaWave
       @buffer = (background.to_rgba_bytes * (width * height)).b
     end
 
+    # Returns true if the canvas has been modified since the last {#clean!}.
+    #
+    # @return [Boolean]
+    def dirty?
+      !@dirty_x.nil?
+    end
+
+    # Returns the bounding box of all modifications since the last {#clean!}.
+    #
+    # @return [Hash{Symbol => Integer}, nil] +{x:, y:, width:, height:}+ or nil if clean
+    def dirty_region
+      return nil unless @dirty_x
+
+      { x: @dirty_x, y: @dirty_y, width: @dirty_w, height: @dirty_h }
+    end
+
+    # Resets dirty tracking, marking the canvas as clean.
+    #
+    # @return [self]
+    def clean!
+      @dirty_x = @dirty_y = @dirty_w = @dirty_h = nil
+      self
+    end
+
+    # Explicitly marks a rectangular region as dirty.
+    #
+    # Accepts either a {Rect} or keyword arguments.
+    #
+    # @param rect [Rect, nil] a Rect to mark dirty
+    # @param x [Integer, nil] left edge
+    # @param y [Integer, nil] top edge
+    # @param width [Integer, nil] width
+    # @param height [Integer, nil] height
+    # @return [self]
+    def mark_dirty(rect = nil, x: nil, y: nil, width: nil, height: nil)
+      if rect
+        expand_dirty(rect.x, rect.y, rect.width, rect.height)
+      else
+        expand_dirty(x, y, width, height)
+      end
+      self
+    end
+
     # Sets the pixel at (x, y) to the given color.
     #
     # Out-of-bounds coordinates are silently ignored.
@@ -47,6 +90,7 @@ module ChromaWave
       return self unless in_bounds?(x, y)
 
       buffer[pixel_offset(x, y), BYTES_PER_PIXEL] = color.to_rgba_bytes
+      expand_dirty(x, y, 1, 1)
       self
     end
 
@@ -73,6 +117,7 @@ module ChromaWave
       else
         clear_ruby(color)
       end
+      expand_dirty(0, 0, width, height)
       self
     end
 
@@ -100,6 +145,7 @@ module ChromaWave
       else
         blit_ruby(source, x, y)
       end
+      mark_clipped_dirty(x, y, source.width, source.height)
       self
     end
 
@@ -119,6 +165,7 @@ module ChromaWave
       else
         load_rgba_bytes_ruby(bytes, width, height, x, y)
       end
+      mark_clipped_dirty(x, y, width, height)
       self
     end
 
@@ -195,6 +242,7 @@ module ChromaWave
       _canvas_blit_glyph(buffer, bitmap, x, y, width, height,
                          self.width, self.height,
                          color.r, color.g, color.b)
+      expand_dirty(x, y, width, height)
       true
     end
 
@@ -240,18 +288,75 @@ module ChromaWave
         offset = pixel_offset(x0, row_y)
         buffer[offset, row.bytesize] = row
       end
+
+      expand_dirty(x0, y0, x1 - x0, y1 - y0)
     end
 
     private
 
     attr_reader :buffer
 
-    # Deep-copies the pixel buffer so dup/clone get independent data.
+    # Deep-copies the pixel buffer and dirty state so dup/clone get independent data.
     #
     # @param source [Canvas] the canvas being copied
     def initialize_copy(source)
       super
       @buffer = source.raw_buffer.dup
+      region = source.dirty_region
+      if region
+        @dirty_x = region[:x]
+        @dirty_y = region[:y]
+        @dirty_w = region[:width]
+        @dirty_h = region[:height]
+      else
+        @dirty_x = @dirty_y = @dirty_w = @dirty_h = nil
+      end
+    end
+
+    # Clips a rectangle to canvas bounds and marks it dirty.
+    #
+    # Used by +blit+ and +load_rgba_bytes+ where the source rect may
+    # extend beyond canvas boundaries.
+    #
+    # @param src_x [Integer] left edge of the source rect
+    # @param src_y [Integer] top edge of the source rect
+    # @param src_w [Integer] width of the source rect
+    # @param src_h [Integer] height of the source rect
+    # @return [void]
+    def mark_clipped_dirty(src_x, src_y, src_w, src_h)
+      cx = [src_x, 0].max
+      cy = [src_y, 0].max
+      cw = [src_x + src_w, width].min - cx
+      ch = [src_y + src_h, height].min - cy
+      expand_dirty(cx, cy, cw, ch) if cw.positive? && ch.positive?
+    end
+
+    # Expands the dirty bounding box to include the given rectangle.
+    #
+    # Uses ternary operators instead of +[a, b].min/max+ to avoid
+    # Array allocations on the hot path (called per-pixel in +set_pixel+).
+    #
+    # @param new_x [Integer] left edge of the new dirty area
+    # @param new_y [Integer] top edge of the new dirty area
+    # @param new_w [Integer] width of the new dirty area
+    # @param new_h [Integer] height of the new dirty area
+    # @return [void]
+    def expand_dirty(new_x, new_y, new_w, new_h)
+      if @dirty_x
+        right = new_x + new_w
+        bottom = new_y + new_h
+        old_right = @dirty_x + @dirty_w
+        old_bottom = @dirty_y + @dirty_h
+        @dirty_x = new_x < @dirty_x ? new_x : @dirty_x     # rubocop:disable Style/MinMaxComparison
+        @dirty_y = new_y < @dirty_y ? new_y : @dirty_y     # rubocop:disable Style/MinMaxComparison
+        @dirty_w = (right > old_right ? right : old_right) - @dirty_x     # rubocop:disable Style/MinMaxComparison
+        @dirty_h = (bottom > old_bottom ? bottom : old_bottom) - @dirty_y # rubocop:disable Style/MinMaxComparison
+      else
+        @dirty_x = new_x
+        @dirty_y = new_y
+        @dirty_w = new_w
+        @dirty_h = new_h
+      end
     end
 
     # Byte offset for pixel (x, y) in the RGBA buffer.
@@ -264,11 +369,14 @@ module ChromaWave
     # Falls back to the pure-Ruby path when the C method is unavailable.
     def render_glyph(glyph, base_x, base_y, color)
       if respond_to?(:_canvas_blit_glyph, true)
+        gx = base_x + glyph[:x]
+        gy = base_y + glyph[:y]
         _canvas_blit_glyph(buffer, glyph[:bitmap],
-                           base_x + glyph[:x], base_y + glyph[:y],
+                           gx, gy,
                            glyph[:width], glyph[:height],
                            width, height,
                            color.r, color.g, color.b)
+        expand_dirty(gx, gy, glyph[:width], glyph[:height])
       else
         super
       end
