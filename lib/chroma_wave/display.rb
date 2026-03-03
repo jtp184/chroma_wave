@@ -128,11 +128,13 @@ module ChromaWave
       ensure_initialized!
 
       fb = renderer.render(canvas)
-      fb = fb.rotate(rotation) unless rotation.zero?
 
       if is_a?(Capabilities::RegionalRefresh)
+        # display_region expects logical-space FB and handles rotation internally
         display_dirty_regional(fb, region, mode)
       else
+        # Full-screen path needs native-orientation FB
+        fb = fb.rotate(rotation) unless rotation.zero?
         display_dirty_fallback(fb, mode)
       end
 

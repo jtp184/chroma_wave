@@ -296,6 +296,21 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       end
     end
 
+    describe 'on a rotated RegionalRefresh-capable display' do
+      let(:display) { ChromaWave::MockDevice.new(model: regional_model, rotation: 90) }
+
+      after { display.close }
+
+      it 'passes logical-space framebuffer to display_region (no double rotation)' do
+        canvas = ChromaWave::Canvas.new(width: display.width, height: display.height)
+        canvas.set_pixel(10, 10, black)
+        # If show_dirty double-rotates, display_region's validate_logical_framebuffer!
+        # would raise because the FB dimensions wouldn't match logical display size.
+        expect { display.show_dirty(canvas) }.not_to raise_error
+        expect(display.operations(:show_region)).not_to be_empty
+      end
+    end
+
     describe 'on a non-RegionalRefresh display' do
       let(:display) { ChromaWave::MockDevice.new(model: non_regional_model) }
 
