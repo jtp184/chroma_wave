@@ -163,17 +163,22 @@ module ChromaWave
     # Converts the input pixel to L*a*b* via {Color.compute_lab} and
     # compares against pre-computed {#lab_by_entry} values. Uses squared
     # Delta E to avoid an unnecessary +sqrt+ (valid since we only need
-    # ordering, not absolute magnitude).
+    # ordering, not absolute magnitude). All Lab components are held in
+    # scalar locals to avoid repeated Array indexing in the inner loop.
     #
     # @param rgba [#r, #g, #b] the color to match (Color or duck-typed RGB)
     # @return [Symbol] nearest palette entry name
     def compute_nearest(rgba)
-      pixel_lab = Color.compute_lab(rgba.r, rgba.g, rgba.b)
+      pl, pa, pb = Color.compute_lab(rgba.r, rgba.g, rgba.b)
       min_entry = nil
       min_dist = Float::INFINITY
 
       entries.each_with_index do |name, i|
-        dist = delta_e_squared(pixel_lab, lab_by_entry[i])
+        el, ea, eb = lab_by_entry[i]
+        dl = pl - el
+        da = pa - ea
+        db = pb - eb
+        dist = (dl * dl) + (da * da) + (db * db)
         if dist < min_dist
           min_dist = dist
           min_entry = name
@@ -181,19 +186,6 @@ module ChromaWave
       end
 
       min_entry
-    end
-
-    # Calculates the squared CIE76 Delta E between two L*a*b* triples.
-    #
-    # @param lab1 [Array(Float, Float, Float)] [L*, a*, b*]
-    # @param lab2 [Array(Float, Float, Float)] [L*, a*, b*]
-    # @return [Float] squared perceptual distance (lower = more similar)
-    def delta_e_squared(lab1, lab2)
-      dl = lab1[0] - lab2[0]
-      da = lab1[1] - lab2[1]
-      db = lab1[2] - lab2[2]
-
-      (dl * dl) + (da * da) + (db * db)
     end
   end
 end

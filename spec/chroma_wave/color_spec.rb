@@ -380,5 +380,11 @@ RSpec.describe ChromaWave::Color do
       b = described_class.new(r: 42, g: 100, b: 200)
       expect(a.to_lab).to equal(b.to_lab)
     end
+
+    it 'shares cache entries for colors differing only by alpha' do
+      opaque = described_class.new(r: 42, g: 100, b: 200, a: 255)
+      semi   = described_class.new(r: 42, g: 100, b: 200, a: 128)
+      expect(opaque.to_lab).to equal(semi.to_lab)
+    end
   end
 end

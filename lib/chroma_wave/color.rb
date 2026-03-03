@@ -93,12 +93,12 @@ module ChromaWave
 
     # Returns the CIE L*a*b* representation of this color.
     #
-    # Results are cached at the class level by structural equality,
-    # so repeated calls for equal Colors return the same Array object.
+    # Results are cached at the class level by packed 24-bit RGB key,
+    # so colors differing only by alpha share the same cached Array.
     #
     # @return [Array(Float, Float, Float)] [L*, a*, b*]
     def to_lab
-      Color.lab_cache.fetch(self) { Color.compute_lab(r, g, b).freeze }
+      Color.lab_cache.fetch((r << 16) | (g << 8) | b) { Color.compute_lab(r, g, b).freeze }
     end
 
     private
@@ -182,7 +182,7 @@ module ChromaWave
       self::NAME_MAP.fetch(name)
     end
 
-    # Returns the class-level Lab cache (keyed by Color structural equality).
+    # Returns the class-level Lab cache (keyed by packed 24-bit RGB integer).
     #
     # LRU-bounded to prevent unbounded growth if many distinct Colors
     # are converted via {Color#to_lab}.
@@ -194,47 +194,28 @@ module ChromaWave
 
     # Computes CIE L*a*b* values from sRGB channels.
     #
-    # Orchestrates the full pipeline: sRGB → linear RGB → XYZ → Lab.
+    # Performs the full sRGB → linear RGB → XYZ → L*a*b* pipeline using
+    # scalar locals throughout. Only one Array is allocated (the return value).
     #
     # @param r [Integer] red channel (0..255)
     # @param g [Integer] green channel (0..255)
     # @param b [Integer] blue channel (0..255)
     # @return [Array(Float, Float, Float)] [L*, a*, b*]
-    def compute_lab(r, g, b)
-      tri_x, tri_y, tri_z = srgb_to_xyz(r, g, b)
-      xyz_to_lab(tri_x, tri_y, tri_z)
-    end
-
-    private
-
-    # Converts sRGB (0..255) to CIE XYZ using IEC 61966-2-1 matrix.
-    #
-    # @param r [Integer] red channel (0..255)
-    # @param g [Integer] green channel (0..255)
-    # @param b [Integer] blue channel (0..255)
-    # @return [Array(Float, Float, Float)] [X, Y, Z] tristimulus values
-    def srgb_to_xyz(r, g, b)
+    def compute_lab(r, g, b) # rubocop:disable Metrics/AbcSize
+      # sRGB → linear RGB (inverse companding)
       rl = gamma_decode(r / 255.0)
       gl = gamma_decode(g / 255.0)
       bl = gamma_decode(b / 255.0)
 
+      # Linear RGB → CIE XYZ (IEC 61966-2-1 matrix)
       x = (0.4124564 * rl) + (0.3575761 * gl) + (0.1804375 * bl)
       y = (0.2126729 * rl) + (0.7151522 * gl) + (0.0721750 * bl)
       z = (0.0193339 * rl) + (0.1191920 * gl) + (0.9503041 * bl)
 
-      [x, y, z]
-    end
-
-    # Converts CIE XYZ to CIE L*a*b* relative to D65 illuminant.
-    #
-    # @param tri_x [Float] X tristimulus value
-    # @param tri_y [Float] Y tristimulus value
-    # @param tri_z [Float] Z tristimulus value
-    # @return [Array(Float, Float, Float)] [L*, a*, b*]
-    def xyz_to_lab(tri_x, tri_y, tri_z)
-      fx = lab_f(tri_x / self::D65_XN)
-      fy = lab_f(tri_y / self::D65_YN)
-      fz = lab_f(tri_z / self::D65_ZN)
+      # CIE XYZ → L*a*b* (D65 illuminant)
+      fx = lab_f(x / self::D65_XN)
+      fy = lab_f(y / self::D65_YN)
+      fz = lab_f(z / self::D65_ZN)
 
       l = (116.0 * fy) - 16.0
       a = 500.0 * (fx - fy)
@@ -242,6 +223,8 @@ module ChromaWave
 
       [l, a, b]
     end
+
+    private
 
     # sRGB inverse companding (gamma decode).
     #
