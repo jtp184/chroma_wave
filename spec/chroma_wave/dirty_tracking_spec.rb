@@ -431,9 +431,7 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       it 'raises when canvas dimensions do not match display' do
         canvas = ChromaWave::Canvas.new(width: 10, height: 10)
         canvas.set_pixel(1, 1, black)
-        # The renderer produces a framebuffer matching canvas dimensions,
-        # which won't match the display's native dimensions.
-        expect { display.show_dirty(canvas) }.to raise_error(ArgumentError, /dimensions/)
+        expect { display.show_dirty(canvas) }.to raise_error(ArgumentError, /canvas dimensions.*do not match/)
       end
     end
   end

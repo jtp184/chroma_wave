@@ -125,6 +125,7 @@ module ChromaWave
       return self unless canvas.dirty?
 
       validate_display_mode!(mode)
+      validate_canvas_dimensions!(canvas)
       region = canvas.dirty_region
       ensure_initialized!
 
@@ -345,7 +346,6 @@ module ChromaWave
     #
     # @param framebuffer [Framebuffer] full-screen rendered framebuffer (logical space)
     # @param region [Rect] dirty region bounding box
-    # @param mode [Symbol, nil] display mode (already validated)
     # @return [void]
     def display_dirty_regional(framebuffer, region)
       display_region(framebuffer,
@@ -367,6 +367,18 @@ module ChromaWave
       else
         show(framebuffer)
       end
+    end
+
+    # Validates that a canvas matches this display's logical dimensions.
+    #
+    # @param canvas [Canvas] the canvas to validate
+    # @raise [ArgumentError] if dimensions do not match
+    def validate_canvas_dimensions!(canvas)
+      return if canvas.width == width && canvas.height == height
+
+      raise ArgumentError,
+            "canvas dimensions #{canvas.width}x#{canvas.height} " \
+            "do not match display size #{width}x#{height}"
     end
 
     # Validates that a framebuffer's pixel format and dimensions match this display.
