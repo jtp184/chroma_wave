@@ -32,15 +32,21 @@
 /* Format a vendor debug message, strip trailing \r\n, and emit
  * through Ruby's warning system.
  *
+ * Short-circuits when warnings are silenced ($VERBOSE=nil / -W0)
+ * to avoid unnecessary vsnprintf formatting overhead.
+ *
  * Uses vsnprintf for formatting (standard C printf semantics) then
  * passes the result to rb_warn via %s — avoiding any rb_sprintf
  * format quirks (e.g. PRIsVALUE hijacking %i). */
-static inline void
+__attribute__((unused)) static inline void
 cw_vendor_debug(const char *fmt, ...)
 {
     char buf[256];
     va_list ap;
     int len;
+
+    /* Skip formatting entirely when warnings are silenced */
+    if (NIL_P(ruby_verbose)) return;
 
     va_start(ap, fmt);
     len = vsnprintf(buf, sizeof(buf), fmt, ap);
