@@ -26,20 +26,22 @@ module ChromaWave
       # @param error_correction [Symbol] +:low+, +:medium+, +:quartile+, or +:high+
       # @param max_width [Integer, nil] maximum width for auto-fit
       # @param max_height [Integer, nil] maximum height for auto-fit
+      # @param quiet_zone [Integer] number of empty modules around the QR code (default 4)
       # @return [self]
       # @raise [ArgumentError] if no sizing info is provided or error_correction is unknown
       # @raise [DependencyError] if rqrcode is not installed
       def draw_qr(data, x:, y:, module_size: nil, color: Color::BLACK, background: nil, # rubocop:disable Metrics/ParameterLists
-                  error_correction: :medium, max_width: nil, max_height: nil)
+                  error_correction: :medium, max_width: nil, max_height: nil, quiet_zone: 4)
+        validate_quiet_zone!(quiet_zone)
         require_rqrcode!
         level = QR.resolve_level(error_correction)
         qr = ::RQRCode::QRCode.new(data, level: level)
         modules = qr.modules
         n = modules.length
 
-        msize = resolve_module_size(module_size, n, max_width, max_height)
-        render_qr_background(x, y, n, msize, background) if background
-        render_qr_modules(x, y, modules, msize, color)
+        msize = resolve_module_size(module_size, n, max_width, max_height, quiet_zone)
+        render_qr_background(x, y, n, msize, quiet_zone, background) if background
+        render_qr_modules(x, y, modules, msize, quiet_zone, color)
 
         self
       end
@@ -94,9 +96,10 @@ module ChromaWave
       # @param n_modules [Integer] number of QR modules per side
       # @param max_width [Integer, nil] maximum width constraint
       # @param max_height [Integer, nil] maximum height constraint
+      # @param quiet_zone [Integer] quiet zone module count per side
       # @return [Integer] resolved module size (>= 1)
       # @raise [ArgumentError] if no sizing info or module_size < 1
-      def resolve_module_size(module_size, n_modules, max_width, max_height)
+      def resolve_module_size(module_size, n_modules, max_width, max_height, quiet_zone)
         if module_size
           unless module_size.is_a?(Integer) && module_size >= 1
             raise ArgumentError,
@@ -111,39 +114,53 @@ module ChromaWave
                 'provide module_size: or max_width:/max_height: to size the QR code'
         end
 
+        total_modules = n_modules + (2 * quiet_zone)
         candidates = []
-        candidates << (max_width / n_modules) if max_width
-        candidates << (max_height / n_modules) if max_height
+        candidates << (max_width / total_modules) if max_width
+        candidates << (max_height / total_modules) if max_height
         [candidates.min, 1].max
       end
 
-      # Fills the QR background as a single rectangle.
+      # Fills the QR background as a single rectangle including the quiet zone.
       #
       # @param x [Integer] top-left x
       # @param y [Integer] top-left y
       # @param n_modules [Integer] number of modules per side
       # @param msize [Integer] module pixel size
+      # @param quiet_zone [Integer] quiet zone module count per side
       # @param color [Color] background color
-      def render_qr_background(x, y, n_modules, msize, color)
-        total = n_modules * msize
+      def render_qr_background(x, y, n_modules, msize, quiet_zone, color)
+        total = (n_modules + (2 * quiet_zone)) * msize
         fill_rect(x, y, total, total, color)
       end
 
-      # Renders dark QR modules as filled rectangles.
+      # Renders dark QR modules as filled rectangles, offset by the quiet zone.
       #
       # @param x [Integer] top-left x
       # @param y [Integer] top-left y
       # @param modules [Array<Array<Boolean>>] 2D module matrix
       # @param msize [Integer] module pixel size
+      # @param quiet_zone [Integer] quiet zone module count per side
       # @param color [Color] dark module color
-      def render_qr_modules(x, y, modules, msize, color)
+      def render_qr_modules(x, y, modules, msize, quiet_zone, color)
+        offset = quiet_zone * msize
         modules.each_with_index do |row, row_idx|
           row.each_with_index do |dark, col_idx|
             next unless dark
 
-            fill_rect(x + (col_idx * msize), y + (row_idx * msize), msize, msize, color)
+            fill_rect(x + offset + (col_idx * msize), y + offset + (row_idx * msize), msize, msize, color)
           end
         end
+      end
+
+      # Validates the quiet zone parameter.
+      #
+      # @param quiet_zone [Integer] quiet zone module count
+      # @raise [ArgumentError] if quiet_zone is not a non-negative Integer
+      def validate_quiet_zone!(quiet_zone)
+        return if quiet_zone.is_a?(Integer) && quiet_zone >= 0
+
+        raise ArgumentError, 'quiet_zone must be a non-negative Integer'
       end
 
       # Validates that this surface supports text rendering.

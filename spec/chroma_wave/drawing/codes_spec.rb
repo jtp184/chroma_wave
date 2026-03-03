@@ -92,6 +92,33 @@ RSpec.describe ChromaWave::Drawing::Codes do
       end
     end
 
+    context 'with quiet_zone' do
+      it 'renders with default quiet zone (4)' do
+        canvas.draw_qr('hello', x: 0, y: 0, module_size: 2)
+        expect(count_non_white(canvas)).to be_positive
+      end
+
+      it 'renders with quiet_zone: 0' do
+        canvas.draw_qr('hello', x: 0, y: 0, module_size: 2, quiet_zone: 0)
+        expect(count_non_white(canvas)).to be_positive
+      end
+
+      it 'accounts for quiet zone in auto-fit sizing' do
+        # With quiet_zone: 0, auto-fit should produce a larger module size
+        # since there are fewer total modules to fit in the same space
+        canvas_no_qz = ChromaWave::Canvas.new(width: 300, height: 300, background: white)
+        canvas_no_qz.draw_qr('hello', x: 0, y: 0, max_width: 100, quiet_zone: 0)
+        dark_no_qz = count_non_white(canvas_no_qz)
+
+        canvas_with_qz = ChromaWave::Canvas.new(width: 300, height: 300, background: white)
+        canvas_with_qz.draw_qr('hello', x: 0, y: 0, max_width: 100, quiet_zone: 4)
+        dark_with_qz = count_non_white(canvas_with_qz)
+
+        # Larger modules with no quiet zone -> more dark pixels per module
+        expect(dark_no_qz).to be > dark_with_qz
+      end
+    end
+
     context 'with invalid arguments' do
       it 'raises ArgumentError when no sizing info is provided' do
         expect { canvas.draw_qr('hello', x: 0, y: 0) }
@@ -111,6 +138,16 @@ RSpec.describe ChromaWave::Drawing::Codes do
       it 'raises ArgumentError for unknown error_correction' do
         expect { canvas.draw_qr('hello', x: 0, y: 0, module_size: 4, error_correction: :bad) }
           .to raise_error(ArgumentError, /unknown error_correction/)
+      end
+
+      it 'raises ArgumentError for negative quiet_zone' do
+        expect { canvas.draw_qr('hello', x: 0, y: 0, module_size: 4, quiet_zone: -1) }
+          .to raise_error(ArgumentError, /quiet_zone must be a non-negative Integer/)
+      end
+
+      it 'raises ArgumentError for non-integer quiet_zone' do
+        expect { canvas.draw_qr('hello', x: 0, y: 0, module_size: 4, quiet_zone: 2.5) }
+          .to raise_error(ArgumentError, /quiet_zone must be a non-negative Integer/)
       end
     end
 

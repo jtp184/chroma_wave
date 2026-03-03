@@ -35,15 +35,16 @@ module ChromaWave
     # @param data [String] the data to encode
     # @param module_size [Integer] pixel size of each QR module
     # @param error_correction [Symbol] one of +:low+, +:medium+, +:quartile+, +:high+
+    # @param quiet_zone [Integer] number of empty modules around the QR code (default 4)
     # @return [Metrics] frozen value object with width, height, and module count
     # @raise [ArgumentError] if +error_correction+ is unknown
     # @raise [DependencyError] if rqrcode is not installed
-    def self.measure(data, module_size:, error_correction: :medium)
+    def self.measure(data, module_size:, error_correction: :medium, quiet_zone: 4)
       require_rqrcode!
       level = resolve_level(error_correction)
       qr = ::RQRCode::QRCode.new(data, level: level)
       n = qr.modules.length
-      px = n * module_size
+      px = (n + (2 * quiet_zone)) * module_size
       Metrics.new(width: px, height: px, modules: n)
     end
 

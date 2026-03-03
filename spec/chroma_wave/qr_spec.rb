@@ -33,12 +33,13 @@ RSpec.describe ChromaWave::QR do
   end
 
   describe '.measure' do
-    it 'returns a Metrics with correct pixel dimensions' do
+    it 'returns a Metrics with correct pixel dimensions including default quiet zone' do
       metrics = described_class.measure('hello', module_size: 4)
       qr = RQRCode::QRCode.new('hello', level: :m)
       n = qr.modules.length
-      expect(metrics.width).to eq(n * 4)
-      expect(metrics.height).to eq(n * 4)
+      expected_px = (n + 8) * 4 # default quiet_zone: 4 -> 2*4 = 8 extra modules
+      expect(metrics.width).to eq(expected_px)
+      expect(metrics.height).to eq(expected_px)
       expect(metrics.modules).to eq(n)
     end
 
@@ -47,6 +48,28 @@ RSpec.describe ChromaWave::QR do
       high = described_class.measure('hello', module_size: 1, error_correction: :high)
       # Higher correction -> more modules (for non-trivial data)
       expect(high.modules).to be >= low.modules
+    end
+
+    it 'computes dimensions without quiet zone when quiet_zone: 0' do
+      metrics = described_class.measure('hello', module_size: 4, quiet_zone: 0)
+      qr = RQRCode::QRCode.new('hello', level: :m)
+      n = qr.modules.length
+      expect(metrics.width).to eq(n * 4)
+      expect(metrics.height).to eq(n * 4)
+    end
+
+    it 'includes explicit quiet zone in dimensions' do
+      metrics = described_class.measure('hello', module_size: 2, quiet_zone: 2)
+      qr = RQRCode::QRCode.new('hello', level: :m)
+      n = qr.modules.length
+      expected_px = (n + 4) * 2
+      expect(metrics.width).to eq(expected_px)
+    end
+
+    it 'returns same dimensions for default and explicit quiet_zone: 4' do
+      default_m = described_class.measure('hello', module_size: 3)
+      explicit_m = described_class.measure('hello', module_size: 3, quiet_zone: 4)
+      expect(default_m).to eq(explicit_m)
     end
 
     it 'raises ArgumentError for an unknown error_correction level' do
