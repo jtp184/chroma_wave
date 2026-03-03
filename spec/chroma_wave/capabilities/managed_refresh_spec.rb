@@ -342,6 +342,22 @@ RSpec.describe ChromaWave::Capabilities::ManagedRefresh do
       fb = make_framebuffer(display)
       expect(display.display_base(fb)).to eq(display)
     end
+
+    it 'display_grayscale returns self' do
+      disp = ChromaWave::MockDevice.new(model: regional_model, managed_refresh: { min_interval: 0 })
+      fb = make_framebuffer(disp)
+      expect(disp.display_grayscale(fb)).to eq(disp)
+    ensure
+      disp&.close
+    end
+
+    it 'display_region returns self' do
+      disp = ChromaWave::MockDevice.new(model: regional_model, managed_refresh: { min_interval: 0 })
+      fb = make_framebuffer(disp)
+      expect(disp.display_region(fb, x: 0, y: 0, width: 8, height: 8)).to eq(disp)
+    ensure
+      disp&.close
+    end
   end
 
   describe 'thread safety' do
@@ -374,6 +390,45 @@ RSpec.describe ChromaWave::Capabilities::ManagedRefresh do
       ChromaWave::MockDevice.open(model: model, managed_refresh: true) do |mock|
         expect(mock.refresh_scheduler).to be_a(ChromaWave::RefreshScheduler)
       end
+    end
+  end
+
+  describe 'error propagation preserves scheduler state' do
+    let(:display) do
+      ChromaWave::MockDevice.new(model: model, managed_refresh: { min_interval: 0 })
+    end
+
+    it 'does not increment partial count when display_partial raises' do
+      fb = make_framebuffer(display)
+      display.display_partial(fb) # warm up, count=1
+
+      device_stub = display.send(:device)
+      allow(device_stub).to receive(:_epd_display).and_raise(ChromaWave::DeviceError, 'simulated failure')
+
+      expect { display.display_partial(fb) }.to raise_error(ChromaWave::DeviceError)
+      expect(display.refresh_scheduler.partial_count).to eq(1)
+    end
+
+    it 'does not reset partial count when show raises' do
+      fb = make_framebuffer(display)
+      3.times { display.display_partial(fb) }
+
+      device_stub = display.send(:device)
+      allow(device_stub).to receive(:_epd_display).and_raise(ChromaWave::DeviceError, 'simulated failure')
+
+      expect { display.show(fb) }.to raise_error(ChromaWave::DeviceError)
+      expect(display.refresh_scheduler.partial_count).to eq(3)
+    end
+
+    it 'does not reset partial count when clear raises' do
+      fb = make_framebuffer(display)
+      3.times { display.display_partial(fb) }
+
+      device_stub = display.send(:device)
+      allow(device_stub).to receive(:_epd_clear).and_raise(ChromaWave::DeviceError, 'simulated failure')
+
+      expect { display.clear }.to raise_error(ChromaWave::DeviceError)
+      expect(display.refresh_scheduler.partial_count).to eq(3)
     end
   end
 
