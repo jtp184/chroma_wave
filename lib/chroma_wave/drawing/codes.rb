@@ -30,6 +30,8 @@ module ChromaWave
       # @note Framebuffer surfaces use palette symbols (+:black+, +:white+, etc.)
       #   instead of +Color+ objects. Pass a palette symbol for +color:+ and
       #   +background:+ when drawing on a Framebuffer.
+      # @note Pixels that fall outside the surface bounds are silently clipped
+      #   by the underlying +set_pixel+ implementation.
       # @return [self]
       # @raise [ArgumentError] if no sizing info is provided or error_correction is unknown
       # @raise [DependencyError] if rqrcode is not installed
@@ -68,22 +70,23 @@ module ChromaWave
       # @note Framebuffer surfaces use palette symbols (+:black+, +:white+, etc.)
       #   instead of +Color+ objects. Pass a palette symbol for +color:+ and
       #   +background:+ when drawing on a Framebuffer.
+      # @note Pixels that fall outside the surface bounds are silently clipped
+      #   by the underlying +set_pixel+ implementation.
       # @return [self]
       # @raise [ArgumentError] if symbology is unknown or include_text on a non-text surface
       # @raise [DependencyError] if barby is not installed
       def draw_barcode(data, x:, y:, symbology:, height: 60, module_width: 2, # rubocop:disable Metrics/ParameterLists
-                       color: Color::BLACK, background: nil, include_text: true,
+                       color: Color::BLACK, background: nil, include_text: false,
                        text_font: nil)
         validate_text_capable!(include_text)
         validate_text_font!(include_text, text_font)
-        barcode = Barcode.build_barcode(symbology, data)
-        encoding = barcode.encoding.is_a?(Array) ? barcode.encoding.join : barcode.encoding
+        encoding = Barcode.encode(symbology, data)
 
         total_width = encoding.length * module_width
         total_height = compute_barcode_height(height, include_text, text_font)
         render_barcode_background(x, y, total_width, total_height, background) if background
         render_barcode_bars(x, y, encoding, module_width, height, color)
-        render_barcode_text(data, x, y + height + 2, total_width, text_font, color) if include_text
+        render_barcode_text(data, x, y + height + Barcode::TEXT_GAP_PX, total_width, text_font, color) if include_text
 
         self
       end
@@ -94,7 +97,7 @@ module ChromaWave
       #
       # @raise [DependencyError] if rqrcode cannot be loaded
       def require_rqrcode!
-        QR.send(:require_rqrcode!)
+        QR.require_rqrcode!
       end
 
       # Resolves the effective module_size from explicit or auto-fit parameters.
@@ -203,7 +206,7 @@ module ChromaWave
       def compute_barcode_height(bar_height, include_text, text_font)
         return bar_height unless include_text
 
-        bar_height + 2 + (text_font.line_height * 1.2).round
+        bar_height + Barcode::TEXT_GAP_PX + (text_font.line_height * Barcode::TEXT_HEIGHT_FACTOR).round
       end
 
       # Fills the barcode background as a single rectangle.

@@ -73,19 +73,20 @@ RSpec.describe ChromaWave::Barcode do
     end
   end
 
-  describe '.build_barcode' do
-    it 'returns a Barby barcode instance' do
-      barcode = described_class.build_barcode(:code128, 'ABC123')
-      expect(barcode).to be_a(Barby::Code128)
+  describe '.encode' do
+    it 'returns a binary encoding string' do
+      encoding = described_class.encode(:code128, 'ABC123')
+      expect(encoding).to be_a(String)
+      expect(encoding).to match(/\A[01]+\z/)
     end
 
     it 'raises ArgumentError for unknown symbology' do
-      expect { described_class.build_barcode(:bad, 'test') }
+      expect { described_class.encode(:bad, 'test') }
         .to raise_error(ArgumentError, /unknown symbology: :bad/)
     end
 
     it 'wraps Barby errors with user-friendly message' do
-      expect { described_class.build_barcode(:ean13, 'abc') }
+      expect { described_class.encode(:ean13, 'abc') }
         .to raise_error(ArgumentError, /invalid data for ean13/)
     end
   end
@@ -97,7 +98,7 @@ RSpec.describe ChromaWave::Barcode do
     end
 
     it 'raises DependencyError when barby is not installed' do
-      expect { described_class.build_barcode(:code128, 'test') }
+      expect { described_class.encode(:code128, 'test') }
         .to raise_error(ChromaWave::DependencyError, /barby is required/)
     end
   end

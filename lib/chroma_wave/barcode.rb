@@ -12,6 +12,12 @@ module ChromaWave
   #   metrics.width  # => total pixel width of the rendered barcode
   #   metrics.height # => total pixel height (bars only, unless include_text)
   module Barcode
+    # Pixel gap between bars and text label.
+    TEXT_GAP_PX = 2
+
+    # Multiplier applied to font line_height for text label sizing.
+    TEXT_HEIGHT_FACTOR = 1.2
+
     # Maps user-facing symbology symbols to their Barby class name and require path.
     #
     # @return [Hash{Symbol => Hash}]
@@ -49,17 +55,33 @@ module ChromaWave
               'text_font: is required when include_text: true'
       end
 
-      barcode = build_barcode(symbology, data)
-      encoding = barcode.encoding.is_a?(Array) ? barcode.encoding.join : barcode.encoding
+      encoding = encode(symbology, data)
 
       total_width = encoding.length * module_width
       total_height = if include_text
-                       height + 2 + (text_font.line_height * 1.2).round
+                       height + TEXT_GAP_PX + (text_font.line_height * TEXT_HEIGHT_FACTOR).round
                      else
                        height
                      end
 
       Metrics.new(width: total_width, height: total_height, encoding_length: encoding.length)
+    end
+
+    # Encodes data for the given symbology and returns the flat binary encoding string.
+    #
+    # Each character in the returned string is +'1'+ (dark bar) or +'0'+ (space).
+    # This is the single source of truth for barcode encoding; both {.measure}
+    # and {Drawing::Codes#draw_barcode} delegate here.
+    #
+    # @param symbology [Symbol] symbology key (e.g. +:code128+, +:ean13+)
+    # @param data [String] data to encode
+    # @return [String] binary encoding string of '1' and '0' characters
+    # @raise [ArgumentError] if symbology is unknown or data is invalid for the symbology
+    # @raise [DependencyError] if barby is not installed
+    def self.encode(symbology, data)
+      barcode = build_barcode(symbology, data)
+      encoding = barcode.encoding
+      encoding.is_a?(Array) ? encoding.join : encoding
     end
 
     # Builds a Barby barcode instance for the given symbology and data.
@@ -97,6 +119,6 @@ module ChromaWave
             'Install it with: gem install barby'
     end
 
-    private_class_method :require_barby!
+    private_class_method :build_barcode, :require_barby!
   end
 end

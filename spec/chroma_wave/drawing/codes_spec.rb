@@ -151,6 +151,22 @@ RSpec.describe ChromaWave::Drawing::Codes do
       end
     end
 
+    context 'with matching measure and render dimensions' do
+      let(:bg) { ChromaWave::Color.new(r: 200, g: 200, b: 200) }
+      let(:metrics) { ChromaWave::QR.measure('hello', module_size: 4) }
+      let(:big) do
+        ChromaWave::Canvas.new(width: 500, height: 500, background: white).tap do |c|
+          c.draw_qr('hello', x: 0, y: 0, module_size: 4, background: bg)
+        end
+      end
+
+      it 'renders pixels within the measured bounding box' do
+        w, h = non_white_extent(big)
+        expect(w).to eq(metrics.width)
+        expect(h).to eq(metrics.height)
+      end
+    end
+
     context 'without required dependency' do
       before do
         hide_const('RQRCode') if defined?(RQRCode)
@@ -239,7 +255,7 @@ RSpec.describe ChromaWave::Drawing::Codes do
       end
 
       it 'raises ArgumentError when include_text is true but text_font is nil' do
-        expect { canvas.draw_barcode('ABC', x: 0, y: 0, symbology: :code128) }
+        expect { canvas.draw_barcode('ABC', x: 0, y: 0, symbology: :code128, include_text: true) }
           .to raise_error(ArgumentError, /text_font:.*required.*include_text/)
       end
     end
@@ -264,6 +280,23 @@ RSpec.describe ChromaWave::Drawing::Codes do
       it 'raises ArgumentError with user-friendly message for invalid EAN data' do
         expect { canvas.draw_barcode('abc', x: 0, y: 0, symbology: :ean13, include_text: false) }
           .to raise_error(ArgumentError, /invalid data for ean13/)
+      end
+    end
+
+    context 'with matching measure and render dimensions' do
+      let(:bg) { ChromaWave::Color.new(r: 200, g: 200, b: 200) }
+      let(:metrics) { ChromaWave::Barcode.measure('ABC123', symbology: :code128) }
+      let(:big) do
+        ChromaWave::Canvas.new(width: 500, height: 500, background: white).tap do |c|
+          c.draw_barcode('ABC123', x: 0, y: 0, symbology: :code128,
+                                   include_text: false, background: bg)
+        end
+      end
+
+      it 'renders pixels within the measured bounding box' do
+        w, h = non_white_extent(big)
+        expect(w).to eq(metrics.width)
+        expect(h).to eq(metrics.height)
       end
     end
 

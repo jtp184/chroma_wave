@@ -73,6 +73,6 @@ module ChromaWave
             'Install it with: gem install rqrcode'
     end
 
-    private_class_method :require_rqrcode!
+    # NOTE: intentionally public so Drawing::Codes can call it directly.
   end
 end
