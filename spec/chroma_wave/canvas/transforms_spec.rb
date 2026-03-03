@@ -668,17 +668,30 @@ RSpec.describe ChromaWave::Canvas::Transforms do
       expect(scaled).not_to equal(flipped)
     end
 
-    it 'flip(:horizontal) then flip(:vertical) is not the same as either alone' do
+    it 'combined horizontal + vertical flips commute' do
       c = canvas(3, 3)
       c.set_pixel(0, 0, red)
 
       hv = c.flip(:horizontal).flip(:vertical)
       vh = c.flip(:vertical).flip(:horizontal)
 
-      # Both result in the pixel at (2,2) — they commute
       expect(hv.get_pixel(2, 2)).to eq(red)
       expect(vh.get_pixel(2, 2)).to eq(red)
       expect(hv).to eq(vh)
+    end
+
+    it 'combined flips differ from either single flip alone' do
+      c = canvas(3, 3)
+      c.set_pixel(0, 0, red)
+
+      h  = c.flip(:horizontal)
+      v  = c.flip(:vertical)
+      hv = h.flip(:vertical)
+
+      expect(h.get_pixel(2, 0)).to eq(red)
+      expect(v.get_pixel(0, 2)).to eq(red)
+      expect(hv).not_to eq(h)
+      expect(hv).not_to eq(v)
     end
   end
 
