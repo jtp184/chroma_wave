@@ -96,6 +96,16 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
         canvas.blit_glyph(bitmap, x: 5, y: 5, width: 2, height: 2, color: black)
         expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 5, y: 5, width: 2, height: 2))
       end
+
+      it 'clips the dirty region when glyph extends beyond canvas bounds' do
+        bitmap = ("\xFF" * 400).b # 20x20 fully opaque
+        canvas.blit_glyph(bitmap, x: 90, y: 40, width: 20, height: 20, color: black)
+        region = canvas.dirty_region
+        expect(region.x).to eq(90)
+        expect(region.y).to eq(40)
+        expect(region.width).to eq(10)  # clipped to canvas width (100 - 90)
+        expect(region.height).to eq(10) # clipped to canvas height (50 - 40)
+      end
     end
 
     describe 'dirty region expansion' do
@@ -166,6 +176,39 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       it 'raises ArgumentError with no arguments' do
         expect { canvas.mark_dirty }
           .to raise_error(ArgumentError, /mark_dirty requires/)
+      end
+
+      it 'clips to surface bounds when region extends beyond canvas' do
+        canvas.mark_dirty(x: 90, y: 40, width: 20, height: 20)
+        region = canvas.dirty_region
+        expect(region.x).to eq(90)
+        expect(region.y).to eq(40)
+        expect(region.width).to eq(10)  # clipped to 100 - 90
+        expect(region.height).to eq(10) # clipped to 50 - 40
+      end
+
+      it 'clips negative coordinates to zero' do
+        canvas.mark_dirty(x: -5, y: -3, width: 20, height: 15)
+        region = canvas.dirty_region
+        expect(region.x).to eq(0)
+        expect(region.y).to eq(0)
+        expect(region.width).to eq(15)  # 20 - 5 clipped
+        expect(region.height).to eq(12) # 15 - 3 clipped
+      end
+
+      it 'is a no-op when region is entirely out of bounds' do
+        canvas.mark_dirty(x: 200, y: 200, width: 10, height: 10)
+        expect(canvas).not_to be_dirty
+      end
+
+      it 'is a no-op for zero-width rect' do
+        canvas.mark_dirty(x: 5, y: 5, width: 0, height: 10)
+        expect(canvas).not_to be_dirty
+      end
+
+      it 'is a no-op for zero-height rect' do
+        canvas.mark_dirty(x: 5, y: 5, width: 10, height: 0)
+        expect(canvas).not_to be_dirty
       end
     end
   end
@@ -371,12 +414,26 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
 
         after { display.close }
 
-        it 'raises ArgumentError' do
+        it 'raises ArgumentError for unknown mode even when canvas is clean' do
           canvas = ChromaWave::Canvas.new(width: display.width, height: display.height)
           canvas.set_pixel(10, 10, black)
           expect { display.show_dirty(canvas, mode: :bogus) }
             .to raise_error(ArgumentError, /unknown mode/)
         end
+      end
+    end
+
+    describe 'canvas dimension mismatch' do
+      let(:display) { ChromaWave::MockDevice.new(model: non_regional_model) }
+
+      after { display.close }
+
+      it 'raises when canvas dimensions do not match display' do
+        canvas = ChromaWave::Canvas.new(width: 10, height: 10)
+        canvas.set_pixel(1, 1, black)
+        # The renderer produces a framebuffer matching canvas dimensions,
+        # which won't match the display's native dimensions.
+        expect { display.show_dirty(canvas) }.to raise_error(ArgumentError, /dimensions/)
       end
     end
   end

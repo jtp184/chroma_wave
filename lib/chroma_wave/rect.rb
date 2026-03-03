@@ -11,6 +11,16 @@ module ChromaWave
   #   r2 = Rect.new(x: 5, y: 5, width: 10, height: 10)
   #   r1.union(r2) # => Rect(x: 0, y: 0, width: 15, height: 15)
   Rect = Data.define(:x, :y, :width, :height) do
+    # Validates that width and height are non-negative after initialization.
+    #
+    # @raise [ArgumentError] if width or height is negative
+    def initialize(x:, y:, width:, height:)
+      raise ArgumentError, "width must be non-negative, got #{width}" if width.negative?
+      raise ArgumentError, "height must be non-negative, got #{height}" if height.negative?
+
+      super
+    end
+
     # Returns the smallest rectangle that encloses both this rect and +other+.
     #
     # Accepts either a {Rect} or four positional arguments (x, y, width, height).

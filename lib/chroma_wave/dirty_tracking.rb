@@ -50,13 +50,13 @@ module ChromaWave
     # @return [self]
     def mark_dirty(rect = nil, x: nil, y: nil, width: nil, height: nil)
       if rect
-        expand_dirty(rect.x, rect.y, rect.width, rect.height)
+        mark_clipped_dirty(rect.x, rect.y, rect.width, rect.height)
       else
         unless x && y && width && height
           raise ArgumentError, 'mark_dirty requires a Rect or x:, y:, width:, height: keywords'
         end
 
-        expand_dirty(x, y, width, height)
+        mark_clipped_dirty(x, y, width, height)
       end
       self
     end

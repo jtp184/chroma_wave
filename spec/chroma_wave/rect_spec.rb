@@ -14,6 +14,22 @@ RSpec.describe ChromaWave::Rect do
       rect = described_class.new(x: 0, y: 0, width: 5, height: 5)
       expect(rect).to be_frozen
     end
+
+    it 'allows zero width and height' do
+      rect = described_class.new(x: 0, y: 0, width: 0, height: 0)
+      expect(rect.width).to eq(0)
+      expect(rect.height).to eq(0)
+    end
+
+    it 'raises ArgumentError for negative width' do
+      expect { described_class.new(x: 0, y: 0, width: -1, height: 5) }
+        .to raise_error(ArgumentError, /width must be non-negative/)
+    end
+
+    it 'raises ArgumentError for negative height' do
+      expect { described_class.new(x: 0, y: 0, width: 5, height: -1) }
+        .to raise_error(ArgumentError, /height must be non-negative/)
+    end
   end
 
   describe 'equality' do

@@ -124,6 +124,7 @@ module ChromaWave
     def show_dirty(canvas, mode: nil)
       return self unless canvas.dirty?
 
+      validate_display_mode!(mode)
       region = canvas.dirty_region
       ensure_initialized!
 
@@ -131,7 +132,7 @@ module ChromaWave
 
       if is_a?(Capabilities::RegionalRefresh)
         # display_region expects logical-space FB and handles rotation internally
-        display_dirty_regional(fb, region, mode)
+        display_dirty_regional(fb, region)
       else
         # Full-screen path needs native-orientation FB
         fb = fb.rotate(rotation) unless rotation.zero?
@@ -326,24 +327,30 @@ module ChromaWave
       extend Capabilities::ManagedRefresh
     end
 
+    # Validates the display mode, raising for unknown or unsupported modes.
+    #
+    # @param mode [Symbol, nil] the requested mode
+    # @raise [ArgumentError] if mode is unrecognized or display lacks the capability
+    def validate_display_mode!(mode)
+      case mode
+      when nil then nil
+      when :partial
+        raise ArgumentError, 'display does not support partial mode' unless is_a?(Capabilities::PartialRefresh)
+      else
+        raise ArgumentError, "unknown mode: #{mode.inspect}"
+      end
+    end
+
     # Displays the dirty region using regional refresh.
     #
     # @param framebuffer [Framebuffer] full-screen rendered framebuffer (logical space)
     # @param region [Rect] dirty region bounding box
-    # @param mode [Symbol, nil] display mode
+    # @param mode [Symbol, nil] display mode (already validated)
     # @return [void]
-    # @raise [ArgumentError] if mode is unrecognized or display lacks capability
-    def display_dirty_regional(framebuffer, region, mode)
-      region_hash = region.to_h
-      case mode
-      when nil
-        display_region(framebuffer, **region_hash)
-      when :partial
-        raise_unless_capable!(:partial, Capabilities::PartialRefresh)
-        display_region(framebuffer, **region_hash)
-      else
-        raise ArgumentError, "unknown mode: #{mode.inspect}"
-      end
+    def display_dirty_regional(framebuffer, region)
+      display_region(framebuffer,
+                     x: region.x, y: region.y,
+                     width: region.width, height: region.height)
     end
 
     # Falls back to full-screen refresh when regional refresh is unavailable.
@@ -352,30 +359,14 @@ module ChromaWave
     # wraps the operation automatically (tracked as full refresh).
     #
     # @param framebuffer [Framebuffer] full-screen rendered framebuffer (native orientation)
-    # @param mode [Symbol, nil] display mode
+    # @param mode [Symbol, nil] display mode (already validated)
     # @return [void]
-    # @raise [ArgumentError] if mode is unrecognized or display lacks capability
     def display_dirty_fallback(framebuffer, mode)
-      case mode
-      when nil
-        show(framebuffer)
-      when :partial
-        raise_unless_capable!(:partial, Capabilities::PartialRefresh)
+      if mode == :partial
         display_partial(framebuffer)
       else
-        raise ArgumentError, "unknown mode: #{mode.inspect}"
+        show(framebuffer)
       end
-    end
-
-    # Raises +ArgumentError+ unless this display has the given capability.
-    #
-    # @param name [Symbol] capability name for error message
-    # @param mod [Module] the capability module to check
-    # @raise [ArgumentError] if the display does not include the capability
-    def raise_unless_capable!(name, mod)
-      return if is_a?(mod)
-
-      raise ArgumentError, "display does not support #{name} mode"
     end
 
     # Validates that a framebuffer's pixel format and dimensions match this display.

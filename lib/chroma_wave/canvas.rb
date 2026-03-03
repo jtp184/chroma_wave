@@ -200,7 +200,7 @@ module ChromaWave
       _canvas_blit_glyph(buffer, bitmap, x, y, width, height,
                          self.width, self.height,
                          color.r, color.g, color.b)
-      expand_dirty(x, y, width, height)
+      mark_clipped_dirty(x, y, width, height)
       true
     end
 
@@ -280,7 +280,7 @@ module ChromaWave
                            glyph[:width], glyph[:height],
                            width, height,
                            color.r, color.g, color.b)
-        expand_dirty(gx, gy, glyph[:width], glyph[:height])
+        mark_clipped_dirty(gx, gy, glyph[:width], glyph[:height])
       else
         super
       end
