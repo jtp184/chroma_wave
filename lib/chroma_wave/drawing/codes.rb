@@ -27,6 +27,9 @@ module ChromaWave
       # @param max_width [Integer, nil] maximum width for auto-fit
       # @param max_height [Integer, nil] maximum height for auto-fit
       # @param quiet_zone [Integer] number of empty modules around the QR code (default 4)
+      # @note Framebuffer surfaces use palette symbols (+:black+, +:white+, etc.)
+      #   instead of +Color+ objects. Pass a palette symbol for +color:+ and
+      #   +background:+ when drawing on a Framebuffer.
       # @return [self]
       # @raise [ArgumentError] if no sizing info is provided or error_correction is unknown
       # @raise [DependencyError] if rqrcode is not installed
@@ -62,6 +65,9 @@ module ChromaWave
       # @param background [Color, nil] background color (nil = transparent)
       # @param include_text [Boolean] render data text below bars
       # @param text_font [Font, nil] font for text (required if include_text)
+      # @note Framebuffer surfaces use palette symbols (+:black+, +:white+, etc.)
+      #   instead of +Color+ objects. Pass a palette symbol for +color:+ and
+      #   +background:+ when drawing on a Framebuffer.
       # @return [self]
       # @raise [ArgumentError] if symbology is unknown or include_text on a non-text surface
       # @raise [DependencyError] if barby is not installed
