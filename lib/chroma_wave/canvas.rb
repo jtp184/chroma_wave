@@ -44,11 +44,11 @@ module ChromaWave
 
     # Returns the bounding box of all modifications since the last {#clean!}.
     #
-    # @return [Hash{Symbol => Integer}, nil] +{x:, y:, width:, height:}+ or nil if clean
+    # @return [Rect, nil] the dirty bounding box or nil if clean
     def dirty_region
       return nil unless @dirty_x
 
-      { x: @dirty_x, y: @dirty_y, width: @dirty_w, height: @dirty_h }
+      Rect.new(x: @dirty_x, y: @dirty_y, width: @dirty_w, height: @dirty_h)
     end
 
     # Resets dirty tracking, marking the canvas as clean.
@@ -73,6 +73,10 @@ module ChromaWave
       if rect
         expand_dirty(rect.x, rect.y, rect.width, rect.height)
       else
+        unless x && y && width && height
+          raise ArgumentError, 'mark_dirty requires a Rect or x:, y:, width:, height: keywords'
+        end
+
         expand_dirty(x, y, width, height)
       end
       self
@@ -304,10 +308,10 @@ module ChromaWave
       @buffer = source.raw_buffer.dup
       region = source.dirty_region
       if region
-        @dirty_x = region[:x]
-        @dirty_y = region[:y]
-        @dirty_w = region[:width]
-        @dirty_h = region[:height]
+        @dirty_x = region.x
+        @dirty_y = region.y
+        @dirty_w = region.width
+        @dirty_h = region.height
       else
         @dirty_x = @dirty_y = @dirty_w = @dirty_h = nil
       end
@@ -341,16 +345,17 @@ module ChromaWave
     # @param new_w [Integer] width of the new dirty area
     # @param new_h [Integer] height of the new dirty area
     # @return [void]
+    # rubocop:disable Style/MinMaxComparison -- ternaries avoid Array allocs on hot path
     def expand_dirty(new_x, new_y, new_w, new_h)
       if @dirty_x
         right = new_x + new_w
         bottom = new_y + new_h
         old_right = @dirty_x + @dirty_w
         old_bottom = @dirty_y + @dirty_h
-        @dirty_x = new_x < @dirty_x ? new_x : @dirty_x     # rubocop:disable Style/MinMaxComparison
-        @dirty_y = new_y < @dirty_y ? new_y : @dirty_y     # rubocop:disable Style/MinMaxComparison
-        @dirty_w = (right > old_right ? right : old_right) - @dirty_x     # rubocop:disable Style/MinMaxComparison
-        @dirty_h = (bottom > old_bottom ? bottom : old_bottom) - @dirty_y # rubocop:disable Style/MinMaxComparison
+        @dirty_x = new_x < @dirty_x ? new_x : @dirty_x
+        @dirty_y = new_y < @dirty_y ? new_y : @dirty_y
+        @dirty_w = (right > old_right ? right : old_right) - @dirty_x
+        @dirty_h = (bottom > old_bottom ? bottom : old_bottom) - @dirty_y
       else
         @dirty_x = new_x
         @dirty_y = new_y
@@ -358,6 +363,7 @@ module ChromaWave
         @dirty_h = new_h
       end
     end
+    # rubocop:enable Style/MinMaxComparison
 
     # Byte offset for pixel (x, y) in the RGBA buffer.
     def pixel_offset(x, y)

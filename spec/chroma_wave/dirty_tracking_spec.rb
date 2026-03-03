@@ -28,7 +28,7 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
 
       it 'tracks a single-pixel dirty region' do
         canvas.set_pixel(10, 20, black)
-        expect(canvas.dirty_region).to eq({ x: 10, y: 20, width: 1, height: 1 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 10, y: 20, width: 1, height: 1))
       end
 
       it 'does not mark dirty for out-of-bounds pixels' do
@@ -41,19 +41,19 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
     describe '#clear' do
       it 'marks the entire canvas dirty' do
         canvas.clear(black)
-        expect(canvas.dirty_region).to eq({ x: 0, y: 0, width: 100, height: 50 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 0, y: 0, width: 100, height: 50))
       end
     end
 
     describe '#fill_rect' do
       it 'marks the filled region dirty (clipped)' do
         canvas.fill_rect(10, 20, 30, 15, black)
-        expect(canvas.dirty_region).to eq({ x: 10, y: 20, width: 30, height: 15 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 10, y: 20, width: 30, height: 15))
       end
 
       it 'clips the dirty region to canvas bounds' do
         canvas.fill_rect(-5, -5, 20, 20, black)
-        expect(canvas.dirty_region).to eq({ x: 0, y: 0, width: 15, height: 15 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 0, y: 0, width: 15, height: 15))
       end
 
       it 'does not mark dirty when rect is fully out of bounds' do
@@ -66,19 +66,19 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       it 'marks the blit region dirty' do
         src = ChromaWave::Canvas.new(width: 20, height: 10, background: red)
         canvas.blit(src, x: 5, y: 5)
-        expect(canvas.dirty_region).to eq({ x: 5, y: 5, width: 20, height: 10 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 5, y: 5, width: 20, height: 10))
       end
 
       it 'clips the dirty region for negative offsets' do
         src = ChromaWave::Canvas.new(width: 10, height: 10, background: red)
         canvas.blit(src, x: -3, y: -3)
-        expect(canvas.dirty_region).to eq({ x: 0, y: 0, width: 7, height: 7 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 0, y: 0, width: 7, height: 7))
       end
 
       it 'clips the dirty region at canvas bounds' do
         src = ChromaWave::Canvas.new(width: 20, height: 20, background: red)
         canvas.blit(src, x: 90, y: 40)
-        expect(canvas.dirty_region).to eq({ x: 90, y: 40, width: 10, height: 10 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 90, y: 40, width: 10, height: 10))
       end
     end
 
@@ -86,7 +86,7 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       it 'marks the loaded region dirty' do
         bytes = (black.to_rgba_bytes * 12) # 4x3
         canvas.load_rgba_bytes(bytes, width: 4, height: 3, x: 10, y: 20)
-        expect(canvas.dirty_region).to eq({ x: 10, y: 20, width: 4, height: 3 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 10, y: 20, width: 4, height: 3))
       end
     end
 
@@ -94,7 +94,7 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       it 'marks the glyph region dirty' do
         bitmap = "\xFF\xFF\xFF\xFF".b # 2x2 fully opaque
         canvas.blit_glyph(bitmap, x: 5, y: 5, width: 2, height: 2, color: black)
-        expect(canvas.dirty_region).to eq({ x: 5, y: 5, width: 2, height: 2 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 5, y: 5, width: 2, height: 2))
       end
     end
 
@@ -103,20 +103,20 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
         canvas.set_pixel(10, 10, black)
         canvas.set_pixel(50, 40, black)
         region = canvas.dirty_region
-        expect(region[:x]).to eq(10)
-        expect(region[:y]).to eq(10)
-        expect(region[:width]).to eq(41)  # 50 - 10 + 1
-        expect(region[:height]).to eq(31) # 40 - 10 + 1
+        expect(region.x).to eq(10)
+        expect(region.y).to eq(10)
+        expect(region.width).to eq(41)  # 50 - 10 + 1
+        expect(region.height).to eq(31) # 40 - 10 + 1
       end
 
       it 'expands for fill_rect after set_pixel' do
         canvas.set_pixel(0, 0, black)
         canvas.fill_rect(80, 30, 10, 10, red)
         region = canvas.dirty_region
-        expect(region[:x]).to eq(0)
-        expect(region[:y]).to eq(0)
-        expect(region[:width]).to eq(90)  # 80 + 10
-        expect(region[:height]).to eq(40) # 30 + 10
+        expect(region.x).to eq(0)
+        expect(region.y).to eq(0)
+        expect(region.width).to eq(90)  # 80 + 10
+        expect(region.height).to eq(40) # 30 + 10
       end
     end
 
@@ -138,24 +138,34 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
         canvas.set_pixel(10, 10, black)
         canvas.clean!
         canvas.set_pixel(50, 40, red)
-        expect(canvas.dirty_region).to eq({ x: 50, y: 40, width: 1, height: 1 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 50, y: 40, width: 1, height: 1))
       end
     end
 
     describe '#mark_dirty' do
       it 'marks an arbitrary rect dirty with keywords' do
         canvas.mark_dirty(x: 5, y: 10, width: 20, height: 15)
-        expect(canvas.dirty_region).to eq({ x: 5, y: 10, width: 20, height: 15 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 5, y: 10, width: 20, height: 15))
       end
 
       it 'accepts a Rect object' do
         rect = ChromaWave::Rect.new(x: 3, y: 7, width: 12, height: 8)
         canvas.mark_dirty(rect)
-        expect(canvas.dirty_region).to eq({ x: 3, y: 7, width: 12, height: 8 })
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 3, y: 7, width: 12, height: 8))
       end
 
       it 'returns self for chaining' do
         expect(canvas.mark_dirty(x: 0, y: 0, width: 1, height: 1)).to equal(canvas)
+      end
+
+      it 'raises ArgumentError when keyword args are missing' do
+        expect { canvas.mark_dirty(x: 5, y: 10) }
+          .to raise_error(ArgumentError, /mark_dirty requires/)
+      end
+
+      it 'raises ArgumentError with no arguments' do
+        expect { canvas.mark_dirty }
+          .to raise_error(ArgumentError, /mark_dirty requires/)
       end
     end
   end
@@ -191,7 +201,7 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       layer = canvas.layer(x: 10, y: 20, width: 50, height: 30)
       layer.set_pixel(5, 5, black)
       # Layer translates (5,5) to parent (15,25)
-      expect(canvas.dirty_region).to eq({ x: 15, y: 25, width: 1, height: 1 })
+      expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 15, y: 25, width: 1, height: 1))
     end
 
     it 'propagates clear to parent canvas dirty region' do
@@ -199,7 +209,7 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       layer = canvas.layer(x: 10, y: 20, width: 50, height: 30)
       layer.clear(black)
       # Layer.clear calls parent.fill_rect with translated coords
-      expect(canvas.dirty_region).to eq({ x: 10, y: 20, width: 50, height: 30 })
+      expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 10, y: 20, width: 50, height: 30))
     end
 
     it 'propagates load_rgba_bytes to parent canvas dirty region' do
@@ -207,7 +217,7 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       layer = canvas.layer(x: 10, y: 20, width: 50, height: 30)
       bytes = (black.to_rgba_bytes * 4) # 2x2
       layer.load_rgba_bytes(bytes, width: 2, height: 2, x: 0, y: 0)
-      expect(canvas.dirty_region).to eq({ x: 10, y: 20, width: 2, height: 2 })
+      expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 10, y: 20, width: 2, height: 2))
     end
   end
 
@@ -219,8 +229,8 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       canvas.draw_line(10, 10, 50, 50, pen: pen)
       expect(canvas).to be_dirty
       region = canvas.dirty_region
-      expect(region[:x]).to be <= 10
-      expect(region[:y]).to be <= 10
+      expect(region.x).to be <= 10
+      expect(region.y).to be <= 10
     end
 
     it 'tracks dirty from draw_rect via set_pixel' do

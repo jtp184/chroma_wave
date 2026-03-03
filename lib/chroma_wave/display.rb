@@ -326,18 +326,19 @@ module ChromaWave
 
     # Displays the dirty region using regional refresh.
     #
-    # @param framebuffer [Framebuffer] full-screen rendered framebuffer
-    # @param region [Hash] dirty region +{x:, y:, width:, height:}+
+    # @param framebuffer [Framebuffer] full-screen rendered framebuffer (logical space)
+    # @param region [Rect] dirty region bounding box
     # @param mode [Symbol, nil] display mode
     # @return [void]
     # @raise [ArgumentError] if mode is unrecognized or display lacks capability
     def display_dirty_regional(framebuffer, region, mode)
+      region_hash = region.to_h
       case mode
       when nil
-        display_region(framebuffer, **region)
+        display_region(framebuffer, **region_hash)
       when :partial
         raise_unless_capable!(:partial, Capabilities::PartialRefresh)
-        display_region(framebuffer, **region)
+        display_region(framebuffer, **region_hash)
       else
         raise ArgumentError, "unknown mode: #{mode.inspect}"
       end
