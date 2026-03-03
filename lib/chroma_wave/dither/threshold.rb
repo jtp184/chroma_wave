@@ -5,7 +5,7 @@ module ChromaWave
     # Threshold quantization: simple nearest-color mapping with no error diffusion.
     #
     # Reads raw RGBA bytes from the canvas and maps each pixel to the nearest
-    # palette color using CIE Lab Delta E distance. Uses a reusable {RGB}
+    # palette color using squared CIE76 Delta E in L*a*b* space. Uses a reusable {RGB}
     # struct to avoid per-pixel Color allocation.
     #
     # @example

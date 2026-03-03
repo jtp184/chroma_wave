@@ -153,7 +153,7 @@ module ChromaWave
     # operates on RGB only — colors should be composited to opaque
     # before palette matching.
     #
-    # @param rgba [Color] the color
+    # @param rgba [#r, #g, #b] the color
     # @return [Integer] packed 24-bit key
     def pack_key(rgba)
       (rgba.r << 16) | (rgba.g << 8) | rgba.b
