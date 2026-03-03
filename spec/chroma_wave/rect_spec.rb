@@ -64,12 +64,22 @@ RSpec.describe ChromaWave::Rect do
         expect(result).to eq(described_class.new(x: 0, y: 0, width: 15, height: 15))
       end
     end
-  end
 
-  describe '#to_h' do
-    it 'returns a hash with x, y, width, height keys' do
-      rect = described_class.new(x: 1, y: 2, width: 3, height: 4)
-      expect(rect.to_h).to eq({ x: 1, y: 2, width: 3, height: 4 })
+    context 'with missing positional arguments' do
+      it 'raises ArgumentError when y is missing' do
+        a = described_class.new(x: 0, y: 0, width: 10, height: 10)
+        expect { a.union(5) }.to raise_error(ArgumentError, /four positional arguments/)
+      end
+
+      it 'raises ArgumentError when width and height are missing' do
+        a = described_class.new(x: 0, y: 0, width: 10, height: 10)
+        expect { a.union(5, 5) }.to raise_error(ArgumentError, /four positional arguments/)
+      end
+
+      it 'raises ArgumentError when height is missing' do
+        a = described_class.new(x: 0, y: 0, width: 10, height: 10)
+        expect { a.union(5, 5, 10) }.to raise_error(ArgumentError, /four positional arguments/)
+      end
     end
   end
 

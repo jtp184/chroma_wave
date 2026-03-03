@@ -27,6 +27,10 @@ module ChromaWave
       if other_or_x.is_a?(Rect)
         other_x, other_y, other_w, other_h = other_or_x.deconstruct
       else
+        unless other_y && other_w && other_h
+          raise ArgumentError,
+                'union requires a Rect or four positional arguments (x, y, width, height)'
+        end
         other_x = other_or_x
       end
 
@@ -40,9 +44,5 @@ module ChromaWave
       )
     end
 
-    # Returns a Hash representation of this rect.
-    #
-    # @return [Hash{Symbol => Integer}]
-    def to_h = { x:, y:, width:, height: }
   end
 end
