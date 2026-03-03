@@ -21,21 +21,22 @@ module ChromaWave
       # @param x [Integer] top-left x coordinate
       # @param y [Integer] top-left y coordinate
       # @param module_size [Integer, nil] pixel size per QR module (overrides max_width/max_height)
-      # @param color [Color] dark module color
-      # @param background [Color, nil] background color (nil = transparent)
+      # @param color [Color, Symbol] dark module color (auto-detected per surface type)
+      # @param background [Color, Symbol, nil] background color (nil = transparent)
       # @param error_correction [Symbol] +:low+, +:medium+, +:quartile+, or +:high+
       # @param max_width [Integer, nil] maximum width for auto-fit
       # @param max_height [Integer, nil] maximum height for auto-fit
       # @param quiet_zone [Integer] number of empty modules around the QR code (default 4)
-      # @note Framebuffer surfaces use palette symbols (+:black+, +:white+, etc.)
-      #   instead of +Color+ objects. Pass a palette symbol for +color:+ and
-      #   +background:+ when drawing on a Framebuffer.
+      # @note The +color:+ default adapts to the surface type: +Color::BLACK+ for
+      #   Canvas/Layer, +:black+ for Framebuffer. You may still pass an explicit
+      #   value. Framebuffer surfaces require palette symbols (+:black+, +:white+,
+      #   etc.) for both +color:+ and +background:+.
       # @note Pixels that fall outside the surface bounds are silently clipped
       #   by the underlying +set_pixel+ implementation.
       # @return [self]
       # @raise [ArgumentError] if no sizing info is provided or error_correction is unknown
       # @raise [DependencyError] if rqrcode is not installed
-      def draw_qr(data, x:, y:, module_size: nil, color: Color::BLACK, background: nil, # rubocop:disable Metrics/ParameterLists
+      def draw_qr(data, x:, y:, module_size: nil, color: default_foreground, background: nil, # rubocop:disable Metrics/ParameterLists
                   error_correction: :medium, max_width: nil, max_height: nil, quiet_zone: 4)
         validate_quiet_zone!(quiet_zone)
         require_rqrcode!
@@ -63,20 +64,21 @@ module ChromaWave
       # @param symbology [Symbol] +:code128+, +:ean13+, +:ean8+, or +:code39+
       # @param height [Integer] bar height in pixels
       # @param module_width [Integer] pixel width per narrow bar
-      # @param color [Color] bar color
-      # @param background [Color, nil] background color (nil = transparent)
+      # @param color [Color, Symbol] bar color (auto-detected per surface type)
+      # @param background [Color, Symbol, nil] background color (nil = transparent)
       # @param include_text [Boolean] render data text below bars
       # @param text_font [Font, nil] font for text (required if include_text)
-      # @note Framebuffer surfaces use palette symbols (+:black+, +:white+, etc.)
-      #   instead of +Color+ objects. Pass a palette symbol for +color:+ and
-      #   +background:+ when drawing on a Framebuffer.
+      # @note The +color:+ default adapts to the surface type: +Color::BLACK+ for
+      #   Canvas/Layer, +:black+ for Framebuffer. You may still pass an explicit
+      #   value. Framebuffer surfaces require palette symbols (+:black+, +:white+,
+      #   etc.) for both +color:+ and +background:+.
       # @note Pixels that fall outside the surface bounds are silently clipped
       #   by the underlying +set_pixel+ implementation.
       # @return [self]
       # @raise [ArgumentError] if symbology is unknown or include_text on a non-text surface
       # @raise [DependencyError] if barby is not installed
       def draw_barcode(data, x:, y:, symbology:, height: 60, module_width: 2, # rubocop:disable Metrics/ParameterLists
-                       color: Color::BLACK, background: nil, include_text: false,
+                       color: default_foreground, background: nil, include_text: false,
                        text_font: nil)
         validate_text_capable!(include_text)
         validate_text_font!(include_text, text_font)
@@ -92,6 +94,16 @@ module ChromaWave
       end
 
       private
+
+      # Returns a sensible default foreground color for the current surface.
+      #
+      # Framebuffer surfaces use palette symbols; Canvas/Layer use Color objects.
+      # Duck-types on +pixel_format+ to detect palette-based surfaces.
+      #
+      # @return [Symbol, Color] +:black+ for palette surfaces, +Color::BLACK+ otherwise
+      def default_foreground
+        respond_to?(:pixel_format) ? :black : Color::BLACK
+      end
 
       # Lazily requires rqrcode, raising DependencyError if not installed.
       #

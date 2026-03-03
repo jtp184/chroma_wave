@@ -167,6 +167,16 @@ RSpec.describe ChromaWave::Drawing::Codes do
       end
     end
 
+    context 'with Framebuffer surface' do
+      let(:fb) { ChromaWave::Framebuffer.new(100, 100, :mono) }
+
+      it 'defaults color to :black without explicit color argument' do
+        expect do
+          fb.draw_qr('hello', x: 0, y: 0, module_size: 2)
+        end.not_to raise_error
+      end
+    end
+
     context 'without required dependency' do
       before do
         hide_const('RQRCode') if defined?(RQRCode)
@@ -272,6 +282,12 @@ RSpec.describe ChromaWave::Drawing::Codes do
         expect do
           fb.draw_barcode('ABC', x: 0, y: 0, symbology: :code128,
                                  include_text: false, color: :black)
+        end.not_to raise_error
+      end
+
+      it 'defaults color to :black without explicit color argument' do
+        expect do
+          fb.draw_barcode('ABC', x: 0, y: 0, symbology: :code128, include_text: false)
         end.not_to raise_error
       end
     end
