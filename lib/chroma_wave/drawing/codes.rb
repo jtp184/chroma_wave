@@ -67,6 +67,7 @@ module ChromaWave
                        color: Color::BLACK, background: nil, include_text: true,
                        text_font: nil)
         validate_text_capable!(include_text)
+        validate_text_font!(include_text, text_font)
         barcode = Barcode.build_barcode(symbology, data)
         encoding = barcode.encoding.is_a?(Array) ? barcode.encoding.join : barcode.encoding
 
@@ -155,6 +156,18 @@ module ChromaWave
 
         raise ArgumentError,
               'include_text: true requires draw_text (available on Canvas and Layer, not Framebuffer)'
+      end
+
+      # Validates that text_font is provided when include_text is true.
+      #
+      # @param include_text [Boolean] whether text is requested
+      # @param text_font [Font, nil] the font for text rendering
+      # @raise [ArgumentError] if include_text is true but text_font is nil
+      def validate_text_font!(include_text, text_font)
+        return unless include_text
+        return unless text_font.nil?
+
+        raise ArgumentError, 'text_font: is required when include_text: true'
       end
 
       # Fills the barcode background as a single rectangle.

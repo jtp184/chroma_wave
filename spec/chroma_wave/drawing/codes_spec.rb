@@ -186,8 +186,13 @@ RSpec.describe ChromaWave::Drawing::Codes do
 
     context 'with invalid arguments' do
       it 'raises ArgumentError for unknown symbology' do
-        expect { canvas.draw_barcode('test', x: 0, y: 0, symbology: :bad) }
+        expect { canvas.draw_barcode('test', x: 0, y: 0, symbology: :bad, include_text: false) }
           .to raise_error(ArgumentError, /unknown symbology: :bad/)
+      end
+
+      it 'raises ArgumentError when include_text is true but text_font is nil' do
+        expect { canvas.draw_barcode('ABC', x: 0, y: 0, symbology: :code128) }
+          .to raise_error(ArgumentError, /text_font:.*required.*include_text/)
       end
     end
 
