@@ -367,6 +367,8 @@ module ChromaWave
       if mode == :partial
         display_partial(framebuffer)
       else
+        # Framebuffer is already rotated to native orientation;
+        # enters show's Framebuffer branch (validate + display).
         show(framebuffer)
       end
     end
