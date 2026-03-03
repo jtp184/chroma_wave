@@ -119,6 +119,11 @@ module ChromaWave
       # Wraps a partial display operation with interval checking, counter
       # tracking, and optional auto-full-refresh.
       #
+      # The display operation (+yield+) runs first, outside the device lock,
+      # since +super+ already synchronizes its own device I/O internally.
+      # Only scheduler state mutations and auto-full-refresh are performed
+      # under the lock, keeping the critical section minimal.
+      #
       # @param framebuffer [Framebuffer] the framebuffer being displayed
       # @param auto_refresh [Boolean] whether to trigger auto-full-refresh
       #   when the partial limit is reached (default: +true+). Disabled for
@@ -126,8 +131,8 @@ module ChromaWave
       # @yield the display operation to wrap (must call +super+)
       # @return [self]
       def _with_partial_tracking(framebuffer, auto_refresh: true)
+        yield
         synchronize_device do
-          yield
           refresh_scheduler.check_interval!
           refresh_scheduler.track_partial!
           _auto_full_refresh!(framebuffer) if auto_refresh && _should_auto_refresh?
@@ -137,11 +142,15 @@ module ChromaWave
 
       # Wraps a full display operation with interval checking and counter reset.
       #
+      # The display operation (+yield+) runs first, outside the device lock,
+      # since +super+ already synchronizes its own device I/O internally.
+      # Only scheduler state mutations are performed under the lock.
+      #
       # @yield the display operation to wrap (must call +super+)
       # @return [self]
       def _with_full_tracking
+        yield
         synchronize_device do
-          yield
           refresh_scheduler.check_interval!
           refresh_scheduler.track_full!
         end

@@ -74,6 +74,13 @@ RSpec.describe ChromaWave::Capabilities::ManagedRefresh do
           .to raise_error(ArgumentError, /managed_refresh must be true or a Hash/)
       end
     end
+
+    context 'when managed_refresh is set on a COLOR4 display' do
+      it 'raises ArgumentError' do
+        expect { ChromaWave::MockDevice.new(model: :epd_2in9b_v4, managed_refresh: true) }
+          .to raise_error(ArgumentError, /COLOR4/)
+      end
+    end
   end
 
   describe 'partial tracking' do
