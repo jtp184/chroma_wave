@@ -127,10 +127,12 @@ module ChromaWave
         bottom = new_y + new_h
         old_right = dirty_x + dirty_w
         old_bottom = dirty_y + dirty_h
-        @dirty_x = new_x < dirty_x ? new_x : dirty_x
-        @dirty_y = new_y < dirty_y ? new_y : dirty_y
-        @dirty_w = (right > old_right ? right : old_right) - dirty_x
-        @dirty_h = (bottom > old_bottom ? bottom : old_bottom) - dirty_y
+        min_x = new_x < dirty_x ? new_x : dirty_x
+        min_y = new_y < dirty_y ? new_y : dirty_y
+        @dirty_x = min_x
+        @dirty_y = min_y
+        @dirty_w = (right > old_right ? right : old_right) - min_x
+        @dirty_h = (bottom > old_bottom ? bottom : old_bottom) - min_y
       else
         @dirty_x = new_x
         @dirty_y = new_y
