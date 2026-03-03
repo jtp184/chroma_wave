@@ -14,20 +14,34 @@ module ChromaWave
   #     # ...
   #   end
   module DirtyTracking
+    # @!attribute [r] dirty_x
+    #   Left edge of the dirty bounding box, or +nil+ if clean.
+    #   @return [Integer, nil]
+    # @!attribute [r] dirty_y
+    #   Top edge of the dirty bounding box, or +nil+ if clean.
+    #   @return [Integer, nil]
+    # @!attribute [r] dirty_w
+    #   Width of the dirty bounding box, or +nil+ if clean.
+    #   @return [Integer, nil]
+    # @!attribute [r] dirty_h
+    #   Height of the dirty bounding box, or +nil+ if clean.
+    #   @return [Integer, nil]
+    attr_reader :dirty_x, :dirty_y, :dirty_w, :dirty_h
+
     # Returns true if any region has been marked dirty since the last {#clean!}.
     #
     # @return [Boolean]
     def dirty?
-      !@dirty_x.nil?
+      !dirty_x.nil?
     end
 
     # Returns the bounding box of all modifications since the last {#clean!}.
     #
     # @return [Rect, nil] the dirty bounding box or nil if clean
     def dirty_region
-      return nil unless @dirty_x
+      return nil unless dirty_x
 
-      Rect.new(x: @dirty_x, y: @dirty_y, width: @dirty_w, height: @dirty_h)
+      Rect.new(x: dirty_x, y: dirty_y, width: dirty_w, height: dirty_h)
     end
 
     # Resets dirty tracking, marking the surface as clean.
@@ -63,19 +77,19 @@ module ChromaWave
 
     private
 
-    # Copies dirty tracking ivars from +source+ into this instance.
+    # Copies dirty tracking state from +source+ into this instance.
     #
-    # Reads instance variables directly to avoid allocating an intermediate
-    # Rect. Intended for use in +initialize_copy+ to deep-copy dirty
-    # tracking state when duplicating or cloning the includer.
+    # Reads public accessors to avoid allocating an intermediate Rect.
+    # Intended for use in +initialize_copy+ to deep-copy dirty tracking
+    # state when duplicating or cloning the includer.
     #
     # @param source [DirtyTracking] the source to copy dirty state from
     # @return [void]
     def copy_dirty_state(source)
-      @dirty_x = source.instance_variable_get(:@dirty_x)
-      @dirty_y = source.instance_variable_get(:@dirty_y)
-      @dirty_w = source.instance_variable_get(:@dirty_w)
-      @dirty_h = source.instance_variable_get(:@dirty_h)
+      @dirty_x = source.dirty_x
+      @dirty_y = source.dirty_y
+      @dirty_w = source.dirty_w
+      @dirty_h = source.dirty_h
     end
 
     # Clips a rectangle to surface bounds and marks it dirty.
@@ -108,15 +122,15 @@ module ChromaWave
     # @return [void]
     # rubocop:disable Style/MinMaxComparison -- ternaries avoid Array allocs on hot path
     def expand_dirty(new_x, new_y, new_w, new_h)
-      if @dirty_x
+      if dirty_x
         right = new_x + new_w
         bottom = new_y + new_h
-        old_right = @dirty_x + @dirty_w
-        old_bottom = @dirty_y + @dirty_h
-        @dirty_x = new_x < @dirty_x ? new_x : @dirty_x
-        @dirty_y = new_y < @dirty_y ? new_y : @dirty_y
-        @dirty_w = (right > old_right ? right : old_right) - @dirty_x
-        @dirty_h = (bottom > old_bottom ? bottom : old_bottom) - @dirty_y
+        old_right = dirty_x + dirty_w
+        old_bottom = dirty_y + dirty_h
+        @dirty_x = new_x < dirty_x ? new_x : dirty_x
+        @dirty_y = new_y < dirty_y ? new_y : dirty_y
+        @dirty_w = (right > old_right ? right : old_right) - dirty_x
+        @dirty_h = (bottom > old_bottom ? bottom : old_bottom) - dirty_y
       else
         @dirty_x = new_x
         @dirty_y = new_y

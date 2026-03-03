@@ -124,9 +124,10 @@ module ChromaWave
     # @raise [ArgumentError] if +mode+ is not recognized or display lacks the requested capability
     def show_dirty(canvas, mode: nil)
       raise TypeError, "expected Canvas, got #{canvas.class}" unless canvas.is_a?(Canvas)
-      return self unless canvas.dirty?
 
       validate_display_mode!(mode)
+      return self unless canvas.dirty?
+
       validate_canvas_dimensions!(canvas)
       region = canvas.dirty_region
 

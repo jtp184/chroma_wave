@@ -419,9 +419,15 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
 
         after { display.close }
 
-        it 'raises ArgumentError for unknown mode even when canvas is clean' do
+        it 'raises ArgumentError for unknown mode' do
           canvas = ChromaWave::Canvas.new(width: display.width, height: display.height)
           canvas.set_pixel(10, 10, black)
+          expect { display.show_dirty(canvas, mode: :bogus) }
+            .to raise_error(ArgumentError, /unknown mode/)
+        end
+
+        it 'raises ArgumentError for unknown mode even when canvas is clean' do
+          canvas = ChromaWave::Canvas.new(width: display.width, height: display.height)
           expect { display.show_dirty(canvas, mode: :bogus) }
             .to raise_error(ArgumentError, /unknown mode/)
         end
