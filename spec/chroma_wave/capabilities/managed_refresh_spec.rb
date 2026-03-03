@@ -62,6 +62,18 @@ RSpec.describe ChromaWave::Capabilities::ManagedRefresh do
         expect(display.refresh_scheduler.auto_full_refresh?).to be false
       end
     end
+
+    context 'when managed_refresh: is an invalid truthy value' do
+      it 'raises ArgumentError for a Symbol' do
+        expect { ChromaWave::MockDevice.new(model: model, managed_refresh: :defaults) }
+          .to raise_error(ArgumentError, /managed_refresh must be true or a Hash/)
+      end
+
+      it 'raises ArgumentError for a String' do
+        expect { ChromaWave::MockDevice.new(model: model, managed_refresh: 'yes') }
+          .to raise_error(ArgumentError, /managed_refresh must be true or a Hash/)
+      end
+    end
   end
 
   describe 'partial tracking' do

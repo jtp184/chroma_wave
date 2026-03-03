@@ -274,6 +274,11 @@ module ChromaWave
     #   scheduler options (see {RefreshScheduler#initialize})
     # @return [void]
     def setup_managed_refresh!(options)
+      unless options == true || options.is_a?(Hash)
+        raise ArgumentError,
+              "managed_refresh must be true or a Hash, got #{options.inspect} (#{options.class})"
+      end
+
       opts = options == true ? {} : options
       @refresh_scheduler = RefreshScheduler.new(**opts)
       extend Capabilities::ManagedRefresh

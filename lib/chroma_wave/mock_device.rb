@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'did_you_mean'
+require 'monitor'
 
 module ChromaWave
   # Test-friendly Display replacement that logs operations without touching hardware.
