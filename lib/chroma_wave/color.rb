@@ -98,7 +98,7 @@ module ChromaWave
     #
     # @return [Array(Float, Float, Float)] [L*, a*, b*]
     def to_lab
-      Color.lab_cache.fetch(self) { Color.compute_lab(r, g, b) }
+      Color.lab_cache.fetch(self) { Color.compute_lab(r, g, b).freeze }
     end
 
     private
@@ -205,6 +205,8 @@ module ChromaWave
       xyz_to_lab(tri_x, tri_y, tri_z)
     end
 
+    private
+
     # Converts sRGB (0..255) to CIE XYZ using IEC 61966-2-1 matrix.
     #
     # @param r [Integer] red channel (0..255)
@@ -240,8 +242,6 @@ module ChromaWave
 
       [l, a, b]
     end
-
-    private
 
     # sRGB inverse companding (gamma decode).
     #

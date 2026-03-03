@@ -30,9 +30,10 @@ module ChromaWave
         value = store.delete(key)
         store[key] = value
       else
-        store[key] = yield
+        value = yield
+        store[key] = value
         store.shift if store.size > capacity
-        store[key]
+        value
       end
     end
 
