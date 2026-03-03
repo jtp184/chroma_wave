@@ -75,6 +75,8 @@ module ChromaWave
       raise ArgumentError, "width must be <= #{MAX_DIMENSION}" if w > MAX_DIMENSION
       raise ArgumentError, "height must be <= #{MAX_DIMENSION}" if h > MAX_DIMENSION
     end
+
+    module_function :validate_dimensions!
   end
 end
 
