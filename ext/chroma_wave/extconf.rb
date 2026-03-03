@@ -158,6 +158,13 @@ if selected_backend
   $srcs += BACKENDS[selected_backend][:vendor_srcs]
 end
 
+# ── Vendor debug redirect (real backends only) ──────────────────────
+#
+# Force-include a header that redirects the Waveshare Debug() macro
+# to rb_warn(), routing vendor debug output through Ruby's warning
+# system instead of printf/stderr.
+append_cflags(%(-include "#{File.join($srcdir, 'vendor_debug.h')}")) if selected_backend
+
 # ── FreeType 2 detection (optional — text rendering) ────────────────
 
 have_freetype = pkg_config('freetype2') ||
