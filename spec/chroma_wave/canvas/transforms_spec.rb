@@ -370,6 +370,21 @@ RSpec.describe ChromaWave::Canvas::Transforms do
         expect(result.width).to eq(4)
         expect(result.height).to eq(4)
       end
+
+      it 'raises for non-Numeric factor' do
+        c = canvas(2, 2)
+        expect { c.scale('big') }.to raise_error(ArgumentError, /factor/)
+      end
+
+      it 'raises for non-Numeric width: keyword' do
+        c = canvas(2, 2)
+        expect { c.scale(width: '100') }.to raise_error(ArgumentError, /width/)
+      end
+
+      it 'raises for non-Numeric height: keyword' do
+        c = canvas(2, 2)
+        expect { c.scale(height: '100') }.to raise_error(ArgumentError, /height/)
+      end
     end
   end
 
@@ -588,6 +603,30 @@ RSpec.describe ChromaWave::Canvas::Transforms do
         c = canvas(5, 5)
         expect { c.crop(x: 0, y: 10, width: 3, height: 3) }
           .to raise_error(ArgumentError, /outside/)
+      end
+
+      it 'raises for non-Numeric x' do
+        c = canvas(5, 5)
+        expect { c.crop(x: 'a', y: 0, width: 3, height: 3) }
+          .to raise_error(ArgumentError, /x/)
+      end
+
+      it 'raises for non-Numeric y' do
+        c = canvas(5, 5)
+        expect { c.crop(x: 0, y: nil, width: 3, height: 3) }
+          .to raise_error(ArgumentError, /y/)
+      end
+
+      it 'raises for non-Numeric width' do
+        c = canvas(5, 5)
+        expect { c.crop(x: 0, y: 0, width: '5', height: 3) }
+          .to raise_error(ArgumentError, /width/)
+      end
+
+      it 'raises for non-Numeric height' do
+        c = canvas(5, 5)
+        expect { c.crop(x: 0, y: 0, width: 3, height: '3') }
+          .to raise_error(ArgumentError, /height/)
       end
     end
   end

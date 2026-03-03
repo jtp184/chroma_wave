@@ -63,6 +63,8 @@ module ChromaWave
       # @raise [ArgumentError] if +width+ or +height+ is not a positive Numeric,
       #   or if the clipped region is entirely outside the canvas
       def crop(x:, y:, width:, height:)
+        raise ArgumentError, 'crop x must be Numeric' unless x.is_a?(Numeric)
+        raise ArgumentError, 'crop y must be Numeric' unless y.is_a?(Numeric)
         raise ArgumentError, 'crop width must be a positive Numeric' unless width.is_a?(Numeric) && width.positive?
         raise ArgumentError, 'crop height must be a positive Numeric' unless height.is_a?(Numeric) && height.positive?
 
@@ -74,8 +76,10 @@ module ChromaWave
       # Builds a new Canvas directly from a pre-filled RGBA buffer.
       #
       # Bypasses +initialize+'s background-fill step so transforms can
-      # construct the output without writing pixels twice. The buffer is
-      # always duplicated to guarantee isolation from the caller.
+      # construct the output without writing pixels twice.
+      #
+      # *Ownership:* this method takes ownership of +buf+. The caller
+      # must not retain or mutate the string after passing it in.
       #
       # @param w   [Integer] canvas width
       # @param h   [Integer] canvas height
@@ -91,7 +95,7 @@ module ChromaWave
         self.class.allocate.tap do |canvas|
           canvas.instance_variable_set(:@width, w)
           canvas.instance_variable_set(:@height, h)
-          canvas.instance_variable_set(:@buffer, buf.dup.force_encoding(Encoding::BINARY))
+          canvas.instance_variable_set(:@buffer, buf.force_encoding(Encoding::BINARY))
         end
       end
 
@@ -105,6 +109,7 @@ module ChromaWave
 
         height.times do |row_y|
           row_start = row_y * row_bytes
+          # Each RGBA pixel is 4 bytes = one uint32 (V format)
           out << src.byteslice(row_start, row_bytes).unpack('V*').reverse.pack('V*')
         end
 
