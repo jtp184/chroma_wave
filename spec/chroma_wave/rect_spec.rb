@@ -79,6 +79,12 @@ RSpec.describe ChromaWave::Rect do
         result = a.union(5, 5, 10, 10)
         expect(result).to eq(described_class.new(x: 0, y: 0, width: 15, height: 15))
       end
+
+      it 'accepts zero-valued y without raising' do
+        a = described_class.new(x: 0, y: 0, width: 10, height: 10)
+        result = a.union(5, 0, 10, 10)
+        expect(result).to eq(described_class.new(x: 0, y: 0, width: 15, height: 10))
+      end
     end
 
     context 'with negative coordinates' do

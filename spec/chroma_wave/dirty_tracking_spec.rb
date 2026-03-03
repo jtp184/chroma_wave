@@ -178,6 +178,11 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
           .to raise_error(ArgumentError, /mark_dirty requires/)
       end
 
+      it 'accepts zero-valued x and y without raising' do
+        canvas.mark_dirty(x: 0, y: 0, width: 10, height: 10)
+        expect(canvas.dirty_region).to eq(ChromaWave::Rect.new(x: 0, y: 0, width: 10, height: 10))
+      end
+
       it 'clips to surface bounds when region extends beyond canvas' do
         canvas.mark_dirty(x: 90, y: 40, width: 20, height: 20)
         region = canvas.dirty_region
@@ -432,6 +437,16 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
         canvas = ChromaWave::Canvas.new(width: 10, height: 10)
         canvas.set_pixel(1, 1, black)
         expect { display.show_dirty(canvas) }.to raise_error(ArgumentError, /canvas dimensions.*do not match/)
+      end
+    end
+
+    describe 'type checking' do
+      let(:display) { ChromaWave::MockDevice.new(model: non_regional_model) }
+
+      after { display.close }
+
+      it 'raises TypeError for non-Canvas input' do
+        expect { display.show_dirty('not a canvas') }.to raise_error(TypeError, /expected Canvas/)
       end
     end
   end

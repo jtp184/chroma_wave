@@ -52,7 +52,7 @@ module ChromaWave
       if rect
         mark_clipped_dirty(rect.x, rect.y, rect.width, rect.height)
       else
-        unless x && y && width && height
+        if [x, y, width, height].any?(&:nil?)
           raise ArgumentError, 'mark_dirty requires a Rect or x:, y:, width:, height: keywords'
         end
 
@@ -63,23 +63,19 @@ module ChromaWave
 
     private
 
-    # Copies dirty state from +source+ into this instance.
+    # Copies dirty tracking ivars from +source+ into this instance.
     #
-    # Intended for use in +initialize_copy+ to deep-copy dirty tracking
-    # state when duplicating or cloning the includer.
+    # Reads instance variables directly to avoid allocating an intermediate
+    # Rect. Intended for use in +initialize_copy+ to deep-copy dirty
+    # tracking state when duplicating or cloning the includer.
     #
     # @param source [DirtyTracking] the source to copy dirty state from
     # @return [void]
     def copy_dirty_state(source)
-      region = source.dirty_region
-      if region
-        @dirty_x = region.x
-        @dirty_y = region.y
-        @dirty_w = region.width
-        @dirty_h = region.height
-      else
-        @dirty_x = @dirty_y = @dirty_w = @dirty_h = nil
-      end
+      @dirty_x = source.instance_variable_get(:@dirty_x)
+      @dirty_y = source.instance_variable_get(:@dirty_y)
+      @dirty_w = source.instance_variable_get(:@dirty_w)
+      @dirty_h = source.instance_variable_get(:@dirty_h)
     end
 
     # Clips a rectangle to surface bounds and marks it dirty.

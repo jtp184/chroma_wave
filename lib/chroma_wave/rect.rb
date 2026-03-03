@@ -37,7 +37,7 @@ module ChromaWave
       if other_or_x.is_a?(Rect)
         other_x, other_y, other_w, other_h = other_or_x.deconstruct
       else
-        unless other_y && other_w && other_h
+        if [other_y, other_w, other_h].any?(&:nil?)
           raise ArgumentError,
                 'union requires a Rect or four positional arguments (x, y, width, height)'
         end
