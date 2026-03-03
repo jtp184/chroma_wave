@@ -68,7 +68,7 @@ module ChromaWave
         raise ArgumentError, 'crop width must be a positive Numeric' unless width.is_a?(Numeric) && width.positive?
         raise ArgumentError, 'crop height must be a positive Numeric' unless height.is_a?(Numeric) && height.positive?
 
-        crop_clipped(x.round, y.round, width.round, height.round)
+        crop_clipped(x.round, y.round, [width.round, 1].max, [height.round, 1].max)
       end
 
       private
@@ -105,7 +105,7 @@ module ChromaWave
       def flip_horizontal
         src = raw_buffer
         row_bytes = width * BYTES_PER_PIXEL
-        out = String.new(capacity: src.bytesize)
+        out = String.new(capacity: src.bytesize, encoding: Encoding::BINARY)
 
         height.times do |row_y|
           row_start = row_y * row_bytes
@@ -122,7 +122,7 @@ module ChromaWave
       def flip_vertical
         src = raw_buffer
         row_bytes = width * BYTES_PER_PIXEL
-        out = String.new(capacity: src.bytesize)
+        out = String.new(capacity: src.bytesize, encoding: Encoding::BINARY)
 
         (height - 1).downto(0) do |row_y|
           out << src.byteslice(row_y * row_bytes, row_bytes)
@@ -191,7 +191,7 @@ module ChromaWave
       def coerce_scale_dimension!(name, value)
         raise ArgumentError, "#{name} must be a positive Numeric" unless value.is_a?(Numeric) && value.positive?
 
-        value.round
+        [value.round, 1].max
       end
 
       # Nearest-neighbor resampling into a +new_w+ x +new_h+ canvas.
@@ -205,14 +205,14 @@ module ChromaWave
       def scale_nearest(new_w, new_h)
         src = raw_buffer
         src_w = width
-        out = String.new(capacity: new_w * new_h * BYTES_PER_PIXEL)
+        out = String.new(capacity: new_w * new_h * BYTES_PER_PIXEL, encoding: Encoding::BINARY)
 
         # Pre-compute source x byte-offset for each destination column
         x_map = Array.new(new_w) { |dx| (dx * src_w / new_w) * BYTES_PER_PIXEL }
 
         new_h.times do |dy|
           src_row = (dy * height / new_h) * src_w * BYTES_PER_PIXEL
-          row = String.new(capacity: new_w * BYTES_PER_PIXEL)
+          row = String.new(capacity: new_w * BYTES_PER_PIXEL, encoding: Encoding::BINARY)
           x_map.each { |src_x| row << src.byteslice(src_row + src_x, BYTES_PER_PIXEL) }
           out << row
         end
@@ -253,7 +253,7 @@ module ChromaWave
         src = raw_buffer
         src_row_bytes = width * BYTES_PER_PIXEL
         copy_len = out_w * BYTES_PER_PIXEL
-        out = String.new(capacity: out_w * out_h * BYTES_PER_PIXEL)
+        out = String.new(capacity: out_w * out_h * BYTES_PER_PIXEL, encoding: Encoding::BINARY)
 
         (y0...(y0 + out_h)).each do |row_y|
           offset = (row_y * src_row_bytes) + (x0 * BYTES_PER_PIXEL)
