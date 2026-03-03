@@ -429,25 +429,4 @@ RSpec.describe 'Dirty region tracking' do # rubocop:disable RSpec/DescribeClass
       end
     end
   end
-
-  describe 'Renderer#render_region' do
-    let(:renderer) { ChromaWave::Renderer.new(pixel_format: :mono, dither: :threshold) }
-
-    it 'returns a Framebuffer' do
-      canvas = ChromaWave::Canvas.new(width: 20, height: 20, background: black)
-      region = { x: 0, y: 0, width: 10, height: 10 }
-      fb = renderer.render_region(canvas, region)
-      expect(fb).to be_a(ChromaWave::Framebuffer)
-      expect(fb.width).to eq(20)
-      expect(fb.height).to eq(20)
-    end
-
-    it 'accepts an into: parameter' do
-      canvas = ChromaWave::Canvas.new(width: 20, height: 20, background: black)
-      existing = ChromaWave::Framebuffer.new(20, 20, ChromaWave::PixelFormat::MONO)
-      region = { x: 0, y: 0, width: 10, height: 10 }
-      result = renderer.render_region(canvas, region, into: existing)
-      expect(result).to equal(existing)
-    end
-  end
 end

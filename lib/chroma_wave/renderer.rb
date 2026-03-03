@@ -43,26 +43,6 @@ module ChromaWave
       framebuffer
     end
 
-    # Renders a Canvas into a Framebuffer, accepting a dirty region hint.
-    #
-    # Performs a full render (not region-constrained) because Floyd-Steinberg
-    # error diffusion propagates across pixel boundaries — constraining to a
-    # sub-region would produce visible seam artifacts.
-    #
-    # The +region+ parameter is accepted for API symmetry with {Display#show_dirty}
-    # but does not affect rendering. The performance win from dirty tracking is
-    # in the display refresh (hardware), not in Ruby rendering.
-    #
-    # @param canvas [Canvas] source RGBA canvas
-    # @param region [Hash] dirty region hint (unused — full render always)
-    # @param into [Framebuffer, nil] optional pre-allocated framebuffer to reuse
-    # @return [Framebuffer] the rendered framebuffer
-    # @raise [TypeError] if canvas is not a Canvas
-    # @raise [ArgumentError] if +into+ dimensions do not match the canvas
-    def render_region(canvas, region, into: nil) # rubocop:disable Lint/UnusedMethodArgument
-      render(canvas, into: into)
-    end
-
     # Renders a Canvas into two MONO Framebuffers for dual-buffer COLOR4 displays.
     #
     # Tri-color E-Paper displays use separate black and red planes.
