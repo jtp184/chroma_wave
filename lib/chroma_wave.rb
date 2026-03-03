@@ -16,6 +16,7 @@ require_relative 'chroma_wave/palette'      # Palette before PixelFormat (consta
 require_relative 'chroma_wave/pixel_format' # PixelFormat before Framebuffer wrapper
 require_relative 'chroma_wave/pen'          # Pen before Surface (used by Drawing::Primitives)
 require_relative 'chroma_wave/rect'         # Rect value type (used by dirty region tracking)
+require_relative 'chroma_wave/dirty_tracking' # DirtyTracking mixin (included by Canvas)
 require_relative 'chroma_wave/surface'      # Surface before Framebuffer (included by FB)
 require_relative 'chroma_wave/framebuffer'  # Reopens C class, prepends bridge, includes Surface
 require_relative 'chroma_wave/canvas'       # RGBA pixel buffer, includes Surface

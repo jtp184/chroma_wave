@@ -16,6 +16,7 @@ module ChromaWave
   #   canvas.clear(Color::BLACK)
   class Canvas
     include Surface
+    include DirtyTracking
 
     # Bytes per pixel in the RGBA buffer.
     BYTES_PER_PIXEL = 4
@@ -33,53 +34,6 @@ module ChromaWave
       @width  = width
       @height = height
       @buffer = (background.to_rgba_bytes * (width * height)).b
-    end
-
-    # Returns true if the canvas has been modified since the last {#clean!}.
-    #
-    # @return [Boolean]
-    def dirty?
-      !@dirty_x.nil?
-    end
-
-    # Returns the bounding box of all modifications since the last {#clean!}.
-    #
-    # @return [Rect, nil] the dirty bounding box or nil if clean
-    def dirty_region
-      return nil unless @dirty_x
-
-      Rect.new(x: @dirty_x, y: @dirty_y, width: @dirty_w, height: @dirty_h)
-    end
-
-    # Resets dirty tracking, marking the canvas as clean.
-    #
-    # @return [self]
-    def clean!
-      @dirty_x = @dirty_y = @dirty_w = @dirty_h = nil
-      self
-    end
-
-    # Explicitly marks a rectangular region as dirty.
-    #
-    # Accepts either a {Rect} or keyword arguments.
-    #
-    # @param rect [Rect, nil] a Rect to mark dirty
-    # @param x [Integer, nil] left edge
-    # @param y [Integer, nil] top edge
-    # @param width [Integer, nil] width
-    # @param height [Integer, nil] height
-    # @return [self]
-    def mark_dirty(rect = nil, x: nil, y: nil, width: nil, height: nil)
-      if rect
-        expand_dirty(rect.x, rect.y, rect.width, rect.height)
-      else
-        unless x && y && width && height
-          raise ArgumentError, 'mark_dirty requires a Rect or x:, y:, width:, height: keywords'
-        end
-
-        expand_dirty(x, y, width, height)
-      end
-      self
     end
 
     # Sets the pixel at (x, y) to the given color.
@@ -306,64 +260,8 @@ module ChromaWave
     def initialize_copy(source)
       super
       @buffer = source.raw_buffer.dup
-      region = source.dirty_region
-      if region
-        @dirty_x = region.x
-        @dirty_y = region.y
-        @dirty_w = region.width
-        @dirty_h = region.height
-      else
-        @dirty_x = @dirty_y = @dirty_w = @dirty_h = nil
-      end
+      copy_dirty_state(source)
     end
-
-    # Clips a rectangle to canvas bounds and marks it dirty.
-    #
-    # Used by +blit+ and +load_rgba_bytes+ where the source rect may
-    # extend beyond canvas boundaries.
-    #
-    # @param src_x [Integer] left edge of the source rect
-    # @param src_y [Integer] top edge of the source rect
-    # @param src_w [Integer] width of the source rect
-    # @param src_h [Integer] height of the source rect
-    # @return [void]
-    def mark_clipped_dirty(src_x, src_y, src_w, src_h)
-      cx = [src_x, 0].max
-      cy = [src_y, 0].max
-      cw = [src_x + src_w, width].min - cx
-      ch = [src_y + src_h, height].min - cy
-      expand_dirty(cx, cy, cw, ch) if cw.positive? && ch.positive?
-    end
-
-    # Expands the dirty bounding box to include the given rectangle.
-    #
-    # Uses ternary operators instead of +[a, b].min/max+ to avoid
-    # Array allocations on the hot path (called per-pixel in +set_pixel+).
-    #
-    # @param new_x [Integer] left edge of the new dirty area
-    # @param new_y [Integer] top edge of the new dirty area
-    # @param new_w [Integer] width of the new dirty area
-    # @param new_h [Integer] height of the new dirty area
-    # @return [void]
-    # rubocop:disable Style/MinMaxComparison -- ternaries avoid Array allocs on hot path
-    def expand_dirty(new_x, new_y, new_w, new_h)
-      if @dirty_x
-        right = new_x + new_w
-        bottom = new_y + new_h
-        old_right = @dirty_x + @dirty_w
-        old_bottom = @dirty_y + @dirty_h
-        @dirty_x = new_x < @dirty_x ? new_x : @dirty_x
-        @dirty_y = new_y < @dirty_y ? new_y : @dirty_y
-        @dirty_w = (right > old_right ? right : old_right) - @dirty_x
-        @dirty_h = (bottom > old_bottom ? bottom : old_bottom) - @dirty_y
-      else
-        @dirty_x = new_x
-        @dirty_y = new_y
-        @dirty_w = new_w
-        @dirty_h = new_h
-      end
-    end
-    # rubocop:enable Style/MinMaxComparison
 
     # Byte offset for pixel (x, y) in the RGBA buffer.
     def pixel_offset(x, y)

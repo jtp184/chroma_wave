@@ -100,7 +100,7 @@ Metrics/ModuleLength:
 # and dirty region tracking. Display adds show_dirty and mode helpers.
 # MockDevice embeds a ~120-line DeviceStub inner class that inflates the count.
 Metrics/ClassLength:
-  Max: 220
+  Max: 190
   Exclude:
     - 'lib/chroma_wave/mock_device.rb'
 
