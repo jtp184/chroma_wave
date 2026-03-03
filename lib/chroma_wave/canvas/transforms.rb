@@ -13,39 +13,6 @@ module ChromaWave
     #
     # Included into {Canvas} at the bottom of this file.
     module Transforms
-      # Hooks the +ClassMethods+ extension when included.
-      def self.included(base)
-        base.extend(ClassMethods)
-      end
-
-      # Class-level factory methods added to {Canvas}.
-      module ClassMethods
-        private
-
-        # Builds a Canvas directly from a pre-filled RGBA buffer.
-        #
-        # Bypasses +initialize+'s background-fill step so transforms can
-        # construct the output without writing pixels twice.
-        #
-        # @param width  [Integer] canvas width in pixels
-        # @param height [Integer] canvas height in pixels
-        # @param buf    [String]  raw RGBA bytes (+width * height * 4+ bytes)
-        # @return [Canvas]
-        # @raise [ArgumentError] if dimensions or buffer size are invalid
-        def from_buffer(width, height, buf)
-          Surface.validate_dimensions!(width, height)
-
-          expected = width * height * BYTES_PER_PIXEL
-          raise ArgumentError, "buffer size #{buf.bytesize} != #{expected}" unless buf.bytesize == expected
-
-          allocate.tap do |canvas|
-            canvas.instance_variable_set(:@width, width)
-            canvas.instance_variable_set(:@height, height)
-            canvas.instance_variable_set(:@buffer, buf.encoding == Encoding::BINARY ? buf : buf.b)
-          end
-        end
-      end
-
       # Mirrors the canvas horizontally or vertically.
       #
       # @param direction [:horizontal, :vertical] the flip axis
@@ -88,21 +55,45 @@ module ChromaWave
       # The returned canvas may therefore be smaller than +width+ x +height+
       # if the rectangle extends past the edges.
       #
-      # @param x      [Integer] left edge of the crop rectangle
-      # @param y      [Integer] top edge of the crop rectangle
-      # @param width  [Integer] requested width  (must be positive before clipping)
-      # @param height [Integer] requested height (must be positive before clipping)
+      # @param x      [Numeric] left edge of the crop rectangle (rounded to Integer)
+      # @param y      [Numeric] top edge of the crop rectangle (rounded to Integer)
+      # @param width  [Numeric] requested width  (rounded to Integer, must be positive)
+      # @param height [Numeric] requested height (rounded to Integer, must be positive)
       # @return [Canvas] a new canvas containing the cropped pixels
-      # @raise [ArgumentError] if +width+ or +height+ is not positive,
+      # @raise [ArgumentError] if +width+ or +height+ is not a positive Numeric,
       #   or if the clipped region is entirely outside the canvas
       def crop(x:, y:, width:, height:)
-        raise ArgumentError, 'crop width must be a positive Integer' unless width.is_a?(Integer) && width.positive?
-        raise ArgumentError, 'crop height must be a positive Integer' unless height.is_a?(Integer) && height.positive?
+        raise ArgumentError, 'crop width must be a positive Numeric' unless width.is_a?(Numeric) && width.positive?
+        raise ArgumentError, 'crop height must be a positive Numeric' unless height.is_a?(Numeric) && height.positive?
 
-        crop_clipped(x.round, y.round, width, height)
+        crop_clipped(x.round, y.round, width.round, height.round)
       end
 
       private
+
+      # Builds a new Canvas directly from a pre-filled RGBA buffer.
+      #
+      # Bypasses +initialize+'s background-fill step so transforms can
+      # construct the output without writing pixels twice. The buffer is
+      # always duplicated to guarantee isolation from the caller.
+      #
+      # @param w   [Integer] canvas width
+      # @param h   [Integer] canvas height
+      # @param buf [String]  raw RGBA bytes (+w * h * 4+ bytes)
+      # @return [Canvas]
+      # @raise [ArgumentError] if dimensions or buffer size are invalid
+      def build_canvas(w, h, buf)
+        Surface.validate_dimensions!(w, h)
+
+        expected = w * h * BYTES_PER_PIXEL
+        raise ArgumentError, "buffer size #{buf.bytesize} != #{expected}" unless buf.bytesize == expected
+
+        self.class.allocate.tap do |canvas|
+          canvas.instance_variable_set(:@width, w)
+          canvas.instance_variable_set(:@height, h)
+          canvas.instance_variable_set(:@buffer, buf.dup.force_encoding(Encoding::BINARY))
+        end
+      end
 
       # Mirrors left-to-right by reversing pixels within each row.
       #
@@ -117,7 +108,7 @@ module ChromaWave
           out << src.byteslice(row_start, row_bytes).unpack('V*').reverse.pack('V*')
         end
 
-        Canvas.send(:from_buffer, width, height, out)
+        build_canvas(width, height, out)
       end
 
       # Mirrors top-to-bottom by copying rows in reverse order.
@@ -132,7 +123,7 @@ module ChromaWave
           out << src.byteslice(row_y * row_bytes, row_bytes)
         end
 
-        Canvas.send(:from_buffer, width, height, out)
+        build_canvas(width, height, out)
       end
 
       # Resolves uniform-factor scale arguments into +[new_w, new_h]+.
@@ -221,7 +212,7 @@ module ChromaWave
           out << row
         end
 
-        Canvas.send(:from_buffer, new_w, new_h, out)
+        build_canvas(new_w, new_h, out)
       end
 
       # Clips the crop rectangle to canvas bounds and copies rows.
@@ -264,7 +255,7 @@ module ChromaWave
           out << src.byteslice(offset, copy_len)
         end
 
-        Canvas.send(:from_buffer, out_w, out_h, out)
+        build_canvas(out_w, out_h, out)
       end
     end
   end

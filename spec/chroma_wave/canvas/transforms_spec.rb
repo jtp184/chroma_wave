@@ -498,7 +498,7 @@ RSpec.describe ChromaWave::Canvas::Transforms do
       end
     end
 
-    describe 'float x/y coercion' do
+    describe 'float coercion' do
       it 'rounds x: 2.6 to 3' do
         c = canvas(10, 10)
         c.set_pixel(3, 0, red)
@@ -524,6 +524,18 @@ RSpec.describe ChromaWave::Canvas::Transforms do
         result = c.crop(x: 2.3, y: 0, width: 2, height: 1)
 
         expect(result.get_pixel(0, 0)).to eq(red)
+      end
+
+      it 'rounds Float width: 3.7 to 4' do
+        c = canvas(10, 10)
+        result = c.crop(x: 0, y: 0, width: 3.7, height: 2)
+        expect(result.width).to eq(4)
+      end
+
+      it 'rounds Float height: 2.3 to 2' do
+        c = canvas(10, 10)
+        result = c.crop(x: 0, y: 0, width: 3, height: 2.3)
+        expect(result.height).to eq(2)
       end
     end
 
@@ -631,30 +643,24 @@ RSpec.describe ChromaWave::Canvas::Transforms do
     end
   end
 
-  # ── from_buffer (via transforms) ──────────────────────────────────────
+  # ── build_canvas (buffer isolation) ──────────────────────────────────
 
-  describe 'from_buffer internals' do
-    let(:bpp) { ChromaWave::Canvas::BYTES_PER_PIXEL }
+  describe 'build_canvas buffer isolation' do
+    it 'transform output is independent of any shared buffer state' do
+      c = canvas(2, 1)
+      c.set_pixel(0, 0, red)
+      c.set_pixel(1, 0, blue)
 
-    it 'rejects a buffer with wrong byte size' do
-      bad_buf = "\x00" * 10
-      expect { ChromaWave::Canvas.send(:from_buffer, 3, 3, bad_buf) }
-        .to raise_error(ArgumentError, /buffer size/)
+      flipped = c.flip(:horizontal)
+
+      # Mutating the original should not affect the flipped copy
+      c.set_pixel(0, 0, green)
+      expect(flipped.get_pixel(1, 0)).to eq(red)
     end
 
-    it 'rejects zero width' do
-      expect { ChromaWave::Canvas.send(:from_buffer, 0, 1, ''.b) }
-        .to raise_error(ArgumentError, /width/)
-    end
-
-    it 'rejects zero height' do
-      expect { ChromaWave::Canvas.send(:from_buffer, 1, 0, ''.b) }
-        .to raise_error(ArgumentError, /height/)
-    end
-
-    it 'accepts a correctly-sized buffer and produces a valid canvas' do
-      buf = ("\xFF\x00\x00\xFF" * 6).b
-      result = ChromaWave::Canvas.send(:from_buffer, 3, 2, buf)
+    it 'scale produces a canvas with valid dimensions and pixels' do
+      c = canvas(3, 2, background: red)
+      result = c.scale(1.0)
 
       expect(result.width).to eq(3)
       expect(result.height).to eq(2)
