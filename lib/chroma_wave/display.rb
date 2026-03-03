@@ -200,6 +200,20 @@ module ChromaWave
 
     attr_reader :device, :current_mode
 
+    # Forces a full-mode initialization and display cycle on the device.
+    #
+    # Used by {Capabilities::ManagedRefresh} for automatic maintenance refreshes.
+    # Must be called while holding the device lock.
+    #
+    # @param framebuffer [Framebuffer] the content to display
+    # @return [void]
+    def force_full_refresh!(framebuffer)
+      device.send(:_epd_init, Native::MODE_FULL)
+      device.send(:_epd_display, framebuffer)
+      @current_mode = :full
+      @initialized = true
+    end
+
     # Lazily initializes the EPD on first use with full refresh mode.
     #
     # Thread-safe: always synchronizes the @initialized check to prevent

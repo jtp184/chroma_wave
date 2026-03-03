@@ -29,6 +29,10 @@ module ChromaWave
     #
     # @param partial_limit [Integer] number of partial refreshes before a full refresh
     #   is recommended (default: {DEFAULT_PARTIAL_LIMIT})
+    # @note A +partial_limit+ of 0 causes {#needs_full?} to return +true+
+    #   immediately. Combined with +auto_full_refresh: true+, this triggers a
+    #   maintenance full refresh on every partial call, effectively negating the
+    #   benefits of partial refresh.
     # @param min_interval [Numeric] minimum seconds between refreshes before a
     #   warning is issued (default: {DEFAULT_MIN_INTERVAL})
     # @param auto_full_refresh [Boolean] whether to automatically trigger a full

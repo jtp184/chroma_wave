@@ -134,6 +134,16 @@ RSpec.describe ChromaWave::Capabilities::ManagedRefresh do
       display.display_grayscale(fb)
       expect(display.refresh_scheduler.partial_count).to eq(0)
     end
+
+    it 'resumes accumulating partials after grayscale reset' do
+      fb = make_framebuffer(display)
+      2.times { display.display_partial(fb) }
+      display.display_grayscale(fb)
+      expect(display.refresh_scheduler.partial_count).to eq(0)
+
+      2.times { display.display_partial(fb) }
+      expect(display.refresh_scheduler.partial_count).to eq(2)
+    end
   end
 
   describe 'regional refresh tracking' do
@@ -142,7 +152,7 @@ RSpec.describe ChromaWave::Capabilities::ManagedRefresh do
     end
 
     it 'increments counter on display_region' do
-      fb = ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format)
+      fb = make_framebuffer(display)
       display.display_region(fb, x: 0, y: 0, width: 8, height: 8)
       expect(display.refresh_scheduler.partial_count).to eq(1)
     end
@@ -156,7 +166,7 @@ RSpec.describe ChromaWave::Capabilities::ManagedRefresh do
       end
 
       before do
-        fb = ChromaWave::Framebuffer.new(display.width, display.height, display.pixel_format)
+        fb = make_framebuffer(display)
         display.display_region(fb, x: 0, y: 0, width: 8, height: 8)
         display.clear_operations!
         2.times { display.display_region(fb, x: 0, y: 0, width: 8, height: 8) }
@@ -200,11 +210,11 @@ RSpec.describe ChromaWave::Capabilities::ManagedRefresh do
       fb = make_framebuffer(display)
       3.times { display.display_partial(fb) }
 
-      # 3rd call: track_partial!(count=3), auto-refresh(track_full! → count=0), super
+      # 3rd call: super, track_partial!(count=3), auto-refresh(track_full! → count=0)
       expect(display.refresh_scheduler.partial_count).to eq(0)
     end
 
-    it 'shows full init followed by partial init in operation log' do
+    it 'shows partial init then full init in operation log' do
       fb = make_framebuffer(display)
       3.times { display.display_partial(fb) }
 
@@ -212,8 +222,8 @@ RSpec.describe ChromaWave::Capabilities::ManagedRefresh do
       init_modes = init_ops.map { |o| o[:mode] }
 
       # 1st partial inits partial mode, 2nd reuses it (no re-init),
-      # 3rd triggers full refresh then re-inits partial for the actual display
-      expect(init_modes).to eq(%i[partial full partial])
+      # 3rd displays partial then auto-full-refresh triggers full init
+      expect(init_modes).to eq(%i[partial full])
     end
 
     context 'when auto_full_refresh is disabled' do

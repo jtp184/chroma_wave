@@ -17,6 +17,9 @@ module ChromaWave
     # - **Full trackers** (+show+, +display_base+, +display_grayscale+, +clear+):
     #   reset the partial counter after each call.
     #
+    # Tracking and interval checks occur *after* the display operation succeeds,
+    # ensuring counters and timestamps are not mutated if the underlying call raises.
+    #
     # Requires the Device to use a reentrant lock (Monitor) since wrappers
     # call +synchronize_device+ around +super+, which itself synchronizes.
     #
@@ -37,18 +40,17 @@ module ChromaWave
       # Displays a framebuffer using partial refresh, tracking the refresh count.
       #
       # When the partial limit is reached and +auto_full_refresh+ is enabled,
-      # a maintenance full refresh is performed first to clear ghosting artifacts,
-      # then the partial display proceeds.
+      # a maintenance full refresh is performed after the partial display to
+      # clear ghosting artifacts before the next update.
       #
       # @param framebuffer [Framebuffer] the framebuffer to display
       # @return [self]
       def display_partial(framebuffer)
-        validate_framebuffer!(framebuffer)
         synchronize_device do
+          super
           refresh_scheduler.check_interval!
           refresh_scheduler.track_partial!
           _auto_full_refresh!(framebuffer) if _should_auto_refresh?
-          super
         end
         self
       end
@@ -56,28 +58,27 @@ module ChromaWave
       # Displays a framebuffer using fast refresh, tracking the refresh count.
       #
       # When the partial limit is reached and +auto_full_refresh+ is enabled,
-      # a maintenance full refresh is performed first.
+      # a maintenance full refresh is performed after the fast display.
       #
       # @param framebuffer [Framebuffer] the framebuffer to display
       # @return [self]
       def display_fast(framebuffer)
-        validate_framebuffer!(framebuffer)
         synchronize_device do
+          super
           refresh_scheduler.check_interval!
           refresh_scheduler.track_partial!
           _auto_full_refresh!(framebuffer) if _should_auto_refresh?
-          super
         end
         self
       end
 
       # Displays a sub-region, tracking as a partial refresh.
       #
-      # The partial counter increments but auto-full-refresh is skipped because
-      # only a sub-region framebuffer is available — a full refresh requires a
-      # full-screen framebuffer.
+      # Auto-full-refresh is skipped because the caller intends a regional
+      # update only; a full refresh requires re-initializing the display in
+      # full mode and pushing a complete framebuffer.
       #
-      # @param framebuffer [Framebuffer] the full-screen framebuffer (logical space)
+      # @param framebuffer [Framebuffer] full-screen framebuffer in native orientation
       # @param x [Integer] left edge of the region
       # @param y [Integer] top edge of the region
       # @param width [Integer] region width in pixels
@@ -85,10 +86,9 @@ module ChromaWave
       # @return [self]
       def display_region(framebuffer, x:, y:, width:, height:)
         synchronize_device do
+          super
           refresh_scheduler.check_interval!
           refresh_scheduler.track_partial!
-          # No auto-full-refresh for sub-regions — only a sub-region is available
-          super
         end
         self
       end
@@ -105,8 +105,8 @@ module ChromaWave
       def show(canvas_or_fb)
         canvas_or_fb = canvas_or_fb.render if canvas_or_fb.is_a?(Layout)
         synchronize_device do
-          refresh_scheduler.check_interval!
           super(canvas_or_fb)
+          refresh_scheduler.check_interval!
           refresh_scheduler.track_full!
         end
         self
@@ -118,8 +118,8 @@ module ChromaWave
       # @return [self]
       def display_base(framebuffer)
         synchronize_device do
-          refresh_scheduler.check_interval!
           super
+          refresh_scheduler.check_interval!
           refresh_scheduler.track_full!
         end
         self
@@ -131,8 +131,8 @@ module ChromaWave
       # @return [self]
       def display_grayscale(framebuffer)
         synchronize_device do
-          refresh_scheduler.check_interval!
           super
+          refresh_scheduler.check_interval!
           refresh_scheduler.track_full!
         end
         self
@@ -144,8 +144,8 @@ module ChromaWave
       # @return [self]
       def clear(color: :white)
         synchronize_device do
-          refresh_scheduler.check_interval!
           super
+          refresh_scheduler.check_interval!
           refresh_scheduler.track_full!
         end
         self
@@ -162,17 +162,14 @@ module ChromaWave
 
       # Performs an automatic maintenance full refresh to clear ghosting.
       #
-      # Operates directly on the device to avoid re-entering ManagedRefresh
-      # wrappers (no double interval-check or double tracking). Must be called
-      # while holding the device lock.
+      # Delegates to {Display#force_full_refresh!} for the device interaction
+      # and state mutation, then tracks the full refresh on the scheduler.
+      # Must be called while holding the device lock.
       #
       # @param framebuffer [Framebuffer] the content to display in the full refresh
       # @return [void]
       def _auto_full_refresh!(framebuffer)
-        device.send(:_epd_init, Native::MODE_FULL)
-        device.send(:_epd_display, framebuffer)
-        @current_mode = :full
-        @initialized = true
+        force_full_refresh!(framebuffer)
         refresh_scheduler.track_full!
       end
     end
