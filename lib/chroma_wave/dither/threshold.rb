@@ -5,8 +5,8 @@ module ChromaWave
     # Threshold quantization: simple nearest-color mapping with no error diffusion.
     #
     # Reads raw RGBA bytes from the canvas and maps each pixel to the nearest
-    # palette color using the palette's redmean distance calculation. Uses a
-    # reusable {RGB} struct to avoid per-pixel Color allocation.
+    # palette color using squared CIE76 Delta E in L*a*b* space. Uses a reusable {RGB}
+    # struct to avoid per-pixel Color allocation.
     #
     # @example
     #   strategy = Dither::Threshold.new(pixel_format: PixelFormat::MONO)

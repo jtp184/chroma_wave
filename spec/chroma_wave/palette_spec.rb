@@ -112,16 +112,45 @@ RSpec.describe ChromaWave::Palette do
       expect(palette.nearest_color(near_red)).to eq(:red)
     end
 
-    it 'maps dark blue to :blue not :black (redmean accuracy)' do
+    it 'maps dark blue to :blue not :black (perceptual accuracy)' do
       dark_blue = ChromaWave::Color.new(r: 0, g: 0, b: 180)
       expect(palette.nearest_color(dark_blue)).to eq(:blue)
     end
 
     it 'memoizes results' do
+      pal = described_class[:black, :white, :red, :blue]
       color = ChromaWave::Color.new(r: 200, g: 10, b: 10)
-      result1 = palette.nearest_color(color)
-      result2 = palette.nearest_color(color)
-      expect(result1).to equal(result2)
+      allow(pal).to receive(:compute_nearest).and_call_original
+      pal.nearest_color(color)
+      pal.nearest_color(color)
+      expect(pal).to have_received(:compute_nearest).once
+    end
+
+    it 'maps each named color to itself' do
+      palette.each do |name|
+        color = ChromaWave::Color.from_name(name)
+        expect(palette.nearest_color(color)).to eq(name),
+                                                "expected #{name} to map to itself"
+      end
+    end
+
+    context 'with COLOR7 palette' do
+      subject(:palette) do
+        described_class[:black, :white, :green, :blue, :red, :yellow, :orange]
+      end
+
+      it 'maps all seven named colors to themselves' do
+        palette.each do |name|
+          color = ChromaWave::Color.from_name(name)
+          expect(palette.nearest_color(color)).to eq(name),
+                                                  "expected #{name} to map to itself in COLOR7"
+        end
+      end
+
+      it 'maps dark green (0,128,0) to :green not :black' do
+        dark_green = ChromaWave::Color.new(r: 0, g: 128, b: 0)
+        expect(palette.nearest_color(dark_green)).to eq(:green)
+      end
     end
   end
 
@@ -218,58 +247,6 @@ RSpec.describe ChromaWave::Palette do
 
       result_after = palette.nearest_color(color)
       expect(result_after).to eq(result_before)
-    end
-  end
-
-  describe ChromaWave::Palette::LruCache do
-    subject(:cache) { described_class.new(capacity: 3) }
-
-    describe '#fetch' do
-      it 'stores and retrieves a value' do
-        cache.fetch(:a) { 1 }
-        expect(cache.fetch(:a) { 2 }).to eq(1)
-      end
-
-      it 'evicts the oldest entry when capacity is exceeded' do
-        cache.fetch(:a) { 1 }
-        cache.fetch(:b) { 2 }
-        cache.fetch(:c) { 3 }
-        cache.fetch(:d) { 4 }
-        expect(cache.fetch(:a) { 99 }).to eq(99)
-      end
-
-      it 'refreshes accessed entries to avoid eviction' do
-        cache.fetch(:a) { 1 }
-        cache.fetch(:b) { 2 }
-        cache.fetch(:c) { 3 }
-        cache.fetch(:a) { 99 } # refresh :a
-        cache.fetch(:d) { 4 }  # should evict :b
-        expect(cache.fetch(:a) { 99 }).to eq(1)
-        expect(cache.fetch(:b) { 88 }).to eq(88)
-      end
-
-      it 'never exceeds capacity' do
-        10.times { |i| cache.fetch(i) { i * 10 } }
-        expect(cache.size).to eq(3)
-      end
-    end
-
-    describe '#size' do
-      it 'starts at 0' do
-        expect(cache.size).to eq(0)
-      end
-
-      it 'grows with inserts' do
-        cache.fetch(:a) { 1 }
-        cache.fetch(:b) { 2 }
-        expect(cache.size).to eq(2)
-      end
-
-      it 'does not grow on hits' do
-        cache.fetch(:a) { 1 }
-        cache.fetch(:a) { 2 }
-        expect(cache.size).to eq(1)
-      end
     end
   end
 end

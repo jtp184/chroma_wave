@@ -14,53 +14,6 @@ module ChromaWave
   class Palette
     include Enumerable
 
-    # A minimal LRU cache backed by Ruby's insertion-ordered Hash.
-    #
-    # On hit the entry is moved to the tail (most-recently-used).
-    # On miss after insert the head (least-recently-used) is evicted
-    # when the cache exceeds its capacity.
-    #
-    # @api private
-    class LruCache
-      # Default maximum number of cached entries.
-      DEFAULT_CAPACITY = 4096
-
-      # Creates an LRU cache with the given capacity.
-      #
-      # @param capacity [Integer] maximum entries before eviction
-      def initialize(capacity: DEFAULT_CAPACITY)
-        @capacity = capacity
-        @store = {}
-      end
-
-      # Fetches the value for +key+, or computes and stores it via the block.
-      #
-      # @param key [Object] the cache key
-      # @yield computes the value on cache miss
-      # @return [Object] the cached or computed value
-      def fetch(key)
-        if store.key?(key)
-          value = store.delete(key)
-          store[key] = value
-        else
-          store[key] = yield
-          store.shift if store.size > capacity
-          store[key]
-        end
-      end
-
-      # Returns the number of cached entries.
-      #
-      # @return [Integer]
-      def size
-        store.size
-      end
-
-      private
-
-      attr_reader :capacity, :store
-    end
-
     # Creates a new Palette from an array of named color entries.
     #
     # @param entries [Array<Symbol>] color names that must exist in {Color::NAME_MAP}
@@ -72,6 +25,7 @@ module ChromaWave
       @entries = entries
       @index = entries.each_with_index.to_h.freeze
       @rgba_by_entry = entries.map { |name| Color.from_name(name) }.freeze
+      @lab_by_entry = @rgba_by_entry.map(&:to_lab).freeze
       @nearest_cache = LruCache.new
     end
 
@@ -130,13 +84,15 @@ module ChromaWave
 
     # Finds the nearest palette color to an arbitrary RGBA color.
     #
-    # Uses redmean perceptual distance for better color matching.
-    # Results are memoized by the packed 24-bit integer key for
-    # zero-allocation cache hits. The cache is LRU-bounded to
-    # {LruCache::DEFAULT_CAPACITY} entries to prevent unbounded growth
-    # when mapping large images through long-lived palette constants.
+    # Uses CIE76 Delta E distance in L*a*b* space for perceptually
+    # accurate color matching. Results are memoized by the packed
+    # 24-bit integer key for zero-allocation cache hits. The cache
+    # is LRU-bounded to {LruCache::DEFAULT_CAPACITY} entries to
+    # prevent unbounded growth when mapping large images through
+    # long-lived palette constants.
     #
-    # @param rgba [Color] the color to match
+    # @param rgba [#r, #g, #b] an RGB-like object responding to +#r+, +#g+, and +#b+;
+    #   any alpha channel or extra components are ignored
     # @return [Symbol] the nearest palette entry name
     def nearest_color(rgba)
       key = pack_key(rgba)
@@ -170,7 +126,7 @@ module ChromaWave
 
     private
 
-    attr_reader :index, :rgba_by_entry, :nearest_cache
+    attr_reader :index, :rgba_by_entry, :lab_by_entry, :nearest_cache
 
     # Validates that entries are non-empty, unique, and registered color names.
     #
@@ -193,31 +149,37 @@ module ChromaWave
 
     # Packs an RGB color into a 24-bit integer cache key.
     #
-    # Alpha is excluded because the redmean distance calculation
+    # Alpha is excluded because the CIE Lab distance calculation
     # operates on RGB only — colors should be composited to opaque
     # before palette matching.
     #
-    # @param rgba [Color] the color
+    # @param rgba [#r, #g, #b] the color
     # @return [Integer] packed 24-bit key
     def pack_key(rgba)
       (rgba.r << 16) | (rgba.g << 8) | rgba.b
     end
 
-    # Computes the nearest palette entry using redmean perceptual distance.
+    # Computes the nearest palette entry using CIE76 Delta E distance.
     #
-    # Redmean formula weights R/G/B channels differently based on the
-    # average red value, providing better perceptual accuracy than
-    # simple Euclidean distance, particularly for dark colors.
+    # Converts the input pixel to L*a*b* via {Color.compute_lab} and
+    # compares against pre-computed {#lab_by_entry} values. Uses squared
+    # Delta E to avoid an unnecessary +sqrt+ (valid since we only need
+    # ordering, not absolute magnitude). All Lab components are held in
+    # scalar locals to avoid repeated Array indexing in the inner loop.
     #
-    # @param rgba [Color] the color to match
+    # @param rgba [#r, #g, #b] the color to match (Color or duck-typed RGB)
     # @return [Symbol] nearest palette entry name
     def compute_nearest(rgba)
+      pl, pa, pb = Color.compute_lab(rgba.r, rgba.g, rgba.b)
       min_entry = nil
       min_dist = Float::INFINITY
 
       entries.each_with_index do |name, i|
-        candidate = rgba_by_entry[i]
-        dist = redmean_distance(rgba, candidate)
+        el, ea, eb = lab_by_entry[i]
+        dl = pl - el
+        da = pa - ea
+        db = pb - eb
+        dist = (dl * dl) + (da * da) + (db * db)
         if dist < min_dist
           min_dist = dist
           min_entry = name
@@ -225,22 +187,6 @@ module ChromaWave
       end
 
       min_entry
-    end
-
-    # Calculates the redmean perceptual color distance.
-    #
-    # @param c1 [Color] first color
-    # @param c2 [Color] second color
-    # @return [Float] perceptual distance (lower = more similar)
-    def redmean_distance(c1, c2) # rubocop:disable Metrics/AbcSize
-      r_mean = (c1.r + c2.r) / 2.0
-      dr = c1.r - c2.r
-      dg = c1.g - c2.g
-      db = c1.b - c2.b
-
-      ((2 + (r_mean / 256.0)) * dr * dr) +
-        (4 * dg * dg) +
-        ((2 + ((255 - r_mean) / 256.0)) * db * db)
     end
   end
 end

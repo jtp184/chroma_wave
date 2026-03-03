@@ -132,4 +132,4 @@ RSpec/ExampleLength:
 # is not redundant, it's the computation that runs on cache miss.
 Style/RedundantFetchBlock:
   Exclude:
-    - 'spec/chroma_wave/palette_spec.rb'
+    - 'spec/chroma_wave/lru_cache_spec.rb'
