@@ -74,7 +74,8 @@ module ChromaWave
         encoding = barcode.encoding.is_a?(Array) ? barcode.encoding.join : barcode.encoding
 
         total_width = encoding.length * module_width
-        render_barcode_background(x, y, total_width, height, background) if background
+        total_height = compute_barcode_height(height, include_text, text_font)
+        render_barcode_background(x, y, total_width, total_height, background) if background
         render_barcode_bars(x, y, encoding, module_width, height, color)
         render_barcode_text(data, x, y + height + 2, total_width, text_font, color) if include_text
 
@@ -187,12 +188,24 @@ module ChromaWave
         raise ArgumentError, 'text_font: is required when include_text: true'
       end
 
+      # Computes the total barcode height including optional text area.
+      #
+      # @param bar_height [Integer] bar height in pixels
+      # @param include_text [Boolean] whether text is rendered below bars
+      # @param text_font [Font, nil] the font for text rendering
+      # @return [Integer] total height in pixels
+      def compute_barcode_height(bar_height, include_text, text_font)
+        return bar_height unless include_text
+
+        bar_height + 2 + (text_font.line_height * 1.2).round
+      end
+
       # Fills the barcode background as a single rectangle.
       #
       # @param x [Integer] top-left x
       # @param y [Integer] top-left y
       # @param total_width [Integer] total barcode width in pixels
-      # @param height [Integer] bar height
+      # @param height [Integer] total height including text area
       # @param color [Color] background color
       def render_barcode_background(x, y, total_width, height, color)
         fill_rect(x, y, total_width, height, color)

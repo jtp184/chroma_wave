@@ -219,6 +219,17 @@ RSpec.describe ChromaWave::Drawing::Codes do
         end
         expect(has_bg).to be(true)
       end
+
+      it 'extends background below bars to cover text area' do
+        bg = ChromaWave::Color.new(r: 200, g: 200, b: 200)
+        canvas.draw_barcode('ABC', x: 10, y: 10, symbology: :code128,
+                                   include_text: true, text_font: font,
+                                   background: bg, height: 60)
+        # Background should extend into the text region below the bars
+        text_area_y = 10 + 60 + 2
+        has_bg = (0...canvas.width).any? { |px| canvas.get_pixel(px, text_area_y) == bg }
+        expect(has_bg).to be(true)
+      end
     end
 
     context 'with invalid arguments' do
