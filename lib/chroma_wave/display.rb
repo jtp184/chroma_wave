@@ -105,6 +105,50 @@ module ChromaWave
       self
     end
 
+    # Renders and displays only the dirty region of a canvas.
+    #
+    # When the canvas is clean (no modifications since last +clean!+), returns
+    # +self+ immediately (no-op). Otherwise renders the full canvas (for dither
+    # correctness) and pushes the dirty sub-region to hardware.
+    #
+    # On {Capabilities::RegionalRefresh}-capable displays, always uses
+    # +display_region+ to update only the changed rectangle — +mode+ is
+    # ignored. On non-regional displays, falls back to a full-screen refresh
+    # by default, or to {Capabilities::PartialRefresh#display_partial} when
+    # +mode: :partial+ is specified.
+    #
+    # Always calls +canvas.clean!+ after a successful display operation.
+    #
+    # @param canvas [Canvas] the canvas to display
+    # @param mode [Symbol, nil] display mode (+nil+ for default, +:partial+
+    #   for partial refresh). Only affects the non-regional fallback path.
+    # @return [self]
+    # @raise [TypeError] if +canvas+ is not a Canvas
+    # @raise [ArgumentError] if +mode+ is not recognized or display lacks the requested capability
+    def show_dirty(canvas, mode: nil)
+      raise TypeError, "expected Canvas, got #{canvas.class}" unless canvas.is_a?(Canvas)
+
+      validate_display_mode!(mode)
+      return self unless canvas.dirty?
+
+      validate_canvas_dimensions!(canvas)
+      region = canvas.dirty_region
+
+      fb = renderer.render(canvas)
+
+      if is_a?(Capabilities::RegionalRefresh)
+        # display_region expects logical-space FB and handles rotation internally
+        display_dirty_regional(fb, region)
+      else
+        # Full-screen path needs native-orientation FB
+        fb = fb.rotate(rotation) unless rotation.zero?
+        display_dirty_fallback(fb, mode)
+      end
+
+      canvas.clean!
+      self
+    end
+
     # Clears the display to a solid color.
     #
     # When +color+ is +:white+ (the default), delegates to the hardware's
@@ -287,6 +331,66 @@ module ChromaWave
       opts = options == true ? {} : options
       @refresh_scheduler = RefreshScheduler.new(**opts)
       extend Capabilities::ManagedRefresh
+    end
+
+    # Validates the display mode, raising for unknown or unsupported modes.
+    #
+    # +:partial+ is accepted with {Capabilities::PartialRefresh} or
+    # {Capabilities::RegionalRefresh} (where +mode+ is ignored).
+    #
+    # @param mode [Symbol, nil] the requested mode
+    # @raise [ArgumentError] if mode is unrecognized or display lacks the capability
+    def validate_display_mode!(mode)
+      case mode
+      when nil then nil
+      when :partial
+        return if is_a?(Capabilities::PartialRefresh) || is_a?(Capabilities::RegionalRefresh)
+
+        raise ArgumentError, 'display does not support partial mode'
+      else
+        raise ArgumentError, "unknown mode: #{mode.inspect}"
+      end
+    end
+
+    # Displays the dirty region using regional refresh.
+    #
+    # @param framebuffer [Framebuffer] full-screen rendered framebuffer (logical space)
+    # @param region [Rect] dirty region bounding box
+    # @return [void]
+    def display_dirty_regional(framebuffer, region)
+      display_region(framebuffer,
+                     x: region.x, y: region.y,
+                     width: region.width, height: region.height)
+    end
+
+    # Falls back to full-screen refresh when regional refresh is unavailable.
+    #
+    # Routes through {#show} so that {Capabilities::ManagedRefresh} tracking
+    # wraps the operation automatically (tracked as full refresh).
+    #
+    # @param framebuffer [Framebuffer] full-screen rendered framebuffer (native orientation)
+    # @param mode [Symbol, nil] display mode (already validated)
+    # @return [void]
+    def display_dirty_fallback(framebuffer, mode)
+      if mode == :partial
+        display_partial(framebuffer)
+      else
+        # Framebuffer is already rotated to native orientation;
+        # enters show's Framebuffer branch (validate + display).
+        show(framebuffer)
+      end
+    end
+
+    # Validates that a canvas matches this display's logical dimensions.
+    #
+    # @param canvas [Canvas] the canvas to validate
+    # @raise [ArgumentError] if dimensions do not match
+    def validate_canvas_dimensions!(canvas)
+      return if canvas.width == width && canvas.height == height
+
+      raise ArgumentError,
+            "canvas dimensions #{canvas.width}x#{canvas.height} " \
+            "do not match display size #{width}x#{height}"
     end
 
     # Validates that a framebuffer's pixel format and dimensions match this display.

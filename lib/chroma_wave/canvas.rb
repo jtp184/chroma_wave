@@ -16,6 +16,7 @@ module ChromaWave
   #   canvas.clear(Color::BLACK)
   class Canvas
     include Surface
+    include DirtyTracking
 
     # Bytes per pixel in the RGBA buffer.
     BYTES_PER_PIXEL = 4
@@ -47,6 +48,7 @@ module ChromaWave
       return self unless in_bounds?(x, y)
 
       buffer[pixel_offset(x, y), BYTES_PER_PIXEL] = color.to_rgba_bytes
+      expand_dirty(x, y, 1, 1)
       self
     end
 
@@ -73,6 +75,7 @@ module ChromaWave
       else
         clear_ruby(color)
       end
+      expand_dirty(0, 0, width, height)
       self
     end
 
@@ -100,6 +103,7 @@ module ChromaWave
       else
         blit_ruby(source, x, y)
       end
+      mark_clipped_dirty(x, y, source.width, source.height)
       self
     end
 
@@ -119,6 +123,7 @@ module ChromaWave
       else
         load_rgba_bytes_ruby(bytes, width, height, x, y)
       end
+      mark_clipped_dirty(x, y, width, height)
       self
     end
 
@@ -195,6 +200,7 @@ module ChromaWave
       _canvas_blit_glyph(buffer, bitmap, x, y, width, height,
                          self.width, self.height,
                          color.r, color.g, color.b)
+      mark_clipped_dirty(x, y, width, height)
       true
     end
 
@@ -240,18 +246,21 @@ module ChromaWave
         offset = pixel_offset(x0, row_y)
         buffer[offset, row.bytesize] = row
       end
+
+      expand_dirty(x0, y0, x1 - x0, y1 - y0)
     end
 
     private
 
     attr_reader :buffer
 
-    # Deep-copies the pixel buffer so dup/clone get independent data.
+    # Deep-copies the pixel buffer and dirty state so dup/clone get independent data.
     #
     # @param source [Canvas] the canvas being copied
     def initialize_copy(source)
       super
       @buffer = source.raw_buffer.dup
+      copy_dirty_state(source)
     end
 
     # Byte offset for pixel (x, y) in the RGBA buffer.
@@ -264,11 +273,14 @@ module ChromaWave
     # Falls back to the pure-Ruby path when the C method is unavailable.
     def render_glyph(glyph, base_x, base_y, color)
       if respond_to?(:_canvas_blit_glyph, true)
+        gx = base_x + glyph[:x]
+        gy = base_y + glyph[:y]
         _canvas_blit_glyph(buffer, glyph[:bitmap],
-                           base_x + glyph[:x], base_y + glyph[:y],
+                           gx, gy,
                            glyph[:width], glyph[:height],
                            width, height,
                            color.r, color.g, color.b)
+        mark_clipped_dirty(gx, gy, glyph[:width], glyph[:height])
       else
         super
       end
