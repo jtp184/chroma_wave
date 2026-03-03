@@ -10,6 +10,7 @@ require 'chroma_wave/chroma_wave'
 module ChromaWave
 end
 
+require_relative 'chroma_wave/lru_cache'    # LruCache before Color & Palette (both use it)
 require_relative 'chroma_wave/color'        # Color before Palette (NAME_MAP)
 require_relative 'chroma_wave/palette'      # Palette before PixelFormat (constants)
 require_relative 'chroma_wave/pixel_format' # PixelFormat before Framebuffer wrapper

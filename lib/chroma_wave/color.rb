@@ -98,7 +98,7 @@ module ChromaWave
     #
     # @return [Array(Float, Float, Float)] [L*, a*, b*]
     def to_lab
-      Color.lab_cache[self] ||= Color.compute_lab(r, g, b)
+      Color.lab_cache.fetch(self) { Color.compute_lab(r, g, b) }
     end
 
     private
@@ -184,9 +184,12 @@ module ChromaWave
 
     # Returns the class-level Lab cache (keyed by Color structural equality).
     #
-    # @return [Hash{Color => Array(Float, Float, Float)}]
+    # LRU-bounded to prevent unbounded growth if many distinct Colors
+    # are converted via {Color#to_lab}.
+    #
+    # @return [LruCache]
     def lab_cache
-      @lab_cache ||= {}
+      @lab_cache ||= LruCache.new
     end
 
     # Computes CIE L*a*b* values from sRGB channels.
