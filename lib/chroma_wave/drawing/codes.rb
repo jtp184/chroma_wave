@@ -11,22 +11,6 @@ module ChromaWave
     #
     # Both methods return +self+ for chaining.
     module Codes
-      # Maps user-facing symbology symbols to Barby class name strings.
-      SYMBOLOGY_MAP = {
-        code128: 'Barby::Code128',
-        ean13: 'Barby::EAN13',
-        ean8: 'Barby::EAN8',
-        code39: 'Barby::Code39'
-      }.freeze
-
-      # Maps symbology symbols to their require paths.
-      SYMBOLOGY_REQUIRES = {
-        code128: 'barby/barcode/code_128',
-        ean13: 'barby/barcode/ean_13',
-        ean8: 'barby/barcode/ean_8',
-        code39: 'barby/barcode/code_39'
-      }.freeze
-
       # Draws a QR code onto this surface.
       #
       # Each dark module is rendered as a filled square via +fill_rect+.
@@ -47,7 +31,7 @@ module ChromaWave
       # @raise [DependencyError] if rqrcode is not installed
       def draw_qr(data, x:, y:, module_size: nil, color: Color::BLACK, background: nil, # rubocop:disable Metrics/ParameterLists
                   error_correction: :medium, max_width: nil, max_height: nil)
-        QR.send(:require_rqrcode!)
+        require_rqrcode!
         level = QR.resolve_level(error_correction)
         qr = ::RQRCode::QRCode.new(data, level: level)
         modules = qr.modules
@@ -83,7 +67,7 @@ module ChromaWave
                        color: Color::BLACK, background: nil, include_text: true,
                        text_font: nil)
         validate_text_capable!(include_text)
-        barcode = build_barcode(symbology, data)
+        barcode = Barcode.build_barcode(symbology, data)
         encoding = barcode.encoding.is_a?(Array) ? barcode.encoding.join : barcode.encoding
 
         total_width = encoding.length * module_width
@@ -95,6 +79,13 @@ module ChromaWave
       end
 
       private
+
+      # Lazily requires rqrcode, raising DependencyError if not installed.
+      #
+      # @raise [DependencyError] if rqrcode cannot be loaded
+      def require_rqrcode!
+        QR.send(:require_rqrcode!)
+      end
 
       # Resolves the effective module_size from explicit or auto-fit parameters.
       #
@@ -154,19 +145,6 @@ module ChromaWave
         end
       end
 
-      # Lazily requires barby, raising DependencyError if not installed.
-      #
-      # @raise [DependencyError] if barby cannot be loaded
-      def require_barby!
-        return if defined?(::Barby)
-
-        require 'barby'
-      rescue LoadError
-        raise DependencyError,
-              'barby is required for barcode support. ' \
-              'Install it with: gem install barby'
-      end
-
       # Validates that this surface supports text rendering.
       #
       # @param include_text [Boolean] whether text is requested
@@ -177,23 +155,6 @@ module ChromaWave
 
         raise ArgumentError,
               'include_text: true requires draw_text (available on Canvas and Layer, not Framebuffer)'
-      end
-
-      # Builds a Barby barcode instance for the given symbology and data.
-      #
-      # @param symbology [Symbol] symbology key
-      # @param data [String] data to encode
-      # @return [Barby::Barcode] the barcode instance
-      # @raise [ArgumentError] if symbology is unknown
-      def build_barcode(symbology, data)
-        require_barby!
-        klass_name = SYMBOLOGY_MAP.fetch(symbology) do
-          raise ArgumentError, "unknown symbology: #{symbology.inspect} " \
-                               "(expected #{SYMBOLOGY_MAP.keys.map(&:inspect).join(', ')})"
-        end
-
-        require SYMBOLOGY_REQUIRES.fetch(symbology)
-        Object.const_get(klass_name).new(data)
       end
 
       # Fills the barcode background as a single rectangle.

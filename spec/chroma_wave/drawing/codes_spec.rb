@@ -207,10 +207,17 @@ RSpec.describe ChromaWave::Drawing::Codes do
       end
     end
 
+    context 'with invalid barcode data' do
+      it 'raises ArgumentError with user-friendly message for invalid EAN data' do
+        expect { canvas.draw_barcode('abc', x: 0, y: 0, symbology: :ean13, include_text: false) }
+          .to raise_error(ArgumentError, /invalid data for ean13/)
+      end
+    end
+
     context 'without required dependency' do
       before do
         hide_const('Barby') if defined?(Barby)
-        allow_any_instance_of(described_class).to receive(:require).with('barby').and_raise(LoadError) # rubocop:disable RSpec/AnyInstance
+        allow(ChromaWave::Barcode).to receive(:require).with('barby').and_raise(LoadError)
       end
 
       it 'raises DependencyError when barby is not installed' do
