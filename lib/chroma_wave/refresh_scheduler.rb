@@ -28,11 +28,7 @@ module ChromaWave
     # Creates a new RefreshScheduler with configurable thresholds.
     #
     # @param partial_limit [Integer] number of partial refreshes before a full refresh
-    #   is recommended (default: {DEFAULT_PARTIAL_LIMIT})
-    # @note A +partial_limit+ of 0 causes {#needs_full?} to return +true+
-    #   immediately. Combined with +auto_full_refresh: true+, this triggers a
-    #   maintenance full refresh on every partial call, effectively negating the
-    #   benefits of partial refresh.
+    #   is recommended (default: {DEFAULT_PARTIAL_LIMIT}). Must be >= 1.
     # @param min_interval [Numeric] minimum seconds between refreshes before a
     #   warning is issued (default: {DEFAULT_MIN_INTERVAL})
     # @param auto_full_refresh [Boolean] whether to automatically trigger a full
@@ -40,6 +36,7 @@ module ChromaWave
     def initialize(partial_limit: DEFAULT_PARTIAL_LIMIT,
                    min_interval: DEFAULT_MIN_INTERVAL,
                    auto_full_refresh: true)
+      validate_params!(partial_limit, min_interval)
       @partial_limit = partial_limit
       @min_interval = min_interval
       @auto_full_refresh = auto_full_refresh
@@ -104,6 +101,17 @@ module ChromaWave
     end
 
     private
+
+    # Validates constructor parameters.
+    #
+    # @param partial_limit [Integer] must be >= 1
+    # @param min_interval [Numeric] must be >= 0
+    # @raise [ArgumentError] if values are out of range
+    # @return [void]
+    def validate_params!(partial_limit, min_interval)
+      raise ArgumentError, "partial_limit must be >= 1, got #{partial_limit}" if partial_limit < 1
+      raise ArgumentError, "min_interval must be >= 0, got #{min_interval}" if min_interval.negative?
+    end
 
     # Returns the current monotonic time for interval measurement.
     #

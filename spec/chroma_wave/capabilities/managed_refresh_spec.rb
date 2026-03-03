@@ -271,6 +271,38 @@ RSpec.describe ChromaWave::Capabilities::ManagedRefresh do
     end
   end
 
+  describe 'auto-full-refresh failure resilience' do
+    let(:display) do
+      ChromaWave::MockDevice.new(
+        model: model,
+        managed_refresh: { partial_limit: 2, min_interval: 0 }
+      )
+    end
+
+    it 'warns and resets counter when force_full_refresh! fails' do
+      fb = make_framebuffer(display)
+      display.display_partial(fb) # count=1
+
+      # Stub force_full_refresh! to simulate hardware failure during auto-refresh
+      allow(display).to receive(:force_full_refresh!)
+        .and_raise(ChromaWave::DeviceError, 'hardware fault')
+
+      expect { display.display_partial(fb) } # count=2 → triggers auto-refresh → fails
+        .to output(/Auto-full-refresh failed/).to_stderr
+      expect(display.refresh_scheduler.partial_count).to eq(0)
+    end
+
+    it 'does not raise to the caller when auto-refresh fails' do
+      fb = make_framebuffer(display)
+      display.display_partial(fb) # count=1
+
+      allow(display).to receive(:force_full_refresh!)
+        .and_raise(ChromaWave::DeviceError, 'hardware fault')
+
+      expect { display.display_partial(fb) }.not_to raise_error
+    end
+  end
+
   describe 'interval warning' do
     let(:display) do
       ChromaWave::MockDevice.new(model: model, managed_refresh: { min_interval: 9999 })

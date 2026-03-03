@@ -152,17 +152,31 @@ RSpec.describe ChromaWave::RefreshScheduler do
     end
   end
 
-  describe 'edge cases' do
-    it 'handles partial_limit of 0 (needs_full? always true)' do
-      scheduler = described_class.new(partial_limit: 0)
-      expect(scheduler.needs_full?).to be true
+  describe 'input validation' do
+    it 'raises ArgumentError for partial_limit: 0' do
+      expect { described_class.new(partial_limit: 0) }
+        .to raise_error(ArgumentError, /partial_limit must be >= 1/)
     end
 
-    it 'handles partial_limit of 1 (needs_full? after first partial)' do
+    it 'raises ArgumentError for negative partial_limit' do
+      expect { described_class.new(partial_limit: -1) }
+        .to raise_error(ArgumentError, /partial_limit must be >= 1/)
+    end
+
+    it 'raises ArgumentError for negative min_interval' do
+      expect { described_class.new(min_interval: -5) }
+        .to raise_error(ArgumentError, /min_interval must be >= 0/)
+    end
+
+    it 'accepts partial_limit: 1' do
       scheduler = described_class.new(partial_limit: 1)
       expect(scheduler.needs_full?).to be false
       scheduler.track_partial!
       expect(scheduler.needs_full?).to be true
+    end
+
+    it 'accepts min_interval: 0' do
+      expect { described_class.new(min_interval: 0) }.not_to raise_error
     end
   end
 end
