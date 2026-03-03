@@ -96,7 +96,7 @@ module ChromaWave
     # Results are cached at the class level by packed 24-bit RGB key,
     # so colors differing only by alpha share the same cached Array.
     #
-    # @return [Array(Float, Float, Float)] [L*, a*, b*]
+    # @return [Array<Float>] 3-element array [L*, a*, b*]
     def to_lab
       Color.lab_cache.fetch((r << 16) | (g << 8) | b) { Color.compute_lab(r, g, b).freeze }
     end
@@ -200,7 +200,7 @@ module ChromaWave
     # @param r [Integer] red channel (0..255)
     # @param g [Integer] green channel (0..255)
     # @param b [Integer] blue channel (0..255)
-    # @return [Array(Float, Float, Float)] [L*, a*, b*]
+    # @return [Array<Float>] [L*, a*, b*]
     def compute_lab(r, g, b) # rubocop:disable Metrics/AbcSize
       # sRGB → linear RGB (inverse companding)
       rl = gamma_decode(r / 255.0)

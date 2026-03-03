@@ -118,12 +118,12 @@ RSpec.describe ChromaWave::Palette do
     end
 
     it 'memoizes results' do
+      pal = described_class[:black, :white, :red, :blue]
       color = ChromaWave::Color.new(r: 200, g: 10, b: 10)
-      palette # force subject evaluation before spying
-      allow(ChromaWave::Color).to receive(:compute_lab).and_call_original
-      palette.nearest_color(color)
-      palette.nearest_color(color)
-      expect(ChromaWave::Color).to have_received(:compute_lab).once
+      allow(pal).to receive(:compute_nearest).and_call_original
+      pal.nearest_color(color)
+      pal.nearest_color(color)
+      expect(pal).to have_received(:compute_nearest).once
     end
 
     it 'maps each named color to itself' do
