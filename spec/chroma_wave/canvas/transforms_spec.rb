@@ -332,14 +332,14 @@ RSpec.describe ChromaWave::Canvas::Transforms do
         expect { c.scale(2.0, height: 10) }.to raise_error(ArgumentError, /mix/)
       end
 
-      it 'raises for non-positive width: keyword' do
+      it 'raises for zero width: keyword' do
         c = canvas(2, 2)
-        expect { c.scale(width: 0) }.to raise_error(ArgumentError)
+        expect { c.scale(width: 0) }.to raise_error(ArgumentError, /width/)
       end
 
-      it 'raises for non-positive height: keyword' do
+      it 'raises for negative height: keyword' do
         c = canvas(2, 2)
-        expect { c.scale(height: -5) }.to raise_error(ArgumentError)
+        expect { c.scale(height: -5) }.to raise_error(ArgumentError, /height/)
       end
 
       it 'raises when factor produces width exceeding MAX_DIMENSION' do
@@ -357,14 +357,18 @@ RSpec.describe ChromaWave::Canvas::Transforms do
         expect { c.scale(width: 5000) }.to raise_error(ArgumentError, /scaled width.*exceeds maximum/)
       end
 
-      it 'raises for Float width: keyword' do
+      it 'rounds Float width: keyword to nearest Integer' do
         c = canvas(10, 10)
-        expect { c.scale(width: 5.5) }.to raise_error(ArgumentError)
+        result = c.scale(width: 5.5)
+        expect(result.width).to eq(6)
+        expect(result.height).to eq(6)
       end
 
-      it 'raises for Float height: keyword' do
+      it 'rounds Float height: keyword to nearest Integer' do
         c = canvas(10, 10)
-        expect { c.scale(height: 3.7) }.to raise_error(ArgumentError)
+        result = c.scale(height: 3.7)
+        expect(result.width).to eq(4)
+        expect(result.height).to eq(4)
       end
     end
   end

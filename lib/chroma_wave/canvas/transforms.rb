@@ -69,12 +69,12 @@ module ChromaWave
       # @overload scale(factor)
       #   @param factor [Numeric] uniform scale factor (must be positive)
       # @overload scale(width:)
-      #   @param width [Integer] target width (aspect ratio preserved)
+      #   @param width [Numeric] target width, rounded to Integer (aspect ratio preserved)
       # @overload scale(height:)
-      #   @param height [Integer] target height (aspect ratio preserved)
+      #   @param height [Numeric] target height, rounded to Integer (aspect ratio preserved)
       # @overload scale(width:, height:)
-      #   @param width  [Integer] target width
-      #   @param height [Integer] target height
+      #   @param width  [Numeric] target width, rounded to Integer
+      #   @param height [Numeric] target height, rounded to Integer
       # @return [Canvas] a new, scaled canvas
       # @raise [ArgumentError] on invalid or conflicting arguments
       def scale(factor = nil, width: nil, height: nil)
@@ -96,8 +96,8 @@ module ChromaWave
       # @raise [ArgumentError] if +width+ or +height+ is not positive,
       #   or if the clipped region is entirely outside the canvas
       def crop(x:, y:, width:, height:)
-        raise ArgumentError, 'crop width must be positive' unless width.is_a?(Integer) && width.positive?
-        raise ArgumentError, 'crop height must be positive' unless height.is_a?(Integer) && height.positive?
+        raise ArgumentError, 'crop width must be a positive Integer' unless width.is_a?(Integer) && width.positive?
+        raise ArgumentError, 'crop height must be a positive Integer' unless height.is_a?(Integer) && height.positive?
 
         crop_clipped(x.round, y.round, width, height)
       end
@@ -153,15 +153,14 @@ module ChromaWave
       # @raise [ArgumentError] on invalid arguments
       def resolve_scale_keywords(target_w, target_h)
         if target_w && target_h
-          validate_scale_dimension!(:width, target_w)
-          validate_scale_dimension!(:height, target_h)
-          [target_w, target_h]
+          [coerce_scale_dimension!(:width, target_w),
+           coerce_scale_dimension!(:height, target_h)]
         elsif target_w
-          validate_scale_dimension!(:width, target_w)
-          [target_w, [(height * target_w.to_f / width).round, 1].max]
+          w = coerce_scale_dimension!(:width, target_w)
+          [w, [(height * w.to_f / width).round, 1].max]
         elsif target_h
-          validate_scale_dimension!(:height, target_h)
-          [[(width * target_h.to_f / height).round, 1].max, target_h]
+          h = coerce_scale_dimension!(:height, target_h)
+          [[(width * h.to_f / height).round, 1].max, h]
         else
           raise ArgumentError, 'scale requires a factor or width:/height: keywords'
         end
@@ -185,20 +184,24 @@ module ChromaWave
         [new_w, new_h]
       end
 
-      # Validates a single target dimension for scale.
+      # Coerces and validates a single target dimension for scale.
+      #
+      # Accepts Integer or Float (rounded to nearest Integer).
       #
       # @param name [Symbol] :width or :height
-      # @param value [Object] the value to check
-      # @raise [ArgumentError] unless positive Integer
-      def validate_scale_dimension!(name, value)
-        return if value.is_a?(Integer) && value.positive?
+      # @param value [Numeric] the value to coerce and check
+      # @return [Integer] the validated dimension
+      # @raise [ArgumentError] unless a positive Numeric
+      def coerce_scale_dimension!(name, value)
+        raise ArgumentError, "#{name} must be a positive Numeric" unless value.is_a?(Numeric) && value.positive?
 
-        raise ArgumentError, "#{name} must be a positive Integer"
+        value.round
       end
 
       # Nearest-neighbor resampling into a +new_w+ x +new_h+ canvas.
       #
-      # Pre-computes the source-x lookup table to avoid per-pixel division.
+      # Pre-computes the source-x lookup table to avoid per-pixel division,
+      # and builds each output row as a single string before appending.
       #
       # @param new_w [Integer] output width
       # @param new_h [Integer] output height
@@ -208,14 +211,14 @@ module ChromaWave
         src_w = width
         out = String.new(capacity: new_w * new_h * BYTES_PER_PIXEL)
 
-        # Pre-compute source x for each destination column
+        # Pre-compute source x byte-offset for each destination column
         x_map = Array.new(new_w) { |dx| (dx * src_w / new_w) * BYTES_PER_PIXEL }
 
         new_h.times do |dy|
           src_row = (dy * height / new_h) * src_w * BYTES_PER_PIXEL
-          new_w.times do |dx|
-            out << src.byteslice(src_row + x_map[dx], BYTES_PER_PIXEL)
-          end
+          row = String.new(capacity: new_w * BYTES_PER_PIXEL)
+          x_map.each { |src_x| row << src.byteslice(src_row + src_x, BYTES_PER_PIXEL) }
+          out << row
         end
 
         Canvas.send(:from_buffer, new_w, new_h, out)
